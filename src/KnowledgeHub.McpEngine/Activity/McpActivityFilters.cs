@@ -66,8 +66,12 @@ public static class McpActivityFilters
     /// Incoming message filter: records non-<c>tools/call</c> JSON-RPC requests
     /// (initialize, tools/list, resources/*, ping) with method + latency.
     /// </summary>
-    public static McpMessageFilter CreateRequestTelemetryFilter(IMcpActivityFeed feed) => next => async (context, cancellationToken) =>
+    public static McpMessageFilter CreateRequestTelemetryFilter(IMcpActivityFeed feed, McpSessionRegistry registry) =>
+        next => async (context, cancellationToken) =>
     {
+        // Track the session so tools/list_changed can broadcast to live clients.
+        registry.Register(context.Server);
+
         if (context.JsonRpcMessage is not JsonRpcRequest request || request.Method == "tools/call")
         {
             await next(context, cancellationToken);

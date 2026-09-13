@@ -1,11 +1,16 @@
+using System.Text.Json;
 using KnowledgeHub.Server.BackgroundServices;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
 using KnowledgeHub.Server.Ingestion;
+using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Server.Services;
 using KnowledgeHub.Server.VectorStore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace KnowledgeHub.Server;
 
@@ -48,6 +53,48 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<IngestionService>();
         services.AddSingleton<IIngestionService>(sp => sp.GetRequiredService<IngestionService>());
         services.AddHostedService<VaultWatcherService>();
+
+        // SPEC-04: dynamic MCP tool catalog + handlers + change notifier.
+        services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.ToolProviders.KnowledgeToolsProvider>();
+        services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.ToolProviders.SourceQueryToolsProvider>();
+        services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.ToolProviders.ObsidianToolsProvider>();
+        services.AddSingleton<IDynamicToolCatalog, DynamicToolCatalog>();
+        services.AddSingleton<IToolCatalogChangeNotifier, ToolCatalogChangeNotifier>();
+
+        services.AddOptions<McpServerOptions>().Configure(options =>
+        {
+            options.Handlers.ListToolsHandler = async (ctx, ct) =>
+            {
+                var catalog = ctx.Services!.GetRequiredService<IDynamicToolCatalog>();
+                var tools = await catalog.GetToolsAsync(ctx.Services!, ct);
+                return new ListToolsResult
+                {
+                    Tools = tools.Select(t => new Tool
+                    {
+                        Name = t.Name,
+                        Description = t.Description,
+                        InputSchema = JsonSerializer.SerializeToElement(t.InputSchema),
+                        Annotations = new ToolAnnotations { ReadOnlyHint = t.ReadOnly }
+                    }).ToList()
+                };
+            };
+
+            options.Handlers.CallToolHandler = async (ctx, ct) =>
+            {
+                var catalog = ctx.Services!.GetRequiredService<IDynamicToolCatalog>();
+                var name = ctx.Params?.Name;
+                var tool = (await catalog.GetToolsAsync(ctx.Services!, ct))
+                    .FirstOrDefault(t => t.Name == name)
+                    ?? throw new McpProtocolException($"unknown tool '{name}'", McpErrorCode.MethodNotFound);
+                return await tool.Handler(ctx, ct);
+            };
+
+            options.Handlers.ListResourcesHandler = async (ctx, ct) =>
+                await KnowledgeResourceProvider.ListAsync(ctx.Services!, ct);
+
+            options.Handlers.ReadResourceHandler = async (ctx, ct) =>
+                await KnowledgeResourceProvider.ReadAsync(ctx.Params?.Uri ?? "", ctx.Services!, ct);
+        });
 
         return services;
     }

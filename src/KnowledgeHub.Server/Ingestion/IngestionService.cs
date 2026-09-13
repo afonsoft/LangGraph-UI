@@ -223,7 +223,9 @@ public sealed class IngestionService(
             doc.IndexedAt = DateTimeOffset.UtcNow;
             doc.Chunks = chunks.Select((text, i) => new DocumentChunk
             {
-                KnowledgeDocumentId = doc.Id, ChunkIndex = i, TextContent = text
+                KnowledgeDocumentId = doc.Id,
+                ChunkIndex = i,
+                TextContent = text
             }).ToList();
 
             await db.SaveChangesAsync(cancellationToken);

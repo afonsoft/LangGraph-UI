@@ -25,6 +25,8 @@ public static class McpServiceCollectionExtensions
         services.AddSingleton(_ => new SessionCallGate(
             configuration.GetValue("Mcp:MaxConcurrentCallsPerSession", DefaultMaxConcurrentCallsPerSession)));
 
+        services.AddSingleton<McpSessionRegistry>();
+
         var builder = services
             .AddMcpServer()
             .WithHttpTransport(transport =>
@@ -42,7 +44,7 @@ public static class McpServiceCollectionExtensions
             });
 
         services.AddOptions<McpServerOptions>()
-            .Configure<IMcpActivityFeed, SessionCallGate>((options, feed, gate) =>
+            .Configure<IMcpActivityFeed, SessionCallGate, McpSessionRegistry>((options, feed, gate, registry) =>
             {
                 options.ServerInfo = new Implementation { Name = "knowledge-hub", Version = "0.1.0" };
                 options.Capabilities = new ServerCapabilities
@@ -52,7 +54,7 @@ public static class McpServiceCollectionExtensions
                 };
 
                 options.Filters.Request.CallToolFilters.Add(McpActivityFilters.CreateToolCallFilter(feed, gate));
-                options.Filters.Message.IncomingFilters.Add(McpActivityFilters.CreateRequestTelemetryFilter(feed));
+                options.Filters.Message.IncomingFilters.Add(McpActivityFilters.CreateRequestTelemetryFilter(feed, registry));
             });
 
         return builder;

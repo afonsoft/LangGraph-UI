@@ -2,13 +2,16 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
+using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgeHub.Server.Services;
 
 /// <summary>CRUD + validation + secret redaction for knowledge sources (SPEC-02 RF-001/RF-002).</summary>
-public sealed class KnowledgeSourceService(KnowledgeHubDbContext db) : IKnowledgeSourceService
+public sealed class KnowledgeSourceService(
+    KnowledgeHubDbContext db,
+    IToolCatalogChangeNotifier catalogNotifier) : IKnowledgeSourceService
 {
     /// <summary>Config keys that must never be echoed back to API consumers.</summary>
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -59,6 +62,7 @@ public sealed class KnowledgeSourceService(KnowledgeHubDbContext db) : IKnowledg
         };
         db.Sources.Add(source);
         await db.SaveChangesAsync(ct);
+        await NotifyCatalogChanged(ct);
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
     }
 
@@ -82,6 +86,7 @@ public sealed class KnowledgeSourceService(KnowledgeHubDbContext db) : IKnowledg
         source.AutoSyncEnabled = request.AutoSyncEnabled;
         source.SyncIntervalMinutes = request.SyncIntervalMinutes;
         await db.SaveChangesAsync(ct);
+        await NotifyCatalogChanged(ct);
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
     }
 
@@ -92,6 +97,7 @@ public sealed class KnowledgeSourceService(KnowledgeHubDbContext db) : IKnowledg
             return ServiceResult<bool>.Fail(404, "Source not found");
         db.Sources.Remove(source); // cascade removes documents + chunks
         await db.SaveChangesAsync(ct);
+        await NotifyCatalogChanged(ct);
         return ServiceResult<bool>.Ok(true);
     }
 
@@ -102,7 +108,15 @@ public sealed class KnowledgeSourceService(KnowledgeHubDbContext db) : IKnowledg
             return ServiceResult<KnowledgeSourceDto>.Fail(404, "Source not found");
         source.IsActive = active;
         await db.SaveChangesAsync(ct);
+        await NotifyCatalogChanged(ct);
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
+    }
+
+    /// <summary>Catalog mutations must never fail the REST call — notification is best-effort.</summary>
+    private async Task NotifyCatalogChanged(CancellationToken ct)
+    {
+        try { await catalogNotifier.NotifyToolsChangedAsync(ct); }
+        catch { /* connected-client notification is advisory */ }
     }
 
     public async Task<IReadOnlyList<KnowledgeDocumentDto>?> ListDocumentsAsync(Guid id, CancellationToken ct = default)

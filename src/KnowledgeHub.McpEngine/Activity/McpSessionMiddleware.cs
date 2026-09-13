@@ -13,11 +13,13 @@ public sealed class McpSessionMiddleware
     private const string SessionIdHeader = "Mcp-Session-Id";
     private readonly RequestDelegate _next;
     private readonly IMcpActivityFeed _feed;
+    private readonly McpSessionRegistry _registry;
 
-    public McpSessionMiddleware(RequestDelegate next, IMcpActivityFeed feed)
+    public McpSessionMiddleware(RequestDelegate next, IMcpActivityFeed feed, McpSessionRegistry registry)
     {
         _next = next;
         _feed = feed;
+        _registry = registry;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -61,6 +63,7 @@ public sealed class McpSessionMiddleware
             if (!opened)
                 Record(McpActivityKind.SessionOpened, sessionId, "sse");
             Record(McpActivityKind.SessionClosed, sessionId, "sse");
+            _registry.Unregister(sessionId);
         }
     }
 
@@ -76,7 +79,10 @@ public sealed class McpSessionMiddleware
         if (HttpMethods.IsPost(context.Request.Method) && string.IsNullOrEmpty(requestSessionId) && !string.IsNullOrEmpty(responseSessionId))
             Record(McpActivityKind.SessionOpened, responseSessionId, "streamable-http");
         else if (HttpMethods.IsDelete(context.Request.Method) && !string.IsNullOrEmpty(sessionId))
+        {
             Record(McpActivityKind.SessionClosed, sessionId, "streamable-http");
+            _registry.Unregister(sessionId);
+        }
     }
 
     private void Record(McpActivityKind kind, string? sessionId, string transport) =>
