@@ -1,7 +1,40 @@
 ﻿@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>KnowledgeHub</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1>KnowledgeHub</h1>
 
-Welcome to your new app.
+<p class="lead">
+    Hub de conhecimento standalone — ingestão Obsidian, busca vetorial configurável
+    e servidor MCP nativo (<code>/mcp</code> + <code>/mcp/sse</code>) num único processo .NET.
+</p>
+
+<div class="row g-3 mt-2">
+    <div class="col-12 col-md-4">
+        <Card>
+            <HeaderTemplate>Fontes</HeaderTemplate>
+            <BodyTemplate>
+                Cadastre vaults Obsidian, páginas web e outras fontes de conhecimento.
+                <div class="mt-2"><a class="btn btn-primary btn-sm" href="sources">Abrir</a></div>
+            </BodyTemplate>
+        </Card>
+    </div>
+    <div class="col-12 col-md-4">
+        <Card>
+            <HeaderTemplate>Monitor MCP</HeaderTemplate>
+            <BodyTemplate>
+                Sessões e chamadas de tools em tempo real via SignalR.
+                <div class="mt-2"><a class="btn btn-primary btn-sm" href="mcp-monitor">Abrir</a></div>
+            </BodyTemplate>
+        </Card>
+    </div>
+    <div class="col-12 col-md-4">
+        <Card>
+            <HeaderTemplate>Playground</HeaderTemplate>
+            <BodyTemplate>
+                Teste a busca semântica rankeada direto no navegador.
+                <div class="mt-2"><a class="btn btn-primary btn-sm" href="playground">Abrir</a></div>
+            </BodyTemplate>
+        </Card>
+    </div>
+</div>

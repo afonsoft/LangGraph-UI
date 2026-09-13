@@ -1,0 +1,150 @@
+@using System.Text.Json.Nodes
+
+@* SPEC-05 RF-002: create/edit form with per-type dynamic config fields. *@
+
+<div class="row g-3">
+    <div class="col-12 col-md-6">
+        <BootstrapInput @bind-Value="Model.Name" DisplayText="Nome *" ShowLabel="true" />
+    </div>
+    <div class="col-12 col-md-6">
+        <Select @bind-Value="Model.Type" DisplayText="Tipo" ShowLabel="true" />
+    </div>
+    <div class="col-12">
+        <BootstrapInput @bind-Value="Model.Description" DisplayText="Descrição" ShowLabel="true" />
+    </div>
+
+    @if (Model.Type is SourceType.ObsidianVault or SourceType.DocumentFile)
+    {
+        <div class="col-12">
+            <BootstrapInput @bind-Value="Model.Path" DisplayText="Caminho (path) *" ShowLabel="true" />
+        </div>
+    }
+    @if (Model.Type is SourceType.WebPage)
+    {
+        <div class="col-12">
+            <BootstrapInput @bind-Value="Model.Url" DisplayText="URL *" ShowLabel="true" />
+        </div>
+    }
+    @if (Model.Type is SourceType.RestApi)
+    {
+        <div class="col-12">
+            <BootstrapInput @bind-Value="Model.Endpoint" DisplayText="Endpoint *" ShowLabel="true" />
+        </div>
+        <div class="col-12">
+            <Textarea @bind-Value="Model.Headers" DisplayText="Headers (JSON)" ShowLabel="true" rows="3" />
+        </div>
+    }
+    @if (Model.Type is SourceType.SqlDatabase)
+    {
+        <div class="col-12">
+            <Textarea @bind-Value="Model.ConnectionString" DisplayText="Connection string *" ShowLabel="true" rows="2" />
+        </div>
+        <div class="col-12">
+            <Textarea @bind-Value="Model.Query" DisplayText="Query" ShowLabel="true" rows="3" />
+        </div>
+    }
+
+    <div class="col-6 col-md-3">
+        <Switch @bind-Value="Model.IsActive" DisplayText="Ativa" ShowLabel="true" />
+    </div>
+    <div class="col-6 col-md-3">
+        <Switch @bind-Value="Model.AutoSyncEnabled" DisplayText="Auto-sync" ShowLabel="true" />
+    </div>
+    <div class="col-12 col-md-6">
+        <BootstrapInputNumber @bind-Value="Model.SyncIntervalMinutes" DisplayText="Intervalo (min)" ShowLabel="true" IsNullable="true" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="col-12">
+            <Alert Color="Color.Danger" ShowDismiss="false">@Error</Alert>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public SourceEditModel Model { get; set; } = default!;
+
+    [Parameter]
+    public string? Error { get; set; }
+
+    /// <summary>Client-side required-field validation mirroring SPEC-02 server rules.</summary>
+    public string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Model.Name)) return "Nome é obrigatório";
+        return Model.Type switch
+        {
+            SourceType.ObsidianVault or SourceType.DocumentFile
+                when string.IsNullOrWhiteSpace(Model.Path) => "Caminho é obrigatório",
+            SourceType.WebPage
+                when string.IsNullOrWhiteSpace(Model.Url) => "URL é obrigatória",
+            SourceType.RestApi
+                when string.IsNullOrWhiteSpace(Model.Endpoint) => "Endpoint é obrigatório",
+            SourceType.SqlDatabase
+                when string.IsNullOrWhiteSpace(Model.ConnectionString) => "Connection string é obrigatória",
+            _ => null
+        };
+    }
+
+    /// <summary>Builds the JsonObject configuration payload from the per-type fields.</summary>
+    public JsonObject BuildConfiguration()
+    {
+        var config = new JsonObject();
+        switch (Model.Type)
+        {
+            case SourceType.ObsidianVault:
+            case SourceType.DocumentFile:
+                config["path"] = Model.Path;
+                break;
+            case SourceType.WebPage:
+                config["url"] = Model.Url;
+                break;
+            case SourceType.RestApi:
+                config["endpoint"] = Model.Endpoint;
+                if (!string.IsNullOrWhiteSpace(Model.Headers))
+                    config["headers"] = Model.Headers;
+                break;
+            case SourceType.SqlDatabase:
+                config["connectionString"] = Model.ConnectionString;
+                if (!string.IsNullOrWhiteSpace(Model.Query))
+                    config["query"] = Model.Query;
+                break;
+        }
+        return config;
+    }
+
+    public sealed class SourceEditModel
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public SourceType Type { get; set; } = SourceType.ObsidianVault;
+        public bool IsActive { get; set; } = true;
+        public bool AutoSyncEnabled { get; set; }
+        public int? SyncIntervalMinutes { get; set; }
+        public string? Path { get; set; }
+        public string? Url { get; set; }
+        public string? Endpoint { get; set; }
+        public string? Headers { get; set; }
+        public string? ConnectionString { get; set; }
+        public string? Query { get; set; }
+
+        public static SourceEditModel FromDto(KnowledgeSourceDto dto) => new()
+        {
+            Id = dto.Id,
+            Name = dto.Name,
+            Description = dto.Description,
+            Type = dto.Type,
+            IsActive = dto.IsActive,
+            AutoSyncEnabled = dto.AutoSyncEnabled,
+            SyncIntervalMinutes = dto.SyncIntervalMinutes,
+            Path = dto.Configuration?["path"]?.GetValue<string>(),
+            Url = dto.Configuration?["url"]?.GetValue<string>(),
+            Endpoint = dto.Configuration?["endpoint"]?.GetValue<string>(),
+            Headers = dto.Configuration?["headers"]?.GetValue<string>(),
+            ConnectionString = dto.Configuration?["connectionString"]?.GetValue<string>(),
+            Query = dto.Configuration?["query"]?.GetValue<string>()
+        };
+    }
+}

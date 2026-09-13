@@ -9,6 +9,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Pgvector" Version="0.3.2" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
@@ -16,6 +18,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- SPEC-06: standalone single-file publish (dotnet publish -r <rid>). -->
+  <PropertyGroup>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <AssemblyName>KnowledgeHub</AssemblyName>
   </PropertyGroup>
 
 </Project>

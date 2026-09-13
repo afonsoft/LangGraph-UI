@@ -1,0 +1,180 @@
+@page "/sources"
+@using System.Text.Json.Nodes
+@inject SourceApiClient Api
+@inject ToastService Toast
+
+<PageTitle>Fontes — KnowledgeHub</PageTitle>
+
+<h3 class="mb-3">Fontes de conhecimento</h3>
+
+<Table TItem="KnowledgeSourceDto" Items="_sources" ShowLoading="true" ShowLoadingInFirstRender="true"
+       IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
+       EmptyText="Nenhuma fonte cadastrada.">
+    <TableToolbarTemplate>
+        <TableToolbarButton TItem="KnowledgeSourceDto" Text="Nova fonte" Icon="fa-solid fa-plus"
+                            Color="Color.Primary" OnClick="ShowCreate" />
+    </TableToolbarTemplate>
+    <TableColumns>
+        <TableColumn Field="@context.Name" FieldExpression="@(() => context.Name)" Text="Nome" />
+        <TableColumn Field="@context.Type" FieldExpression="@(() => context.Type)" Text="Tipo">
+            <Template Context="v">
+                <Badge Color="Color.Info">@v.Value</Badge>
+            </Template>
+        </TableColumn>
+        <TableColumn Field="@context.IsActive" FieldExpression="@(() => context.IsActive)" Text="Ativa">
+            <Template Context="v">
+                @if (v.Value)
+                {
+                    <Badge Color="Color.Success">ativa</Badge>
+                }
+                else
+                {
+                    <Badge Color="Color.Secondary">inativa</Badge>
+                }
+            </Template>
+        </TableColumn>
+        <TableColumn Field="@context.LastSyncAt" FieldExpression="@(() => context.LastSyncAt)" Text="Último sync">
+            <Template Context="v">
+                @(v.Value?.LocalDateTime.ToString("g") ?? "—")
+            </Template>
+        </TableColumn>
+        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="300">
+            <Template Context="v">
+                <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" Text="Editar"
+                        OnClick="() => ShowEdit(v.Row)" />
+                <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" Text="Sync"
+                        OnClick="() => SyncNow(v.Row)" />
+                <Button Size="Size.ExtraSmall" Color="Color.Warning"
+                        Icon="@(v.Row.IsActive ? "fa-solid fa-pause" : "fa-solid fa-play")"
+                        Text="@(v.Row.IsActive ? "Desativar" : "Ativar")"
+                        OnClick="() => ToggleActive(v.Row)" />
+                <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-trash"
+                                  Text="Excluir" Title="Confirmar exclusão"
+                                  Content="Documentos e chunks indexados serão removidos."
+                                  OnConfirm="() => DeleteSource(v.Row)" />
+            </Template>
+        </TableColumn>
+    </TableColumns>
+</Table>
+
+<Modal @ref="_modal">
+    <ModalDialog Title="@(_editModel.Id is null ? "Nova fonte" : $"Editar — {_editModel.Name}")"
+                 Size="Size.Large" ShowSaveButton="true" SaveButtonText="Salvar"
+                 CloseButtonText="Cancelar" OnSaveAsync="SaveAsync">
+        <BodyTemplate>
+            <SourceEditDialog @ref="_edit" Model="_editModel" Error="_editError" />
+        </BodyTemplate>
+    </ModalDialog>
+</Modal>
+
+@code {
+    private List<KnowledgeSourceDto>? _sources;
+    private Modal? _modal;
+    private SourceEditDialog? _edit;
+    private SourceEditDialog.SourceEditModel _editModel = new();
+    private string? _editError;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _sources = await Api.ListAsync() ?? [];
+        }
+        catch (Exception ex)
+        {
+            _sources = [];
+            await Toast.Error("Erro", $"Falha ao carregar fontes: {ex.Message}");
+        }
+    }
+
+    private Task ShowCreate()
+    {
+        _editModel = new SourceEditDialog.SourceEditModel();
+        _editError = null;
+        return _modal!.Toggle();
+    }
+
+    private Task ShowEdit(KnowledgeSourceDto dto)
+    {
+        _editModel = SourceEditDialog.SourceEditModel.FromDto(dto);
+        _editError = null;
+        return _modal!.Toggle();
+    }
+
+    private async Task<bool> SaveAsync()
+    {
+        _editError = _edit!.Validate();
+        if (_editError is not null) return false;
+
+        JsonObject config = _edit.BuildConfiguration();
+        ApiResult<KnowledgeSourceDto> result = _editModel.Id is { } id
+            ? await Api.UpdateAsync(id, new UpdateKnowledgeSourceRequest
+            {
+                Name = _editModel.Name,
+                Description = _editModel.Description,
+                Configuration = config,
+                IsActive = _editModel.IsActive,
+                AutoSyncEnabled = _editModel.AutoSyncEnabled,
+                SyncIntervalMinutes = _editModel.SyncIntervalMinutes
+            })
+            : await Api.CreateAsync(new CreateKnowledgeSourceRequest
+            {
+                Name = _editModel.Name,
+                Description = _editModel.Description,
+                Type = _editModel.Type,
+                Configuration = config,
+                IsActive = _editModel.IsActive,
+                AutoSyncEnabled = _editModel.AutoSyncEnabled,
+                SyncIntervalMinutes = _editModel.SyncIntervalMinutes
+            });
+
+        if (!result.IsSuccess)
+        {
+            _editError = result.Error;
+            return false;
+        }
+
+        await Toast.Success("Fonte salva", $"'{_editModel.Name}' salva com sucesso.");
+        await ReloadAsync();
+        return true;
+    }
+
+    private async Task ToggleActive(KnowledgeSourceDto dto)
+    {
+        var result = await Api.SetActiveAsync(dto.Id, !dto.IsActive);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error!);
+            return;
+        }
+        await ReloadAsync();
+    }
+
+    private async Task SyncNow(KnowledgeSourceDto dto)
+    {
+        var result = await Api.SyncAsync(dto.Id);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Sync falhou", result.Error!);
+            return;
+        }
+        var s = result.Value!;
+        await Toast.Success("Sync concluído",
+            $"{s.DocumentsProcessed} docs, {s.ChunksCreated} chunks em {s.DurationMs:F0}ms ({s.Status}).");
+        await ReloadAsync();
+    }
+
+    private async Task DeleteSource(KnowledgeSourceDto dto)
+    {
+        var result = await Api.DeleteAsync(dto.Id);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error!);
+            return;
+        }
+        await Toast.Success("Excluída", $"'{dto.Name}' removida.");
+        await ReloadAsync();
+    }
+}
