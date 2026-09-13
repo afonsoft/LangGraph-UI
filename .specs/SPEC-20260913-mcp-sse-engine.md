@@ -102,7 +102,7 @@ data: {"jsonrpc":"2.0","id":1,"result":{...}}
 - [ ] **Given** an open SSE session **when** POST `initialize` to `/mcp/message` **then** the stream receives `event: message` with `protocolVersion`, `capabilities.tools`, `capabilities.resources`, `serverInfo.name=knowledge-hub`.
 - [ ] **Given** an open session **when** `tools/list` **then** at minimum `search_knowledge` is present (SPEC-04 provider).
 - [ ] **Given** a modern client **when** POST `initialize` to `/mcp` with `Accept: application/json, text/event-stream` **then** a valid Streamable HTTP response is returned (SSE-framed or JSON).
-- [ ] **Given** an expired sessionId **when** POST `/mcp/message` **then** HTTP error per SDK behavior (404).
+- [ ] **Given** an expired sessionId **when** POST `/mcp/message` **then** HTTP error per SDK behavior (400 Bad Request — SDK 2.x actual).
 - [ ] **Given** a tool call **when** it completes **then** `IMcpActivityFeed` contains the event with latency and outcome.
 - [ ] **Given** a client disconnects **when** SSE stream closes **then** `session_closed` is recorded.
 
@@ -110,7 +110,7 @@ data: {"jsonrpc":"2.0","id":1,"result":{...}}
 
 | Scenario | Input | Expected behavior |
 | --- | --- | --- |
-| Malformed JSON | `{invalid` POST | SDK JSON-RPC parse error (-32700) |
+| Malformed JSON | `{invalid` POST | SDK JSON-RPC error (-32600 in SDK 2.x for unparseable bodies) |
 | Unknown method | `method: "x"` | `-32601` from SDK |
 | Unknown tool | `tools/call nope` | SDK/handlers return `isError` or `McpProtocolException` |
 | Flood of POSTs | N parallel calls | bounded by per-session gate (RF-004) |
