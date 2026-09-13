@@ -150,9 +150,15 @@ public class SourcesApiTests : IClassFixture<SourcesApiTests.Fixture>
     }
 
     [Fact]
-    public async Task Sync_UnknownConnector_ReturnsSkipped()
+    public async Task Sync_UnimplementedConnector_ReturnsSkipped()
     {
-        var response = await _client.PostAsJsonAsync("/api/sources", VaultPayload($"sync-{Guid.NewGuid():N}"));
+        // WebPage connector is registered but not implemented in the MVP → "skipped"
+        var response = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"sync-{Guid.NewGuid():N}",
+            type = "WebPage",
+            configuration = new { url = "https://example.com" }
+        });
         var created = await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>();
 
         var sync = await _client.PostAsync($"/api/sources/{created!.Id}/sync", null);

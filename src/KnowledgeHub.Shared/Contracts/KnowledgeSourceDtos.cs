@@ -51,12 +51,15 @@ public sealed record KnowledgeDocumentDto
     public DateTimeOffset IndexedAt { get; init; }
 }
 
-/// <summary>Result of a manual or scheduled sync run (SPEC-02 RF-003).</summary>
+/// <summary>Result of a manual or scheduled sync run (SPEC-02 RF-003 / SPEC-03 RF-004).</summary>
 public sealed record SyncResultDto
 {
     public required string Status { get; init; } // completed | skipped | failed
     public string? Reason { get; init; }
+    public Guid? SourceId { get; init; }
     public int DocumentsProcessed { get; init; }
+    public int DocumentsSkipped { get; init; }
+    public int DocumentsRemoved { get; init; }
     public int ChunksCreated { get; init; }
     public double DurationMs { get; init; }
 }
