@@ -188,9 +188,9 @@
 
 ## Metrics
 
-- **tasks_started` : `8`
-- **tasks_completed` : `8`
-- **tasks_blocked` : `0`
+- **tasks_started**: `8`
+- **tasks_completed**: `8`
+- **tasks_blocked**: `0`
 - **human_interventions**: `6`
 - **validation_failures**: `0`
 - **estimated_remaining_minutes**: `0`
