@@ -1,0 +1,97 @@
+@page "/playground"
+@inject SearchApiClient Search
+@inject ToastService Toast
+
+<PageTitle>Playground — KnowledgeHub</PageTitle>
+
+<h3 class="mb-3">Playground de busca</h3>
+
+<div class="row g-2 align-items-end mb-4">
+    <div class="col-12 col-md-7">
+        <BootstrapInput @bind-Value="_query" DisplayText="Consulta" ShowLabel="true"
+                        PlaceHolder="ex.: o que é chunking?" OnEnterAsync="_ => RunSearchAsync()" />
+    </div>
+    <div class="col-6 col-md-3">
+        <label class="form-label">topK: @_topK</label>
+        <input type="range" class="form-range" min="1" max="50" @bind="_topK" @bind:event="oninput" />
+    </div>
+    <div class="col-6 col-md-2">
+        <Button Color="Color.Primary" Icon="fa-solid fa-magnifying-glass" Text="Buscar"
+                IsAsync="true" OnClick="RunSearchAsync" IsDisabled="_searching" />
+    </div>
+</div>
+
+@if (_searched && _results is { Count: 0 })
+{
+    <div class="text-center text-muted py-5">
+        <div class="fs-1 mb-2"><i class="fa-solid fa-inbox"></i></div>
+        Nenhum resultado. Indexe uma fonte ou ajuste a consulta.
+    </div>
+}
+
+@if (_results is not null)
+{
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="text-muted">@_results.Count resultado(s)</span>
+        <Switch @bind-Value="_showRaw" DisplayText="JSON" ShowLabel="true" />
+    </div>
+
+    @if (_showRaw)
+    {
+        <pre class="border rounded p-3 bg-light" style="max-height: 480px; overflow: auto;">@System.Text.Json.JsonSerializer.Serialize(_results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+    }
+    else
+    {
+        @foreach (var r in _results)
+        {
+            <Card class="mb-3">
+                <HeaderTemplate>
+                    <div class="d-flex justify-content-between">
+                        <span><strong>@r.DocumentTitle</strong> <Badge Color="Color.Info">@r.SourceName</Badge></span>
+                        <Badge Color="@ScoreColor(r.Score)">@r.Score.ToString("F3")</Badge>
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    <pre class="mb-1" style="white-space: pre-wrap;">@r.ChunkText</pre>
+                    <small class="text-muted"><code>@r.UriReference</code></small>
+                </BodyTemplate>
+            </Card>
+        }
+    }
+}
+
+@code {
+    private string? _query;
+    private int _topK = 5;
+    private bool _searching;
+    private bool _searched;
+    private bool _showRaw;
+    private IReadOnlyList<SearchResultItem>? _results;
+
+    private async Task RunSearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return;
+        _searching = true;
+        try
+        {
+            var response = await Search.SearchAsync(_query, _topK);
+            _results = response?.Results ?? [];
+            _searched = true;
+        }
+        catch (Exception ex)
+        {
+            await Toast.Error("Busca falhou", ex.Message);
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private static Color ScoreColor(double score) => score switch
+    {
+        >= 0.5 => Color.Success,
+        >= 0.2 => Color.Warning,
+        _ => Color.Secondary
+    };
+}

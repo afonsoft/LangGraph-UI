@@ -52,46 +52,6 @@
 ### Pending Tasks
 
 ```yaml
-- id: TASK-001
-  desc: "SPEC: MCP engine — ModelContextProtocol.AspNetCore, /mcp (Streamable HTTP) + /mcp/sse + /mcp/message (legacy), activity feed"
-  tier: T3
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-mcp-sse-engine.md"
-  issue: "#2 (E10)"
-  depends_on: []
-  isolation: inline
-  status: ready
-
-- id: TASK-002
-  desc: "SPEC: Knowledge sources domain + EF Core SQLite + IVectorStore (sqlite/pgvector) + /api/sources CRUD"
-  tier: T3
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-knowledge-sources.md"
-  issue: "#3 (E11)"
-  depends_on: []
-  isolation: inline
-  status: ready
-
-- id: TASK-003
-  desc: "SPEC: Ingestion pipeline + Obsidian connector (watcher, markdown parser, chunker, configurable embeddings)"
-  tier: T3
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-ingestion-obsidian.md"
-  issue: "#4 (E12)"
-  depends_on: [TASK-002]
-  isolation: inline
-  status: blocked
-
-- id: TASK-004
-  desc: "SPEC: Dynamic MCP tools/resources provider (search_knowledge, ask_knowledge, write_knowledge, query_{slug}, read_document, write_note)"
-  tier: T3
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-dynamic-mcp-tools.md"
-  issue: "#5 (E13)"
-  depends_on: [TASK-001, TASK-002, TASK-003]
-  isolation: inline
-  status: blocked
-
 - id: TASK-005
   desc: "SPEC: Blazor WASM admin UI (/sources, /mcp-monitor, /playground)"
   tier: T3
@@ -100,7 +60,7 @@
   issue: "#6 (E14)"
   depends_on: [TASK-002]
   isolation: inline
-  status: blocked
+  status: in_progress
 
 - id: TASK-006
   desc: "SPEC: Standalone single-file packaging"
@@ -135,6 +95,54 @@
   status: done
   completed_at: "2026-09-13"
   validation: "commit 9a5de3d"
+
+- id: TASK-001
+  desc: "MCP engine — ModelContextProtocol.AspNetCore, /mcp (Streamable HTTP) + /mcp/sse + /mcp/message (legacy), activity feed"
+  tier: T3
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-mcp-sse-engine.md"
+  issue: "#2 (E10)"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit ee2ca8f; 11 tests; live curl /mcp + /mcp/sse OK"
+
+- id: TASK-002
+  desc: "Knowledge sources domain + EF Core SQLite + IVectorStore (sqlite/pgvector) + /api/sources CRUD"
+  tier: T3
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-knowledge-sources.md"
+  issue: "#3 (E11)"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit 5a58e8f; 29 tests"
+
+- id: TASK-003
+  desc: "Ingestion pipeline + Obsidian connector (watcher, markdown parser, chunker, configurable embeddings)"
+  tier: T3
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-ingestion-obsidian.md"
+  issue: "#4 (E12)"
+  depends_on: [TASK-002]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit 61bed14; 44 tests; DB isolation fixed via lazy config"
+
+- id: TASK-004
+  desc: "Dynamic MCP tools/resources (search_knowledge, ask_knowledge, write_knowledge, query_{slug}, read_document, write_note) + list_changed + resources"
+  tier: T3
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-dynamic-mcp-tools.md"
+  issue: "#5 (E13)"
+  depends_on: [TASK-001, TASK-002, TASK-003]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit cd39295; 60 tests; live curl tools/list+call+resources OK"
 ```
 
 ---

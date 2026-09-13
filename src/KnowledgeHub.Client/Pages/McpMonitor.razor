@@ -1,0 +1,122 @@
+@page "/mcp-monitor"
+@inject McpMonitorClient Monitor
+@implements IAsyncDisposable
+
+<PageTitle>Monitor MCP — KnowledgeHub</PageTitle>
+
+<h3 class="mb-3">Monitor MCP</h3>
+
+<div class="mb-3">
+    <Badge Color="@StateColor">@StateLabel</Badge>
+    <span class="ms-2 text-muted">hub: /hubs/mcp</span>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <Card>
+            <HeaderTemplate>Sessões ativas (@_sessions.Count)</HeaderTemplate>
+            <BodyTemplate>
+                @if (_sessions.Count == 0)
+                {
+                    <div class="text-muted">Nenhuma sessão MCP conectada.</div>
+                }
+                else
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var s in _sessions)
+                        {
+                            <li class="list-group-item">
+                                <div><code>@s.Key</code></div>
+                                <small class="text-muted">desde @s.Value.LocalDateTime.ToString("T")</small>
+                            </li>
+                        }
+                    </ul>
+                }
+            </BodyTemplate>
+        </Card>
+    </div>
+    <div class="col-12 col-lg-8">
+        <Card>
+            <HeaderTemplate>Atividade (@_activity.Count)</HeaderTemplate>
+            <BodyTemplate>
+                <div style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th>Hora</th><th>Método</th><th>Detalhe</th><th>ms</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in _activity.AsEnumerable().Reverse())
+                            {
+                                <tr>
+                                    <td>@a.Timestamp.LocalDateTime.ToString("T")</td>
+                                    <td><code>@a.Method</code></td>
+                                    <td>@a.Detail</td>
+                                    <td>@(a.DurationMs?.ToString("F0") ?? "—")</td>
+                                    <td>
+                                        @if (a.Succeeded == true)
+                                        {
+                                            <Badge Color="Color.Success">ok</Badge>
+                                        }
+                                        else if (a.Succeeded == false)
+                                        {
+                                            <Badge Color="Color.Danger">erro</Badge>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (_activity.Count == 0)
+                    {
+                        <div class="text-muted p-2">Aguardando chamadas MCP…</div>
+                    }
+                </div>
+            </BodyTemplate>
+        </Card>
+    </div>
+</div>
+
+@code {
+    private readonly Dictionary<string, DateTimeOffset> _sessions = new();
+    private readonly List<ActivityEvent> _activity = new();
+    private const int MaxActivity = 200;
+
+    private string StateLabel => Monitor.State switch
+    {
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected => "conectado",
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connecting => "conectando…",
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Reconnecting => "reconectando…",
+        _ => "desconectado"
+    };
+
+    private Color StateColor => Monitor.State switch
+    {
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected => Color.Success,
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Reconnecting => Color.Warning,
+        _ => Color.Secondary
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Monitor.SessionOpened += e =>
+        {
+            _sessions[e.SessionId] = e.ConnectedAt;
+            InvokeAsync(StateHasChanged);
+        };
+        Monitor.SessionClosed += e =>
+        {
+            _sessions.Remove(e.SessionId);
+            InvokeAsync(StateHasChanged);
+        };
+        Monitor.Activity += e =>
+        {
+            _activity.Add(e);
+            if (_activity.Count > MaxActivity) _activity.RemoveAt(0);
+            InvokeAsync(StateHasChanged);
+        };
+        Monitor.StateChanged += () => InvokeAsync(StateHasChanged);
+        await Monitor.StartAsync();
+    }
+
+    public async ValueTask DisposeAsync() => await Monitor.DisposeAsync();
+}
