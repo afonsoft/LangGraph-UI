@@ -2,15 +2,29 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
 
 namespace KnowledgeHub.Tests.Integration;
 
 // Covers SPEC-01 acceptance criteria: legacy SSE handshake, Streamable HTTP init, expired session.
-public class McpTransportTests : IClassFixture<WebApplicationFactory<Program>>
+public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    public sealed class Fixture : WebApplicationFactory<Program>
+    {
+        public string DbPath { get; } = Path.Combine(Path.GetTempPath(), $"kh-mcp-test-{Guid.NewGuid():N}.db");
 
-    public McpTransportTests(WebApplicationFactory<Program> factory) => _factory = factory;
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Database:Path"] = DbPath }));
+        }
+    }
+
+    private readonly Fixture _factory;
+
+    public McpTransportTests(Fixture factory) => _factory = factory;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
