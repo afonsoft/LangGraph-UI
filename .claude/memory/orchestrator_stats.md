@@ -7,7 +7,7 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 1`
+- **current_phase**: `Phase 4`
 - **repository**: `afonsoft/LangGraph-UI`
 - **branch**: `feature/Devin-20260913-knowledge-hub-platform`
 - **last_updated**: `2026-09-13`
@@ -53,37 +53,41 @@
 
 ```yaml
 - id: TASK-001
-  desc: "SPEC: MCP SSE engine (session manager, JSON-RPC dispatcher, /mcp/sse + /mcp/message)"
+  desc: "SPEC: MCP engine — ModelContextProtocol.AspNetCore, /mcp (Streamable HTTP) + /mcp/sse + /mcp/message (legacy), activity feed"
   tier: T3
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-mcp-sse-engine.md"
+  issue: "#2 (E10)"
   depends_on: []
   isolation: inline
   status: ready
 
 - id: TASK-002
-  desc: "SPEC: Knowledge sources domain + EF Core SQLite + /api/sources CRUD"
+  desc: "SPEC: Knowledge sources domain + EF Core SQLite + IVectorStore (sqlite/pgvector) + /api/sources CRUD"
   tier: T3
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-knowledge-sources.md"
+  issue: "#3 (E11)"
   depends_on: []
   isolation: inline
   status: ready
 
 - id: TASK-003
-  desc: "SPEC: Ingestion pipeline + Obsidian connector (watcher, markdown parser, chunker, embeddings)"
+  desc: "SPEC: Ingestion pipeline + Obsidian connector (watcher, markdown parser, chunker, configurable embeddings)"
   tier: T3
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-ingestion-obsidian.md"
+  issue: "#4 (E12)"
   depends_on: [TASK-002]
   isolation: inline
   status: blocked
 
 - id: TASK-004
-  desc: "SPEC: Dynamic MCP tools/resources provider (search_knowledge, ask_knowledge, write_knowledge, query_{slug}, read/write_document/note)"
+  desc: "SPEC: Dynamic MCP tools/resources provider (search_knowledge, ask_knowledge, write_knowledge, query_{slug}, read_document, write_note)"
   tier: T3
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-dynamic-mcp-tools.md"
+  issue: "#5 (E13)"
   depends_on: [TASK-001, TASK-002, TASK-003]
   isolation: inline
   status: blocked
@@ -93,6 +97,7 @@
   tier: T3
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-blazor-admin-ui.md"
+  issue: "#6 (E14)"
   depends_on: [TASK-002]
   isolation: inline
   status: blocked
@@ -102,15 +107,17 @@
   tier: T2
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-standalone-packaging.md"
+  issue: "#7 (E15)"
   depends_on: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
   isolation: inline
   status: blocked
 
 - id: TASK-007
-  desc: "SPEC: DeepWiki MCP proxy — deepwiki_{ask_question,read_wiki_structure,read_wiki_contents} via Streamable HTTP upstream"
+  desc: "SPEC: DeepWiki MCP proxy — upstream-identical names ask_question/read_wiki_structure/read_wiki_contents via McpClient AutoDetect"
   tier: T3
   skill: /execute-spec
   spec_ref: ".specs/SPEC-20260913-deepwiki-mcp-proxy.md"
+  issue: "#8 (E16)"
   depends_on: [TASK-004]
   isolation: inline
   status: blocked
@@ -142,6 +149,7 @@
 | 4 | `2026-09-13` | TASK-004 | Tool renames: search_knowledge_hub→search_knowledge, read_obsidian_document→read_document, write_obsidian_note→write_note; added ask_knowledge + write_knowledge | User directive | SPEC-04 revised |
 | 5 | `2026-09-13` | TASK-007 | DeepWiki bypass keeps upstream-identical tool names (no prefix) | User directive | SPEC-07 revised |
 | 6 | `2026-09-13` | TASK-002/003 | Configurable embeddings (provider/endpoint/apikey/model/dimensions) + pluggable IVectorStore (sqlite default, postgres pgvector option) | User directive | SPECs 02/03 revised |
+| 7 | `2026-09-13` | all | All 7 SPECs approved by user; E10–E16 → issues #2–#8 with dependency links | User directive "Aprovado todas as specs" | Phase 3 done, Phase 4 unblocked |
 
 ---
 
@@ -153,7 +161,6 @@
 | 2 | sqlite-vec extension for native vector search | SPEC-02 | T2 | pending_approval |
 | 3 | McpProxy SourceType — catalog-driven upstream MCP servers via /api/sources | SPEC-07 | T2 | pending_approval |
 | 4 | Upstream tools/list passthrough (re-expose devin_* private tools when ApiKey set) | SPEC-07 | T2 | pending_approval |
-| 5 | Streamable HTTP transport downstream (spec successor of legacy SSE) | SPEC-01 | T2 | pending_approval |
 
 ---
 
@@ -168,6 +175,6 @@
 - **tasks_started**: `1`
 - **tasks_completed**: `1`
 - **tasks_blocked**: `5`
-- **human_interventions**: `1`
+- **human_interventions**: `6`
 - **validation_failures**: `0`
 - **estimated_remaining_minutes**: `0`
