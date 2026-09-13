@@ -14,12 +14,15 @@ builder.Services.AddHostedService<McpActivityBroadcastService>();
 var app = builder.Build();
 
 // RF-005: ensure the SQLite schema exists at startup and log the path.
+// SPEC-06 RF-002: default location is beside the executable; overridable via
+// KnowledgeHub:DatabasePath / Database:Path. Clear error on read-only dirs.
+DatabasePath.EnsureDirectory(app.Configuration);
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
     db.Database.EnsureCreated();
     app.Logger.LogInformation("KnowledgeHub database ready at {Path}",
-        app.Configuration.GetValue("Database:Path", "knowledgehub.db"));
+        DatabasePath.Resolve(app.Configuration));
 }
 
 // SPEC-05 RF-005: serve the hosted WASM client + deep-link fallback.

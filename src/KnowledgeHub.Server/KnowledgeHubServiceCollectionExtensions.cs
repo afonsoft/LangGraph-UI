@@ -22,8 +22,7 @@ public static class KnowledgeHubServiceCollectionExtensions
         // Resolve Database:Path lazily so test hosts can override it via ConfigureWebHost
         // (Program.cs runs before the factory's ConfigureAppConfiguration callbacks).
         services.AddDbContext<KnowledgeHubDbContext>((sp, o) =>
-            o.UseSqlite($"Data Source={sp.GetRequiredService<IConfiguration>()
-                .GetValue("Database:Path", "knowledgehub.db")}"));
+            o.UseSqlite($"Data Source={DatabasePath.Resolve(sp.GetRequiredService<IConfiguration>())}"));
 
         services.AddOptions<EmbeddingOptions>()
             .Configure<IConfiguration>((options, cfg) =>
