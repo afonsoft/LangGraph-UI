@@ -52,35 +52,7 @@
 ### Pending Tasks
 
 ```yaml
-- id: TASK-005
-  desc: "SPEC: Blazor WASM admin UI (/sources, /mcp-monitor, /playground)"
-  tier: T3
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-blazor-admin-ui.md"
-  issue: "#6 (E14)"
-  depends_on: [TASK-002]
-  isolation: inline
-  status: in_progress
-
-- id: TASK-006
-  desc: "SPEC: Standalone single-file packaging"
-  tier: T2
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-standalone-packaging.md"
-  issue: "#7 (E15)"
-  depends_on: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
-  isolation: inline
-  status: blocked
-
-- id: TASK-007
-  desc: "SPEC: DeepWiki MCP proxy — upstream-identical names ask_question/read_wiki_structure/read_wiki_contents via McpClient AutoDetect"
-  tier: T3
-  skill: /execute-spec
-  spec_ref: ".specs/SPEC-20260913-deepwiki-mcp-proxy.md"
-  issue: "#8 (E16)"
-  depends_on: [TASK-004]
-  isolation: inline
-  status: blocked
+(none — all tasks completed; final QA review pending)
 ```
 
 ### Completed Tasks
@@ -143,6 +115,42 @@
   status: done
   completed_at: "2026-09-13"
   validation: "commit cd39295; 60 tests; live curl tools/list+call+resources OK"
+
+- id: TASK-005
+  desc: "Blazor WASM admin UI (/sources, /mcp-monitor, /playground) + SignalR hub + WASM hosting"
+  tier: T3
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-blazor-admin-ui.md"
+  issue: "#6 (E14)"
+  depends_on: [TASK-002]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit af33a3a; 60 tests; live check SPA+fallback+hub negotiate OK"
+
+- id: TASK-007
+  desc: "DeepWiki MCP proxy — upstream-identical names via McpClient AutoDetect"
+  tier: T3
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-deepwiki-mcp-proxy.md"
+  issue: "#8 (E16)"
+  depends_on: [TASK-004]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit a6be0e4; 75 tests; live read_wiki_structure vs real DeepWiki OK"
+
+- id: TASK-006
+  desc: "Standalone single-file packaging"
+  tier: T2
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260913-standalone-packaging.md"
+  issue: "#7 (E15)"
+  depends_on: [TASK-001, TASK-002, TASK-003, TASK-004, TASK-005]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-13"
+  validation: "commit c6fff8f; linux-arm64 single binary smoke: SPA+/api+/mcp+/mcp/sse OK, db beside exe"
 ```
 
 ---
@@ -180,9 +188,9 @@
 
 ## Metrics
 
-- **tasks_started**: `1`
-- **tasks_completed**: `1`
-- **tasks_blocked**: `5`
+- **tasks_started` : `8`
+- **tasks_completed` : `8`
+- **tasks_blocked` : `0`
 - **human_interventions**: `6`
 - **validation_failures**: `0`
 - **estimated_remaining_minutes**: `0`
