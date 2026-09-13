@@ -61,6 +61,13 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<IDynamicToolCatalog, DynamicToolCatalog>();
         services.AddSingleton<IToolCatalogChangeNotifier, ToolCatalogChangeNotifier>();
 
+        // SPEC-07: DeepWiki proxy tools (ask_question / read_wiki_structure / read_wiki_contents).
+        services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.DeepWikiOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.DeepWikiOptions.SectionName).Bind(options));
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.DeepWikiUpstreamClient>();
+        services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.Upstream.DeepWikiToolsProvider>();
+
         services.AddOptions<McpServerOptions>().Configure(options =>
         {
             options.Handlers.ListToolsHandler = async (ctx, ct) =>
