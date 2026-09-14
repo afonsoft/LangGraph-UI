@@ -20,6 +20,14 @@ public static class AgentEndpoints
             return Results.Ok(await agent.RunAsync(request, ct));
         });
 
+        // Continues a run suspended on an approved (or denied→denied-result) tool call.
+        group.MapPost("/resume", async (ResumeAgentRequest request, IAgentService agent, CancellationToken ct) =>
+        {
+            if (!agent.IsConfigured)
+                return Results.BadRequest(new { error = "agent requires a chat provider (Chat:Provider)" });
+            return Results.Ok(await agent.ResumeAsync(request.ApprovalId, cancellationToken: ct));
+        });
+
         return group;
     }
 }

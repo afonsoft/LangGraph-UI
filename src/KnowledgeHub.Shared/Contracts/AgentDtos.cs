@@ -42,4 +42,8 @@ public sealed record AgentResponse
     public required double LatencyMs { get; init; }
     /// <summary>True when a hard cap (iterations/tool calls) stopped the loop.</summary>
     public required bool LimitReached { get; init; }
+    /// <summary>Set when the loop suspended on a gated (mutating) tool — resume via /api/agent/resume.</summary>
+    public Guid? AwaitingApprovalId { get; init; }
+    public string? PendingTool { get; init; }
+    public string? PendingArgsJson { get; init; }
 }

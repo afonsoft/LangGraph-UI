@@ -21,6 +21,8 @@ public sealed class GlobalExceptionHandler(
             BadHttpRequestException bad => (bad.StatusCode, "Bad request"),
             EmbeddingProviderException => (StatusCodes.Status502BadGateway, "Embedding provider failure"),
             ChatProviderException => (StatusCodes.Status502BadGateway, "Chat provider failure"),
+            ConflictException => (StatusCodes.Status409Conflict, "Conflict"),
+            KeyNotFoundException => (StatusCodes.Status404NotFound, "Not found"),
             OperationCanceledException => (499, "Request cancelled"),
             InvalidOperationException => (StatusCodes.Status500InternalServerError, "Operation failed"),
             _ => (StatusCodes.Status500InternalServerError, "Unexpected error")

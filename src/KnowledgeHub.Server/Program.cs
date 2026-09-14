@@ -78,6 +78,7 @@ app.MapSourcesApi();
 app.MapSearchApi();
 app.MapAskApi();
 app.MapAgentApi();
+app.MapApprovalsApi();
 app.MapToolsApi();
 app.MapKnowledgeHubMcp();
 app.MapHub<McpMonitorHub>("/hubs/mcp");

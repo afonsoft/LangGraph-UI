@@ -1,4 +1,5 @@
 using System.Text.Json;
+using KnowledgeHub.McpEngine.Activity;
 using KnowledgeHub.Server.BackgroundServices;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
@@ -65,8 +66,15 @@ public static class KnowledgeHubServiceCollectionExtensions
             sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
             sp,
             sp.GetRequiredService<IDynamicToolCatalog>(),
+            sp.GetRequiredService<Data.KnowledgeHubDbContext>(),
             sp.GetRequiredService<IOptions<Agent.AgentOptions>>().Value,
+            sp.GetService<IMcpActivityFeed>(),
             sp.GetRequiredService<ILogger<AgentService>>()));
+        services.AddScoped<IApprovalService>(sp => new ApprovalService(
+            sp.GetRequiredService<Data.KnowledgeHubDbContext>(),
+            TimeSpan.FromMinutes(
+                sp.GetRequiredService<IOptions<Agent.AgentOptions>>().Value.ApprovalTimeoutMinutes),
+            sp.GetService<IMcpActivityFeed>()));
 
         services.AddScoped<IVectorStore>(sp =>
         {

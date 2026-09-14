@@ -8,6 +8,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<KnowledgeSource> Sources => Set<KnowledgeSource>();
     public DbSet<KnowledgeDocument> Documents => Set<KnowledgeDocument>();
     public DbSet<DocumentChunk> Chunks => Set<DocumentChunk>();
+    public DbSet<ToolApproval> Approvals => Set<ToolApproval>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +34,15 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
                 .WithOne(c => c.Document)
                 .HasForeignKey(c => c.KnowledgeDocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ToolApproval>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.ToolName).IsRequired().HasMaxLength(200);
+            e.Property(a => a.RequestedBy).IsRequired().HasMaxLength(32);
+            e.Property(a => a.Status).IsRequired().HasMaxLength(16);
+            e.HasIndex(a => a.Status);
         });
 
         modelBuilder.Entity<DocumentChunk>(e =>

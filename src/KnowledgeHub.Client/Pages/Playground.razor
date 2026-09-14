@@ -94,14 +94,30 @@
                         </div>
                     }
 
-                    <div class="d-flex align-items-center gap-2 mt-3">
-                        <Button Color="Color.Primary" Icon="fa-solid fa-play" Text="Executar"
-                                IsAsync="true" OnClick="RunToolAsync" IsDisabled="_running" />
-                        @if (_elapsedMs is not null)
-                        {
-                            <span class="text-muted">@_elapsedMs.Value.ToString("F0") ms</span>
-                        }
-                    </div>
+                    @if (_awaitingWriteConfirm)
+                    {
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <strong>Confirma escrita?</strong> Esta tool modifica a base.
+                            <pre class="border rounded p-2 mt-2 mb-2 bg-light" style="white-space: pre-wrap;">@_pendingArgsJson</pre>
+                            <div class="d-flex gap-2">
+                                <Button Size="Size.Small" Color="Color.Warning" Text="Confirmar escrita"
+                                        IsAsync="true" OnClick="RunToolAsync" />
+                                <Button Size="Size.Small" Color="Color.Secondary" Text="Cancelar"
+                                        OnClick="() => _awaitingWriteConfirm = false" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <Button Color="Color.Primary" Icon="fa-solid fa-play" Text="Executar"
+                                    IsAsync="true" OnClick="RunToolAsync" IsDisabled="_running" />
+                            @if (_elapsedMs is not null)
+                            {
+                                <span class="text-muted">@_elapsedMs.Value.ToString("F0") ms</span>
+                            }
+                        </div>
+                    }
                 </BodyTemplate>
             </Card>
 
@@ -202,6 +218,8 @@
     private int _agentIterations;
     private double _agentLatencyMs;
     private double? _elapsedMs;
+    private bool _awaitingWriteConfirm;
+    private string? _pendingArgsJson;
 
     protected override async Task OnInitializedAsync() => await LoadToolsAsync();
 
@@ -231,6 +249,7 @@
         _selected = tool;
         _result = null;
         _elapsedMs = null;
+        _awaitingWriteConfirm = false;
         BuildFields();
     }
 
@@ -295,6 +314,17 @@
                 return;
             }
         }
+
+        // RF-003: mutating tools invoked from the UI require an explicit
+        // inline confirmation carrying the assembled args (HITL gate).
+        if (!_selected.ReadOnly && !_awaitingWriteConfirm)
+        {
+            _pendingArgsJson = JsonSerializer.Serialize(
+                args, new JsonSerializerOptions { WriteIndented = true });
+            _awaitingWriteConfirm = true;
+            return;
+        }
+        _awaitingWriteConfirm = false;
 
         _running = true;
         _result = null;

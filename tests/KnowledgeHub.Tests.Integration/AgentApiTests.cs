@@ -137,8 +137,10 @@ public class AgentApiTests : IClassFixture<AgentApiTests.Fixture>, IClassFixture
     }
 
     [Fact]
-    public async Task Agent_AllowWrite_MutatingToolExecutesInsideLoop()
+    public async Task Agent_AllowWrite_MutatingToolIsGatedByApproval()
     {
+        // With the HITL gate (Agent:RequireApprovalFor="*"), allowWrite exposes the
+        // tool but the call suspends into a pending approval instead of executing.
         var response = await _client.PostAsJsonAsync("/api/agent", new
         {
             prompt = "WRITE_TEST",
@@ -146,9 +148,9 @@ public class AgentApiTests : IClassFixture<AgentApiTests.Fixture>, IClassFixture
         });
 
         var result = (await response.Content.ReadFromJsonAsync<AgentResponse>())!;
-        Assert.Equal("agent final answer", result.Answer);
-        var step = Assert.Single(result.Steps);
-        Assert.Equal("write_knowledge", step.Tool);
+        Assert.NotNull(result.AwaitingApprovalId);
+        Assert.Equal("write_knowledge", result.PendingTool);
+        Assert.Empty(result.Steps);
     }
 
     [Fact]

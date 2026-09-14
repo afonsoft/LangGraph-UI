@@ -15,7 +15,7 @@ public class ActivityEventContractTests
     public void McpActivityKind_MemberNames_ArePinned()
     {
         Assert.Equal(
-            ["SessionOpened", "SessionClosed", "Request", "ToolCall"],
+            ["SessionOpened", "SessionClosed", "Request", "ToolCall", "ApprovalRequested", "ApprovalResolved"],
             Enum.GetNames<McpActivityKind>());
     }
 

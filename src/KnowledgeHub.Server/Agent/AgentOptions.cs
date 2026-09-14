@@ -13,4 +13,13 @@ public sealed class AgentOptions
 
     /// <summary>Tool results are truncated to this many chars before going back to the model.</summary>
     public int MaxToolResultChars { get; set; } = 4000;
+
+    /// <summary>
+    /// Tool names that require human approval when invoked inside the agent loop.
+    /// "*" (default) gates every non-readOnly tool. (SPEC-20260914-hitl-tool-approval RF-001)
+    /// </summary>
+    public List<string> RequireApprovalFor { get; set; } = ["*"];
+
+    /// <summary>Minutes a pending approval stays valid before it expires.</summary>
+    public int ApprovalTimeoutMinutes { get; set; } = 30;
 }
