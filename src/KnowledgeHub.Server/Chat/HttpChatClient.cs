@@ -46,8 +46,4 @@ public abstract class HttpChatClient(HttpClient http, ChatProviderOptions option
         serviceType.IsInstanceOfType(this) ? this : null;
 
     public void Dispose() { }
-
-    /// <summary>Maps chat messages to (role, content) pairs; system/user/assistant roles only.</summary>
-    protected static IEnumerable<(string Role, string Content)> Map(IEnumerable<ChatMessage> messages) =>
-        messages.Select(m => (m.Role.Value, m.Text));
 }

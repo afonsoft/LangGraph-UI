@@ -35,6 +35,15 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         },"required":["question"]}
         """)!.AsObject();
 
+    private static readonly JsonObject AgentSchema = JsonNode.Parse("""
+        {"type":"object","properties":{
+          "prompt":{"type":"string","description":"Pergunta/tarefa em linguagem natural — o agente itera tools até responder"},
+          "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist de tools expostas ao modelo (default: todas as read-only)"},
+          "maxIterations":{"type":"integer","description":"Teto de iterações model→tools→model (default 10)"},
+          "allowWrite":{"type":"boolean","description":"Opt-in: expõe tools de escrita (write_knowledge, write_note)"}
+        },"required":["prompt"]}
+        """)!.AsObject();
+
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "title":{"type":"string","description":"Título do documento (vira nome de arquivo em vaults)"},
@@ -71,6 +80,14 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 InputSchema = AskSchema,
                 ReadOnly = true,
                 Handler = AskKnowledgeAsync
+            },
+            new CatalogTool
+            {
+                Name = "agent_chat",
+                Description = "Agente multi-step: itera model→tools→model sobre o catálogo vivo até responder. Requer Chat:Provider configurado.",
+                InputSchema = AgentSchema,
+                ReadOnly = true, // mutating tools still require allowWrite opt-in
+                Handler = AgentChatAsync
             },
             new CatalogTool
             {
@@ -157,6 +174,42 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         catch (Chat.ChatProviderException ex)
         {
             return await ToolResults.Error($"answer generation failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>SPEC-20260914-agent-chat-loop RF-002: agent loop as an MCP tool.</summary>
+    private static async ValueTask<CallToolResult> AgentChatAsync(
+        ToolCallContext ctx, CancellationToken ct)
+    {
+        var agent = ctx.Services!.GetRequiredService<IAgentService>();
+        if (!agent.IsConfigured)
+            return await ToolResults.Error("agent_chat requires a chat provider (Chat:Provider)");
+
+        var request = new AgentRequest
+        {
+            Prompt = ToolArgs.RequiredString(ctx, "prompt"),
+            Tools = ToolArgs.OptionalStringArray(ctx, "tools"),
+            MaxIterations = ToolArgs.OptionalInt(ctx, "maxIterations", 10, 50),
+            AllowWrite = ToolArgs.OptionalBool(ctx, "allowWrite") == true
+        };
+
+        try
+        {
+            var result = await agent.RunAsync(request, ct);
+            var text = new StringBuilder(result.Answer);
+            if (result.Steps.Count > 0)
+            {
+                text.Append("\n\nSteps:");
+                foreach (var s in result.Steps)
+                    text.Append("\n- [").Append(s.Iteration).Append("] ")
+                        .Append(s.Tool).Append(' ').Append(s.ArgsSummary)
+                        .Append(s.IsError ? " (error)" : "");
+            }
+            return await ToolResults.Structured(text.ToString(), result);
+        }
+        catch (Chat.ChatProviderException ex)
+        {
+            return await ToolResults.Error($"agent run failed: {ex.Message}");
         }
     }
 

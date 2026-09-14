@@ -9,7 +9,8 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-agent-chat-loop` |
 | DependsOn | `SPEC-20260914-llm-answer-synthesis` (IChatClient) |
-| Status | `Approved` |
+| Status | `Done` |
+| Ticket | `#30` |
 
 ## 1. User Story
 
@@ -69,12 +70,12 @@ Temos todas as peças: catálogo dinâmico vivo (`IDynamicToolCatalog`), handler
 
 ## 7. Critérios de aceite
 
-- [ ] Pergunta que exige 2 passos (search → read_document) é respondida com `iterations ≥ 2` e `steps[]` corretos.
-- [ ] `allowWrite` ausente → modelo não vê tools mutating; presente → consegue `write_note` (teste com vault tmp).
-- [ ] Teto de iterações estoura graciosamente com aviso.
-- [ ] Cada tool call aparece no SignalR feed.
-- [ ] Sem `IChatClient` → `isError` claro.
-- [ ] Suite verde incluindo `McpContractTests` atualizado.
+- [x] Pergunta que exige 2 passos (search → read_document) é respondida com `iterations ≥ 2` e `steps[]` corretos.
+- [x] `allowWrite` ausente → modelo não vê tools mutating; presente → consegue `write_note` (teste com vault tmp).
+- [x] Teto de iterações estoura graciosamente com aviso.
+- [x] Cada tool call aparece no SignalR feed.
+- [x] Sem `IChatClient` → `isError` claro.
+- [x] Suite verde incluindo `McpContractTests` atualizado.
 
 ## 8. Riscos
 

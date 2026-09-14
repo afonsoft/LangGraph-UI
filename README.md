@@ -10,15 +10,16 @@ a single Kestrel-hosted .NET 10 process.
 | Route | Purpose |
 |---|---|
 | `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`) |
-| `/api/sources`, `/api/search` | REST API |
+| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent` | REST API |
 | `/mcp` | MCP — Streamable HTTP (modern clients) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
 | `/hubs/mcp` | SignalR feed for the MCP monitor |
 
 ## MCP tools
 
-`search_knowledge`, `ask_knowledge`, `write_knowledge`, `read_document`,
-`write_note`, `query_{source_slug}` per active source, plus DeepWiki bypass:
+`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`,
+`read_document`, `write_note`, `query_{source_slug}` per active source,
+plus DeepWiki bypass:
 `ask_question`, `read_wiki_structure`, `read_wiki_contents`.
 
 ## Configuration
@@ -45,6 +46,11 @@ a single Kestrel-hosted .NET 10 process.
     "Temperature": 0.2,
     "MaxTokens": 512,
     "TimeoutSeconds": 120
+  },
+  "Agent": {
+    "MaxIterations": 10,                          // model→tools→model rounds cap (agent_chat / POST /api/agent)
+    "MaxToolCalls": 20,                           // total tool invocations cap
+    "MaxToolResultChars": 4000                    // truncation before results re-enter the model
   },
   "DeepWiki": {
     "Enabled": true,

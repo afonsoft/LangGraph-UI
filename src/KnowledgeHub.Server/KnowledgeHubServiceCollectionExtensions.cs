@@ -57,6 +57,17 @@ public static class KnowledgeHubServiceCollectionExtensions
             sp.GetRequiredService<IOptions<Chat.ChatProviderOptions>>().Value,
             sp.GetRequiredService<ILogger<AnswerService>>()));
 
+        // SPEC-20260914-agent-chat-loop: model→tools→model loop over the live catalog.
+        services.AddOptions<Agent.AgentOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(Agent.AgentOptions.SectionName).Bind(options));
+        services.AddScoped<IAgentService>(sp => new AgentService(
+            sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
+            sp,
+            sp.GetRequiredService<IDynamicToolCatalog>(),
+            sp.GetRequiredService<IOptions<Agent.AgentOptions>>().Value,
+            sp.GetRequiredService<ILogger<AgentService>>()));
+
         services.AddScoped<IVectorStore>(sp =>
         {
             var cfg = sp.GetRequiredService<IConfiguration>();

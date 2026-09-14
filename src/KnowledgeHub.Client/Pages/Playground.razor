@@ -128,6 +128,29 @@
                         else if (_structuredAnswer is not null)
                         {
                             <div class="mb-2" style="white-space: pre-wrap;">@_structuredAnswer</div>
+                            @if (_agentSteps.Count > 0)
+                            {
+                                <div class="border-top pt-2 mt-2">
+                                    <small class="text-muted d-block mb-1">
+                                        Etapas do agente — @_agentIterations iteraç(ões) · @_agentLatencyMs.ToString("F0") ms
+                                    </small>
+                                    <ul class="list-unstyled mb-0">
+                                        @foreach (var s in _agentSteps)
+                                        {
+                                            <li class="d-flex align-items-center gap-2 mb-1">
+                                                <Badge Color="Color.Secondary">#@s.Iteration</Badge>
+                                                <code>@s.Tool</code>
+                                                <small class="text-muted text-truncate" style="max-width: 45%;">@s.ArgsSummary</small>
+                                                <small class="text-muted ms-auto">@s.ElapsedMs.ToString("F0") ms</small>
+                                                @if (s.IsError)
+                                                {
+                                                    <Badge Color="Color.Danger">erro</Badge>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
                             @if (_citations.Count > 0)
                             {
                                 <div class="border-top pt-2 mt-2">
@@ -175,6 +198,9 @@
     private List<string> _texts = [];
     private string? _structuredAnswer;
     private List<CitationModel> _citations = [];
+    private List<AgentStepModel> _agentSteps = [];
+    private int _agentIterations;
+    private double _agentLatencyMs;
     private double? _elapsedMs;
 
     protected override async Task OnInitializedAsync() => await LoadToolsAsync();
@@ -284,7 +310,7 @@
                     .Select(c => c.GetProperty("text").GetString() ?? "")
                     .ToList()
                 : [];
-            (_structuredAnswer, _citations) = ParseStructured(result);
+            (_structuredAnswer, _citations, _agentSteps, _agentIterations, _agentLatencyMs) = ParseStructured(result);
             _elapsedMs = sw.Elapsed.TotalMilliseconds;
         }
         catch (Exception ex)
@@ -297,12 +323,31 @@
         }
     }
 
-    private static (string? Answer, List<CitationModel> Citations) ParseStructured(JsonElement result)
+    private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
+        ParseStructured(JsonElement result)
     {
         if (!result.TryGetProperty("structuredContent", out var sc) ||
             !sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
-            return (null, []);
+            return (null, [], [], 0, 0);
 
+        var steps = new List<AgentStepModel>();
+        if (sc.TryGetProperty("steps", out var st) && st.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var s in st.EnumerateArray())
+            {
+                steps.Add(new AgentStepModel
+                {
+                    Iteration = s.TryGetProperty("iteration", out var it) ? it.GetInt32() : 0,
+                    Tool = s.TryGetProperty("tool", out var tn) ? tn.GetString() ?? "" : "",
+                    ArgsSummary = s.TryGetProperty("argsSummary", out var ag) ? ag.GetString() ?? "" : "",
+                    IsError = s.TryGetProperty("isError", out var ie) && ie.GetBoolean(),
+                    ElapsedMs = s.TryGetProperty("elapsedMs", out var em) ? em.GetDouble() : 0
+                });
+            }
+        }
+
+        var iterations = sc.TryGetProperty("iterations", out var itr) ? itr.GetInt32() : 0;
+        var latencyMs = sc.TryGetProperty("latencyMs", out var lm) ? lm.GetDouble() : 0;
         var citations = new List<CitationModel>();
         if (sc.TryGetProperty("citations", out var cs) && cs.ValueKind == JsonValueKind.Array)
         {
@@ -317,7 +362,16 @@
                 });
             }
         }
-        return (a.GetString(), citations);
+        return (a.GetString(), citations, steps, iterations, latencyMs);
+    }
+
+    private sealed class AgentStepModel
+    {
+        public int Iteration { get; init; }
+        public string Tool { get; init; } = "";
+        public string ArgsSummary { get; init; } = "";
+        public bool IsError { get; init; }
+        public double ElapsedMs { get; init; }
     }
 
     private sealed class CitationModel
