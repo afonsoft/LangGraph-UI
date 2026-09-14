@@ -1,0 +1,25 @@
+# docker-compose.yml — KnowledgeHub (SPEC-20260913-install-deploy RF-007)
+# Same result as `./install.sh --docker`, declared declaratively.
+services:
+  knowledgehub:
+    build: .
+    image: knowledgehub:latest
+    container_name: knowledgehub
+    ports:
+      - "${KNOWLEDGEHUB_PORT:-5000}:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      Embeddings__Provider: ${EMBEDDINGS_PROVIDER:-deterministic}
+      Embeddings__Endpoint: ${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434}
+      Embeddings__ApiKey: ${EMBEDDINGS_APIKEY:-}
+      Embeddings__Model: ${EMBEDDINGS_MODEL:-nomic-embed-text}
+      VectorStore__Provider: ${VECTORSTORE_PROVIDER:-sqlite}
+      VectorStore__ConnectionString: ${VECTORSTORE_CONNECTIONSTRING:-}
+      DeepWiki__Enabled: ${DEEPWIKI_ENABLED:-true}
+      DeepWiki__Endpoint: ${DEEPWIKI_ENDPOINT:-https://mcp.deepwiki.com/mcp}
+      DeepWiki__ApiKey: ${DEEPWIKI_APIKEY:-}
+    # Lets the container reach services on the Docker host (e.g. local Ollama).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

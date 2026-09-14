@@ -67,6 +67,25 @@ The SQLite file is created beside the executable (override with
 `KnowledgeHub:DatabasePath`); `ASPNETCORE_URLS` controls the port
 (default `http://localhost:5000`).
 
+## Deploy
+
+`./install.sh` builds, tests and deploys in one step — Docker when available,
+self-contained host binary otherwise:
+
+```bash
+./install.sh                      # docker build + run → http://localhost:5000
+./install.sh --docker --port 8080 # custom host port
+./install.sh --host               # publish + install to /opt/knowledgehub
+./install.sh --host --systemd     # + enable knowledgehub.service
+./install.sh --help               # all options (--data-dir, --prefix, --skip-tests)
+```
+
+The container listens on `:8080`, published to host port `5000`. SQLite lives in
+`./data` on the host, bind-mounted to `/data` (delete the container freely — data
+survives). `docker compose up -d` is equivalent to `--docker` mode; override the
+port with `KNOWLEDGEHUB_PORT` and providers via `EMBEDDINGS_*`, `VECTORSTORE_*`,
+`DEEPWIKI_*` env vars.
+
 ## Development
 
 ```bash
