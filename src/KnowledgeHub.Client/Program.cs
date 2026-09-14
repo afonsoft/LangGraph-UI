@@ -12,6 +12,6 @@ builder.Services.AddBootstrapBlazor();
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddScoped<SourceApiClient>();
 builder.Services.AddScoped<SearchApiClient>();
-builder.Services.AddScoped<McpMonitorClient>();
+builder.Services.AddTransient<McpMonitorClient>();
 
 await builder.Build().RunAsync();

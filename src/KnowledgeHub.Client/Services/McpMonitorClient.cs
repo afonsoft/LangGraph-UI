@@ -31,6 +31,8 @@ public sealed class McpMonitorClient(NavigationManager nav) : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken ct = default)
     {
+        if (_connection.State != HubConnectionState.Disconnected)
+            return;
         _connection.On<SessionOpenedEvent>("SessionOpened", e => SessionOpened?.Invoke(e));
         _connection.On<SessionClosedEvent>("SessionClosed", e => SessionClosed?.Invoke(e));
         _connection.On<ActivityEvent>("Activity", e => Activity?.Invoke(e));
