@@ -40,8 +40,9 @@ using (var scope = app.Services.CreateScope())
 }
 
 // SPEC-05 RF-005: serve the hosted WASM client + deep-link fallback.
-app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+// MapStaticAssets resolves the #[.{fingerprint}] tokens in index.html to the
+// fingerprinted asset names (UseStaticFiles would serve the literal token).
+app.MapStaticAssets();
 
 app.MapSourcesApi();
 app.MapSearchApi();
