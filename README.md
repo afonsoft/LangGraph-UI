@@ -80,11 +80,12 @@ self-contained host binary otherwise:
 ./install.sh --help               # all options (--data-dir, --prefix, --skip-tests)
 ```
 
-The container listens on `:8080`, published to host port `5000`. SQLite lives in
-`./data` on the host, bind-mounted to `/data` (delete the container freely — data
-survives). `docker compose up -d` is equivalent to `--docker` mode; override the
-port with `KNOWLEDGEHUB_PORT` and providers via `EMBEDDINGS_*`, `VECTORSTORE_*`,
-`DEEPWIKI_*` env vars.
+The container listens on `:8080`, published to host port `5000` by default.
+SQLite lives in `./data` on the host, bind-mounted to `/data` (delete the
+container freely — data survives). `docker compose up -d` is equivalent to
+`--docker` mode. Port and providers can be overridden via a local `.env`
+(`KNOWLEDGEHUB_PORT=5550`, `EMBEDDINGS_*`, `VECTORSTORE_*`, `DEEPWIKI_*`) —
+both `docker compose` and `install.sh` read it; `--port` still wins.
 
 ## Development
 
