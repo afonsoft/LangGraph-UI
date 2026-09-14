@@ -1,5 +1,6 @@
 @page "/mcp-monitor"
 @inject McpMonitorClient Monitor
+@inject HttpClient Http
 @implements IAsyncDisposable
 
 <PageTitle>Monitor MCP — KnowledgeHub</PageTitle>
@@ -9,6 +10,11 @@
 <div class="mb-3">
     <Badge Color="@StateColor">@StateLabel</Badge>
     <span class="ms-2 text-muted">hub: /hubs/mcp</span>
+    <span class="ms-3">
+        @* SPEC-20260914-health-checks: aggregated readiness shown in the monitor. *@
+        saúde: <Badge Color="@HealthColor">@HealthLabel</Badge>
+        <Button Size="Size.ExtraSmall" Color="Color.Secondary" Text="atualizar" OnClick="RefreshHealthAsync" />
+    </span>
 </div>
 
 <div class="row g-3">
@@ -80,6 +86,34 @@
     private readonly Dictionary<string, DateTimeOffset> _sessions = new();
     private readonly List<ActivityEvent> _activity = new();
     private const int MaxActivity = 200;
+    private bool? _healthy;
+
+    private string HealthLabel => _healthy switch
+    {
+        true => "ready",
+        false => "indisponível",
+        _ => "…"
+    };
+
+    private Color HealthColor => _healthy switch
+    {
+        true => Color.Success,
+        false => Color.Danger,
+        _ => Color.Secondary
+    };
+
+    private async Task RefreshHealthAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("/health/ready");
+            _healthy = response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            _healthy = false;
+        }
+    }
 
     private string StateLabel => Monitor.State switch
     {
@@ -116,6 +150,7 @@
         };
         Monitor.StateChanged += () => InvokeAsync(StateHasChanged);
         await Monitor.StartAsync();
+        await RefreshHealthAsync();
     }
 
     public async ValueTask DisposeAsync() => await Monitor.DisposeAsync();

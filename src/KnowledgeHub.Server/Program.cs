@@ -1,11 +1,30 @@
 using KnowledgeHub.McpEngine;
 using KnowledgeHub.Server;
 using KnowledgeHub.Server.Api;
+using KnowledgeHub.Server.Configuration;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
+using KnowledgeHub.Server.Health;
 using KnowledgeHub.Server.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// SPEC-20260914-config-validation: fail fast on invalid config before any work.
+ConfigurationValidator.Validate(builder.Configuration);
+
+// SPEC-20260914-graceful-shutdown: bounded drain window for in-flight requests.
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout =
+    TimeSpan.FromSeconds(builder.Configuration.GetValue("Host:ShutdownTimeoutSeconds", 30)));
+
+// SPEC-20260914-error-handling: RFC 7807 ProblemDetails for unhandled errors.
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+// SPEC-20260914-health-checks: /health/live + /health/ready.
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
+    .AddCheck<EmbeddingHealthCheck>("embeddings", tags: ["ready"])
+    .AddCheck<IngestionHealthCheck>("ingestion", tags: ["ready"]);
 
 builder.Services.AddKnowledgeHubServer(builder.Configuration);
 builder.Services.AddKnowledgeHubMcp(builder.Configuration);
@@ -42,6 +61,17 @@ using (var scope = app.Services.CreateScope())
 // SPEC-05 RF-005: serve the hosted WASM client + deep-link fallback.
 // MapStaticAssets resolves the #[.{fingerprint}] tokens in index.html to the
 // fingerprinted asset names (UseStaticFiles would serve the literal token).
+app.UseExceptionHandler();
+
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("ready")
+});
+
 app.MapStaticAssets();
 
 app.MapSourcesApi();

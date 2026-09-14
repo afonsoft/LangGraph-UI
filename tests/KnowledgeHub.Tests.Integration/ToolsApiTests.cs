@@ -48,8 +48,8 @@ public class ToolsApiTests : IClassFixture<ToolsApiTests.Fixture>
 
         var search = list.Tools.First(t => t.Name == "search_knowledge");
         Assert.True(search.ReadOnly);
-        Assert.True(search.InputSchema.GetProperty("required").EnumerateArray()
-            .Any(e => e.GetString() == "query"));
+        Assert.Contains(search.InputSchema.GetProperty("required").EnumerateArray(),
+            e => e.GetString() == "query");
     }
 
     [Fact]
