@@ -12,6 +12,9 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Restore first (layer cache) — only the projects the Server depends on.
+# packages.lock.json + Directory.Build.props are dockerignored: lock files
+# bind to the generating SDK band (NU1403 on a different SDK — see
+# SPEC-20260914-locked-restore). Locked-mode enforcement is dev/CI-side.
 COPY KnowledgeHub.slnx global.json ./
 COPY src/KnowledgeHub.Shared/KnowledgeHub.Shared.csproj   src/KnowledgeHub.Shared/
 COPY src/KnowledgeHub.Client/KnowledgeHub.Client.csproj   src/KnowledgeHub.Client/

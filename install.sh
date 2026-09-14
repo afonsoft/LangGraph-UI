@@ -94,6 +94,10 @@ run_gate() {
     warn "dotnet SDK not found on host — skipping build/test gate (image build still compiles everything)."
     return
   fi
+  # LOCKED_RESTORE=1 enforces committed packages.lock.json (SPEC-20260914-locked-restore).
+  if [[ "${LOCKED_RESTORE:-0}" == "1" ]]; then
+    dotnet restore KnowledgeHub.slnx --locked-mode
+  fi
   info "dotnet build + test"
   dotnet build KnowledgeHub.slnx -c Release
   dotnet test KnowledgeHub.slnx -c Release --no-build

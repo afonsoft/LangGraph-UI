@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-persistence-hardening` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -52,7 +52,7 @@ README.md                    (note)
 - **Description:** `dotnet restore` produces `packages.lock.json` beside each csproj recording resolved versions + SHA512 content hashes for direct and transitive packages.
 
 ### RF-002: Locked-mode enforcement points
-- **Description:** `Dockerfile` restore uses `dotnet restore --locked-mode` (fails the image build if lock files are stale). `install.sh` build gate unchanged (normal restore locally is fine; `--locked-mode` optional via env `LOCKED_RESTORE=1`).
+- **Description:** `install.sh` build gate supports `LOCKED_RESTORE=1` → `dotnet restore --locked-mode`. Dockerfile restores unlocked: `packages.lock.json` captures SDK-workload implicit refs (`Microsoft.NET.Sdk.WebAssembly.Pack`, `ILLink.Tasks`, `AspNetCore.App.Internal.Assets`) whose versions track the SDK band, and the MCR `sdk:10.0` band differs from the distro SDK that generated the locks — locked mode in the image would fail on version drift unrelated to declared refs. Enforcement point = the pinned-SDK environment (dev machine per `global.json`, CI).
 
 ### RF-003: Lock file maintenance documented
 - **Description:** README: after changing any `PackageReference`, run `dotnet restore` and commit the updated `packages.lock.json` files.
@@ -63,9 +63,9 @@ N/A — build infra.
 
 ## 6. Acceptance Criteria
 
-- [ ] **Given** `packages.lock.json` committed **when** `dotnet restore --locked-mode` runs **then** it succeeds without modifying lock files.
-- [ ] **Given** a csproj gains a package reference without regenerating locks **when** `docker build` runs **then** restore fails with a clear lock-mismatch error.
-- [ ] **Given** normal dev flow **when** `dotnet build`/`dotnet test` run locally **then** they work unchanged.
+- [ ] **Given** `packages.lock.json` committed **when** `dotnet restore --locked-mode` runs on the same SDK band **then** it succeeds without modifying lock files.
+- [ ] **Given** a csproj gains a package reference without regenerating locks **when** `LOCKED_RESTORE=1 ./install.sh` or `dotnet restore --locked-mode` runs **then** restore fails with NU1004.
+- [ ] **Given** normal dev flow **when** `dotnet build`/`dotnet test`/`docker build` run **then** they work unchanged.
 
 ## 7. Task Plan
 
