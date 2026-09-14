@@ -194,3 +194,14 @@ README.md (CI section)
 - [ ] README atualizado com instruções
 - [ ] SPEC status atualizado para `Done`
 - [ ] PR criado para merge no main
+## 10. Conclusão
+
+Implementado diretamente em `main`.
+
+- `.github/workflows/ci-build-test.yml` — build, testes unitários/integração, validação Blazor WASM, Docker build.
+- `.github/workflows/code-quality.yml` — Qodana + SonarQube analysis.
+- `.github/workflows/security-scan.yml` — CodeQL (C#+JS), Snyk dependency scanning, Trivy container scanning.
+- `.github/workflows/release.yml` — semver validation, single-file artifacts (linux-x64/win-x64), NuGet publish, Docker publish (ghcr.io), GitHub Release automático.
+- Cache otimizado (NuGet, Docker layers), artifacts em falha.
+
+Status: **Done** — SPEC concluída.
