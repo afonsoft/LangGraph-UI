@@ -52,14 +52,28 @@ public sealed class IngestionService(
                 // typed connector, then run the shared dedup→chunk→embed pipeline.
                 var connector = connectors.FirstOrDefault(c => c.Type == source.SourceType);
                 if (connector is null)
-                    return new SyncResultDto { Status = "skipped", Reason = $"connector {source.SourceType} not implemented", SourceId = sourceId, DurationMs = stopwatch.Elapsed.TotalMilliseconds };
+                {
+                    var skipReason = $"connector {source.SourceType} not implemented";
+                    source.LastSyncStatus = "skipped";
+                    source.LastError = skipReason;
+                    await db.SaveChangesAsync(cancellationToken);
+                    return new SyncResultDto { Status = "skipped", Reason = skipReason, SourceId = sourceId, DurationMs = stopwatch.Elapsed.TotalMilliseconds };
+                }
 
                 return await SyncViaConnectorAsync(source, connector, db, vectors, scope, stopwatch, cancellationToken);
             }
 
             var root = ResolveVaultRoot(source.ConfigurationJson);
             if (root is null || !Directory.Exists(root))
-                return Fail(sourceId, $"vault path not found or not configured");
+            {
+                // SPEC-20260914-obsidian-webdav RF-002: a missing vault path usually
+                // means an unmounted remote — surface that on the source record.
+                var reason = $"vault path '{root ?? "(not configured)"}' not found — mount unavailable?";
+                source.LastSyncStatus = "failed";
+                source.LastError = reason;
+                await db.SaveChangesAsync(cancellationToken);
+                return Fail(sourceId, reason);
+            }
 
             var files = EnumerateMarkdown(root);
             var existing = await db.Documents
@@ -137,6 +151,8 @@ public sealed class IngestionService(
             }
 
             source.LastSyncAt = DateTimeOffset.UtcNow;
+            source.LastSyncStatus = "completed";
+            source.LastError = null;
             await db.SaveChangesAsync(cancellationToken);
 
             // RF-004: keep the FTS index consistent with Chunks after sync.
@@ -158,6 +174,7 @@ public sealed class IngestionService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Sync failed for source {SourceId}", sourceId);
+            await TryRecordSyncFailureAsync(sourceId, ex.Message);
             return Fail(sourceId, "sync failed — see server logs", stopwatch.Elapsed.TotalMilliseconds);
         }
         finally
@@ -250,6 +267,9 @@ public sealed class IngestionService(
         }
 
         source.LastSyncAt = DateTimeOffset.UtcNow;
+        source.LastSyncStatus = "completed";
+        source.LastError = fetch.Warnings.Count == 0 ? null
+            : $"{fetch.Warnings.Count} item(s) skipped: {string.Join("; ", fetch.Warnings.Take(5))}";
         await db.SaveChangesAsync(cancellationToken);
         await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
             .ReconcileAsync(cancellationToken);
@@ -301,9 +321,33 @@ public sealed class IngestionService(
             var vectors = scope.ServiceProvider.GetRequiredService<IVectorStore>();
 
             var source = await db.Sources.FindAsync([sourceId], cancellationToken);
-            var root = source is null ? null : ResolveVaultRoot(source.ConfigurationJson);
-            if (source is null || root is null)
+            if (source is null)
                 return;
+
+            var isDocFile = source.SourceType == SourceType.DocumentFile;
+            var root = ResolveVaultRoot(source.ConfigurationJson);
+            // RF-002: a missing root means the mount is down (vault dir) — record it
+            // and bail without touching documents. DocumentFile may point at a file.
+            var rootExists = root is not null &&
+                (isDocFile ? Directory.Exists(root) || File.Exists(root) : Directory.Exists(root));
+            if (!rootExists)
+            {
+                if (source.LastSyncStatus != "failed")
+                {
+                    source.LastSyncStatus = "failed";
+                    source.LastError = $"vault path '{root ?? "(not configured)"}' not found — mount unavailable?";
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                return;
+            }
+
+            // Clear a previous failure once the mount is reachable again.
+            if (source.LastSyncStatus == "failed")
+            {
+                source.LastSyncStatus = "completed";
+                source.LastError = null;
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             var full = Path.GetFullPath(Path.Combine(root, relativePath));
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
@@ -312,8 +356,6 @@ public sealed class IngestionService(
             var doc = await db.Documents
                 .Include(d => d.Chunks)
                 .FirstOrDefaultAsync(d => d.KnowledgeSourceId == sourceId && d.UriReference == relativePath, cancellationToken);
-
-            var isDocFile = source.SourceType == SourceType.DocumentFile;
 
             if (!File.Exists(full)
                 || isDocFile && !Connectors.DocumentFileConnector.SupportedExtensions.Contains(Path.GetExtension(full)))
@@ -392,6 +434,26 @@ public sealed class IngestionService(
         finally
         {
             gate.Release();
+        }
+    }
+
+    /// <summary>Best-effort: record a sync failure on the source in a fresh scope.</summary>
+    private async Task TryRecordSyncFailureAsync(Guid sourceId, string message)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+            var source = await db.Sources.FindAsync([sourceId]);
+            if (source is null)
+                return;
+            source.LastSyncStatus = "failed";
+            source.LastError = message.Length > 1000 ? message[..1000] : message;
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not record sync failure on source {SourceId}", sourceId);
         }
     }
 

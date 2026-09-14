@@ -167,7 +167,9 @@ public sealed class KnowledgeSourceService(
         AutoSyncEnabled = s.AutoSyncEnabled,
         SyncIntervalMinutes = s.SyncIntervalMinutes,
         CreatedAt = s.CreatedAt,
-        LastSyncAt = s.LastSyncAt
+        LastSyncAt = s.LastSyncAt,
+        LastSyncStatus = s.LastSyncStatus,
+        LastError = s.LastError
     };
 
     /// <summary>Strip sensitive keys so API responses never echo secrets (SPEC-02 §Guardrails).</summary>
