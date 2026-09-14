@@ -123,21 +123,22 @@ jobs:
 
       - name: Validate WASM Assets
         run: |
-          # Client is a Razor class library hosted by the Server: the build emits
-          # _framework payloads (blazor.boot.json, dotnet.wasm, .dll) into
-          # bin/<config>/net10.0/wwwroot; index.html lives in the source wwwroot
-          # and is served by the Server host.
+          # Client is a Razor class library hosted by the Server. A plain `build`
+          # emits the fingerprinted app payload into _framework/ (blazor.boot.json
+          # only appears on `publish`), while index.html stays in the source
+          # wwwroot and is served by the Server host.
           fw="src/KnowledgeHub.Client/bin/Release/net10.0/wwwroot/_framework"
-          if [ ! -f "$fw/blazor.boot.json" ]; then
-            echo "::error::Blazor WASM _framework/blazor.boot.json nao encontrado em $fw"
+          app_wasm=$(ls "$fw"/KnowledgeHub.Client.*.wasm 2>/dev/null | head -1)
+          if [ -z "$app_wasm" ]; then
+            echo "::error::WASM do app nao gerado em $fw (KnowledgeHub.Client.*.wasm)"
             exit 1
           fi
           if [ ! -f "src/KnowledgeHub.Client/wwwroot/index.html" ]; then
             echo "::error::wwwroot/index.html ausente no projeto Client"
             exit 1
           fi
-          echo "Blazor WASM assets gerados com sucesso"
-          ls "$fw" | head -5
+          echo "Blazor WASM assets gerados com sucesso: $(basename "$app_wasm")"
+          echo "payloads em _framework: $(ls "$fw" | wc -l)"
 
   docker-build:
     name: Docker Image Build
