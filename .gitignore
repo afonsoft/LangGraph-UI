@@ -44,6 +44,10 @@ ScaffoldingReadMe.txt
 *~
 CodeCoverage/
 
+# Deployment artifacts (SPEC-20260913-install-deploy)
+publish/
+data/
+
 # MSBuild Binary and Structured Log
 *.binlog
 

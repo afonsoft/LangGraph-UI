@@ -1,0 +1,17 @@
+# Build context exclusions (SPEC-20260913-install-deploy RF-003)
+.git/
+.gitignore
+.claude/
+.specs/
+docs/
+**/bin/
+**/obj/
+publish/
+data/
+*.md
+*.binlog
+skills-lock.json
+Dockerfile
+.dockerignore
+docker-compose.yml
+install.sh
