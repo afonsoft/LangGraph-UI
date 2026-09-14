@@ -10,8 +10,18 @@ IMAGE_NAME="${IMAGE_NAME:-knowledgehub:latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-knowledgehub}"
 CONTAINER_PORT=8080
 
+# Load .env for vars not already set in the environment — same precedence as
+# docker compose: shell env > .env file. Flags (--port) override both.
+if [[ -f .env ]]; then
+  while IFS='=' read -r key val; do
+    [[ "$key" =~ ^[[:space:]]*# || -z "${key// /}" ]] && continue
+    key="${key//[[:space:]]/}"
+    [[ -z "${!key:-}" ]] && export "$key=$val"
+  done < .env
+fi
+
 MODE=""
-PORT=5000
+PORT="${KNOWLEDGEHUB_PORT:-5000}"
 PREFIX="/opt/knowledgehub"
 DATA_DIR="./data"
 SKIP_TESTS=0
@@ -31,7 +41,7 @@ Modes (default: --docker when docker is installed, otherwise --host):
                     install it under --prefix.
 
 Options:
-  --port <p>        Host port to expose (default: 5000 → container 8080).
+  --port <p>        Host port to expose (default: KNOWLEDGEHUB_PORT from env/.env, else 5000 → container 8080).
   --data-dir <dir>  SQLite data directory (default: ./data, bind-mounted to /data).
   --prefix <dir>    Install prefix for --host mode (default: /opt/knowledgehub).
   --systemd         (--host only) write + enable + start knowledgehub.service.
