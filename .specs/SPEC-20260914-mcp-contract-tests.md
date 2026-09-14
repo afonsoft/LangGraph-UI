@@ -96,3 +96,15 @@ The contract *is* the deliverable: pinned tool names + schemas + activity event 
 ## Open Questions / Pending Ambiguity
 
 - None.
+
+## 10. Conclusão
+
+Implementado em `feature/Devin-20260914-persistence-hardening`.
+
+- `KnowledgeHub.Tests.Integration` com suíte de contract tests: tool catalog, activity feed, JSON-RPC envelopes.
+- Pinning de nomes de tools dinâmicos e assinaturas mínimas (RF-001).
+- Eventos de atividade refletidos em `IMcpActivityFeed` (RF-002).
+- Coverage de `tools/list`, `tools/call`, notificação `ToolListChanged` (RF-003).
+- `dotnet test` verde; protege regressões em clientes externos (Devin, Cursor, OpenClaw).
+
+Status: **Done** — SPEC concluída.
