@@ -97,3 +97,15 @@ N/A — startup internal check.
 ## Open Questions / Pending Ambiguity
 
 - None.
+
+## 10. Conclusão
+
+Implementado em `feature/Devin-20260914-persistence-hardening`.
+
+- `IEmbeddingDimensionGuard` e `EmbeddingDimensionGuard` no Server.
+- Startup check: amostra chunks persistidos e valida dimensões/modelo vs config.
+- Logs `Warning`/`Error` claros com remediation (re-sync ou clear embeddings).
+- Unit + integration tests cobrindo mismatch de dimensão e mudança de modelo.
+- Sem breaking change; compartilha branch com migrations e locked-restore.
+
+Status: **Done** — SPEC concluída.

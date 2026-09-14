@@ -124,3 +124,15 @@ body: { "repoName": "owner/repo", "question": "..." }   (tool arguments)
 
 - Playground layout: tool-list sidebar vs. dropdown picker — implementer's choice (BootstrapBlazor `Select`/`Tab` patterns already in the codebase).
 - Whether to keep the old free-form search box as a shortcut — resolved by defaulting the picker to `search_knowledge`.
+
+## 10. Conclusão
+
+Implementado em `feature/Devin-20260914-playground-tools`.
+
+- `ToolCallContext` + `CatalogTool.Handler` refatorados; `ToolArgs` + providers + MCP adapter desacoplados.
+- `ToolsEndpoints.cs` expõe `GET /api/tools` e `POST /api/tools/{name}` registrados no `Program.cs`.
+- `ToolsApiClient` + Playground reconstruído: picker de tools dinâmico, schema form, result viewer com raw JSON.
+- `McpContractTests` passa inalterado (prova ausência de behavior drift).
+- Smoke test em https://rag.afonsoft.dev/playground confirmando chamada DeepWiki real.
+
+Status: **Done** — SPEC concluída.

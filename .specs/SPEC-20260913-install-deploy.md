@@ -136,3 +136,15 @@ N/A — infra/delivery feature. Runtime contract is unchanged: SPA at `/`, REST 
 ## Open Questions / Pending Ambiguity
 
 - None blocking. Optional follow-ups (out of scope here): GHCR push, multi-arch (`linux/arm64`) image, chiseled base variant.
+
+## 9. Conclusão
+
+Implementado em `feature/Devin-20260913-install-deploy`.
+
+- `install.sh` com modos `--docker` (padrão) e `--host`, suporte a `--systemd`.
+- `Dockerfile` multi-stage (SDK → runtime-deps), `docker-compose.yml`, `.dockerignore`.
+- Healthcheck, non-root UID 1654, volume `/data` persistido.
+- Script valida Docker disponível, detecta portas em uso, orienta permissões.
+- Mergeado via PR para `main`.
+
+Status: **Done** — SPEC concluída.
