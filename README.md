@@ -95,6 +95,15 @@ dotnet test
 dotnet format --verify-no-changes
 ```
 
+Schema changes require an EF Core migration — the app applies pending
+migrations at startup (`DatabaseMigrator`, which also baselines databases
+created before migrations existed). After editing entities or
+`KnowledgeHubDbContext`, generate and commit one:
+
+```bash
+dotnet ef migrations add <Name> -p src/KnowledgeHub.Server
+```
+
 Specs live in `.specs/`; architecture diagrams (Mermaid + draw.io) in
 [`docs/architecture/`](docs/architecture/system-architecture.md); work is tracked
 in GitHub Issues #2–#8.
