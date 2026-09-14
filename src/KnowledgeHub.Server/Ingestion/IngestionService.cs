@@ -5,6 +5,7 @@ using System.Text.Json;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Server.Embeddings;
+using KnowledgeHub.Server.Search;
 using KnowledgeHub.Server.Services;
 using KnowledgeHub.Server.VectorStore;
 using KnowledgeHub.Shared.Contracts;
@@ -138,6 +139,10 @@ public sealed class IngestionService(
             source.LastSyncAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 
+            // RF-004: keep the FTS index consistent with Chunks after sync.
+            await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
+                .ReconcileAsync(cancellationToken);
+
             return new SyncResultDto
             {
                 Status = "completed",
@@ -235,6 +240,8 @@ public sealed class IngestionService(
                 await vectors.UpsertAsync(chunk.Id, doc.Id, sourceId, vector, embeddings.ModelId, cancellationToken);
             }
             await db.SaveChangesAsync(cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
+                .ReconcileAsync(cancellationToken);
         }
         finally
         {

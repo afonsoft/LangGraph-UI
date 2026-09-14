@@ -19,14 +19,18 @@ public sealed class KnowledgeToolsProvider : IToolProvider
     private static readonly JsonObject SearchSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "query":{"type":"string","description":"Texto ou pergunta a buscar"},
-          "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"}
+          "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"},
+          "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"}
         },"required":["query"]}
         """)!.AsObject();
 
     private static readonly JsonObject AskSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "question":{"type":"string","description":"Pergunta em linguagem natural"},
-          "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"}
+          "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"},
+          "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"}
         },"required":["question"]}
         """)!.AsObject();
 
@@ -53,8 +57,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 {
                     var query = ToolArgs.RequiredString(ctx, "query");
                     var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
+                    var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
                     var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(query, topK, null, ct);
+                    var results = await search.SearchAsync(query, topK, sourceId, mode, ct);
                     return await ToolResults.Text(FormatHits(results));
                 }
             },
@@ -68,8 +73,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 {
                     var question = ToolArgs.RequiredString(ctx, "question");
                     var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
+                    var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
                     var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(question, topK, null, ct);
+                    var results = await search.SearchAsync(question, topK, sourceId, mode, ct);
                     return await ToolResults.Text(FormatAnswerContext(question, results));
                 }
             },
@@ -82,6 +88,35 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             }
         ];
         return Task.FromResult(tools);
+    }
+
+    /// <summary>
+    /// Resolves the optional `source` slug and `mode` args shared by
+    /// search_knowledge/ask_knowledge (SPEC-20260914-hybrid-retrieval RF-003).
+    /// </summary>
+    private static async Task<(Guid? SourceId, SearchMode Mode)> ResolveScopeAsync(
+        ToolCallContext ctx, CancellationToken ct)
+    {
+        var modeArg = ToolArgs.OptionalString(ctx, "mode");
+        var mode = modeArg is null
+            ? SearchMode.Hybrid
+            : Enum.TryParse<SearchMode>(modeArg, ignoreCase: true, out var parsed)
+                ? parsed
+                : throw new McpProtocolException(
+                    $"invalid mode '{modeArg}' (expected: hybrid | semantic | lexical)", McpErrorCode.InvalidParams);
+
+        var sourceSlug = ToolArgs.OptionalString(ctx, "source");
+        if (sourceSlug is null)
+            return (null, mode);
+
+        var db = ctx.Services!.GetRequiredService<KnowledgeHubDbContext>();
+        var active = await db.Sources.Where(s => s.IsActive).OrderBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name }).ToListAsync(ct);
+        var slugs = ToolSlugger.Assign(active.Select(s => (s.Id, s.Name)));
+        var sourceId = slugs.FirstOrDefault(kv => kv.Value == sourceSlug).Key;
+        return sourceId == Guid.Empty
+            ? throw new McpProtocolException($"unknown source slug '{sourceSlug}'", McpErrorCode.InvalidParams)
+            : (sourceId, mode);
     }
 
     private static async ValueTask<CallToolResult> WriteKnowledgeAsync(
@@ -170,6 +205,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             var vector = await embeddings.EmbedAsync(chunk.TextContent, ct);
             await vectors.UpsertAsync(chunk.Id, doc2.Id, target.Id, vector, embeddings.ModelId, ct);
         }
+
+        // RF-004: keep the FTS index consistent with Chunks.
+        await ctx.Services!.GetRequiredService<Search.ILexicalSearchService>().ReconcileAsync(ct);
 
         return await ToolResults.Text(
             $"Stored '{title}' in source '{target.Name}'.\nDocument id: {doc2.Id}\nChunks indexed: {newChunks.Count}");

@@ -47,6 +47,7 @@ public static class KnowledgeHubServiceCollectionExtensions
         });
 
         services.AddScoped<IKnowledgeSourceService, KnowledgeSourceService>();
+        services.AddScoped<Search.ILexicalSearchService, Search.LexicalSearchService>();
         services.AddScoped<ISearchService, SearchService>();
 
         services.AddSingleton<IngestionService>();
