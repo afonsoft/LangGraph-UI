@@ -46,6 +46,7 @@ app.MapStaticAssets();
 
 app.MapSourcesApi();
 app.MapSearchApi();
+app.MapToolsApi();
 app.MapKnowledgeHubMcp();
 app.MapHub<McpMonitorHub>("/hubs/mcp");
 app.MapFallbackToFile("index.html");

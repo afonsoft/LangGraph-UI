@@ -85,7 +85,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
     }
 
     private static async ValueTask<CallToolResult> WriteKnowledgeAsync(
-        ModelContextProtocol.Server.RequestContext<CallToolRequestParams> ctx, CancellationToken ct)
+        ToolCallContext ctx, CancellationToken ct)
     {
         var title = ToolArgs.RequiredString(ctx, "title");
         var content = ToolArgs.RequiredString(ctx, "content");

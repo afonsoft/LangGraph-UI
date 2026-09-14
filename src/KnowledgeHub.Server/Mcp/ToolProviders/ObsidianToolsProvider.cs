@@ -60,7 +60,7 @@ public sealed class ObsidianToolsProvider : IToolProvider
     }
 
     private static async ValueTask<CallToolResult> ReadDocumentAsync(
-        ModelContextProtocol.Server.RequestContext<CallToolRequestParams> ctx, CancellationToken ct)
+        ToolCallContext ctx, CancellationToken ct)
     {
         var path = ToolArgs.RequiredString(ctx, "path");
         var sourceSlug = ToolArgs.OptionalString(ctx, "source");
@@ -83,7 +83,7 @@ public sealed class ObsidianToolsProvider : IToolProvider
     }
 
     private static async ValueTask<CallToolResult> WriteNoteAsync(
-        ModelContextProtocol.Server.RequestContext<CallToolRequestParams> ctx, CancellationToken ct)
+        ToolCallContext ctx, CancellationToken ct)
     {
         var path = ToolArgs.RequiredString(ctx, "path");
         var content = ToolArgs.RequiredString(ctx, "content");
