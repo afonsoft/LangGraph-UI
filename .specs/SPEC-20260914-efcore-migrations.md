@@ -107,3 +107,15 @@ N/A — persistence internals.
 ## Open Questions / Pending Ambiguity
 
 - None.
+
+## 10. Conclusão
+
+Implementado em `feature/Devin-20260914-persistence-hardening`.
+
+- `Microsoft.EntityFrameworkCore.Design` adicionado ao Server (PrivateAssets=all).
+- Migration `InitialCreate` gerada e aplicada via `Migrate()` no startup.
+- Detecção de baseline EnsureCreated-era: DBs antigos iniciam sem perda de dados.
+- SQLite lock em start concorrente tratado (retry no restart).
+- `dotnet build` + `dotnet test` verdes; Docker image mantém healthcheck.
+
+Status: **Done** — SPEC concluída.
