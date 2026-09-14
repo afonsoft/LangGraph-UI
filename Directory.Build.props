@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- SPEC-20260914-locked-restore: reproducible NuGet graph.
+       Generates packages.lock.json next to each csproj on restore;
+       enforced via locked-mode restore in the Dockerfile. -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

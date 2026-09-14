@@ -11,6 +11,10 @@ data/
 *.md
 *.binlog
 skills-lock.json
+# Lock files bind to the SDK band that generated them (NU1403/NU1004 on any
+# other SDK, including the MCR image); enforcement is a dev/CI concern.
+**/packages.lock.json
+Directory.Build.props
 Dockerfile
 .dockerignore
 docker-compose.yml
