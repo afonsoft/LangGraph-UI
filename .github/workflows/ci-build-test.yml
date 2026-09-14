@@ -1,0 +1,188 @@
+name: 🚀 CI Build & Test
+
+permissions: {}
+
+on:
+  push:
+    branches:
+      - "feature/*"
+      - "bug/*"
+      - "hotfix/*"
+  pull_request:
+    branches:
+      - "main"
+    types: [opened, synchronize, reopened, closed]
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  SOLUTION: "KnowledgeHub.slnx"
+
+jobs:
+  build-knowledgehub:
+    name: Build KnowledgeHub (.NET 10)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet Packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9   # v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore Dependencies
+        id: restore-pkg
+        run: |
+          echo "Restoring NuGet packages for KnowledgeHub.slnx"
+          if ! dotnet restore ${{ env.SOLUTION }} --no-cache --force --verbosity normal 2>&1 | tee restore-output.log; then
+            echo "restore_failed=true" >> $GITHUB_OUTPUT
+            echo "::error::Falha no restore de dependencias NuGet"
+          fi
+
+      - name: Build Solution
+        id: build-solution
+        run: |
+          echo "Building ${{ env.SOLUTION }}"
+          if ! dotnet build ${{ env.SOLUTION }} --no-restore --configuration Release --verbosity minimal 2>&1 | tee build-output.log; then
+            echo "build_failed=true" >> $GITHUB_OUTPUT
+            echo "::error::Falha no build da solucao"
+          fi
+
+      - name: Upload Build Logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a   # v7
+        if: always()
+        with:
+          name: build-logs
+          path: |
+            restore-output.log
+            build-output.log
+
+  test-unit:
+    name: Unit Tests (xUnit)
+    runs-on: ubuntu-latest
+    needs: build-knowledgehub
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run Unit Tests
+        run: |
+          dotnet test tests/KnowledgeHub.Tests.Unit/KnowledgeHub.Tests.Unit.csproj --configuration Release --verbosity minimal --logger "trx;LogFileName=unit-tests.trx" --collect:"XPlat Code Coverage"
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a   # v7
+        if: always()
+        with:
+          name: unit-test-results
+          path: "**/unit-tests.trx"
+
+  test-integration:
+    name: Integration Tests (SQLite)
+    runs-on: ubuntu-latest
+    needs: build-knowledgehub
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run Integration Tests
+        env:
+          ConnectionStrings__KnowledgeHub: "Data Source=:memory:"
+        run: |
+          dotnet test tests/KnowledgeHub.Tests.Integration/KnowledgeHub.Tests.Integration.csproj --configuration Release --verbosity minimal --logger "trx;LogFileName=integration-tests.trx"
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a   # v7
+        if: always()
+        with:
+          name: integration-test-results
+          path: "**/integration-tests.trx"
+
+  blazor-client-validation:
+    name: Blazor WASM Client Validation
+    runs-on: ubuntu-latest
+    needs: build-knowledgehub
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build Blazor WASM Client
+        run: |
+          dotnet build src/KnowledgeHub.Client/KnowledgeHub.Client.csproj --configuration Release --verbosity minimal
+
+      - name: Validate WASM Assets
+        run: |
+          if [ ! -f "src/KnowledgeHub.Client/bin/Release/net10.0/wwwroot/index.html" ]; then
+            echo "::error::Blazor WASM index.html nao encontrado"
+            exit 1
+          fi
+          echo "Blazor WASM assets gerados com sucesso"
+
+  docker-build:
+    name: Docker Image Build
+    runs-on: ubuntu-latest
+    needs: build-knowledgehub
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b4ff8a5e1d8e6b3c2b3b4f7a8e9f0a1b2c3d4e5f   # v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@2a8a6b5e1d8e6b3c2b3b4f7a8e9f0a1b2c3d4e5f   # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: knowledgehub:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

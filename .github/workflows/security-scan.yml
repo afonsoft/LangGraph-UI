@@ -1,0 +1,104 @@
+name: 🔒 Security Scan
+
+permissions: {}
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'    # Weekly on Monday at 2 AM UTC
+
+jobs:
+  codeql:
+    name: 🔍 CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['csharp', 'javascript']
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+
+      - name: 🔍 Initialize CodeQL
+        uses: github/codeql-action/init@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: 🔍 Autobuild
+        uses: github/codeql-action/autobuild@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+
+      - name: 🔍 Perform Analysis
+        uses: github/codeql-action/analyze@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        with:
+          category: "/language:${{matrix.language}}"
+
+  snyk:
+    name: 🛡️ Snyk Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+
+      - name: 🗄️ Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: 🔧 Restore Dependencies
+        run: dotnet restore KnowledgeHub.slnx --ignore-failed-sources
+
+      - name: 🛡️ Install Snyk CLI
+        run: |
+          curl -s https://static.snyk.io/cli/latest/snyk-linux -o snyk
+          chmod +x ./snyk
+          sudo mv ./snyk /usr/local/bin/
+
+      - name: 🛡️ Run Snyk Security Scan
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "⚠️ SNYK_TOKEN is not set or empty, skipping Snyk scan"
+            exit 0
+          fi
+          snyk test --severity-threshold=high --all-projects
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  trivy:
+    name: 🔐 Trivy Container Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+
+      - name: 🔐 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@6c175e9cf3a346f74c8a7ffbd2a2c31c723bc16b   # v0.24.0
+        with:
+          image-ref: 'knowledgehub:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 🔐 Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

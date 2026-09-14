@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-github-actions-ci` |
 | Ticket | `[A DEFINIR — GitHub Issue via /create-issues]` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
