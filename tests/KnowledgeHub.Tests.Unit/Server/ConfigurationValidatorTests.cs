@@ -93,6 +93,60 @@ public class ConfigurationValidatorTests
     }
 
     [Fact]
+    public void Chat_None_Passes()
+    {
+        var cfg = Config(new() { ["Chat:Provider"] = "none" });
+        ConfigurationValidator.Validate(cfg);
+    }
+
+    [Fact]
+    public void Chat_InvalidProvider_Fails()
+    {
+        var cfg = Config(new() { ["Chat:Provider"] = "anthropic-x" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("Chat:Provider", ex.Message);
+    }
+
+    [Fact]
+    public void Chat_OllamaWithoutEndpoint_Fails()
+    {
+        var cfg = Config(new()
+        {
+            ["Chat:Provider"] = "ollama",
+            ["Chat:Model"] = "llama3"
+        });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("Chat:Endpoint", ex.Message);
+    }
+
+    [Fact]
+    public void Chat_OpenAiValid_Passes()
+    {
+        var cfg = Config(new()
+        {
+            ["Chat:Provider"] = "openai",
+            ["Chat:Endpoint"] = "https://api.openai.com",
+            ["Chat:Model"] = "gpt-4o-mini",
+            ["Chat:TimeoutSeconds"] = "60"
+        });
+        ConfigurationValidator.Validate(cfg);
+    }
+
+    [Fact]
+    public void Chat_InvalidTimeout_Fails()
+    {
+        var cfg = Config(new()
+        {
+            ["Chat:Provider"] = "ollama",
+            ["Chat:Endpoint"] = "http://localhost:11434",
+            ["Chat:Model"] = "llama3",
+            ["Chat:TimeoutSeconds"] = "0"
+        });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("Chat:TimeoutSeconds", ex.Message);
+    }
+
+    [Fact]
     public void MultipleProblems_AllReported()
     {
         var cfg = Config(new()

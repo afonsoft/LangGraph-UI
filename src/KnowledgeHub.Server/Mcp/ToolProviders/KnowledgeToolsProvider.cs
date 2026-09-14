@@ -30,7 +30,8 @@ public sealed class KnowledgeToolsProvider : IToolProvider
           "question":{"type":"string","description":"Pergunta em linguagem natural"},
           "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"},
           "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
-          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"}
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"},
+          "generate":{"type":"boolean","description":"Sintetizar resposta via LLM configurado no servidor (default: true quando Chat:Provider configurado)"}
         },"required":["question"]}
         """)!.AsObject();
 
@@ -66,18 +67,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "ask_knowledge",
-                Description = "Responde uma pergunta usando o conhecimento indexado. Retorna contexto agregado com citações de fonte para o LLM sintetizar a resposta.",
+                Description = "Responde uma pergunta usando o conhecimento indexado. Com um chat provider configurado (Chat:Provider) sintetiza a resposta com citações [n]; caso contrário retorna o contexto agregado.",
                 InputSchema = AskSchema,
                 ReadOnly = true,
-                Handler = async (ctx, ct) =>
-                {
-                    var question = ToolArgs.RequiredString(ctx, "question");
-                    var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
-                    var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
-                    var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(question, topK, sourceId, mode, ct);
-                    return await ToolResults.Text(FormatAnswerContext(question, results));
-                }
+                Handler = AskKnowledgeAsync
             },
             new CatalogTool
             {
@@ -117,6 +110,54 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         return sourceId == Guid.Empty
             ? throw new McpProtocolException($"unknown source slug '{sourceSlug}'", McpErrorCode.InvalidParams)
             : (sourceId, mode);
+    }
+
+    /// <summary>
+    /// SPEC-20260914-llm-answer-synthesis RF-002/RF-004: with a configured chat
+    /// provider and generate!=false, synthesizes a cited answer (structuredContent).
+    /// Otherwise falls back to the legacy aggregated-context payload.
+    /// </summary>
+    private static async ValueTask<CallToolResult> AskKnowledgeAsync(
+        ToolCallContext ctx, CancellationToken ct)
+    {
+        var question = ToolArgs.RequiredString(ctx, "question");
+        var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
+        var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
+        var search = ctx.Services!.GetRequiredService<ISearchService>();
+        var results = await search.SearchAsync(question, topK, sourceId, mode, ct);
+
+        var answers = ctx.Services!.GetRequiredService<IAnswerService>();
+        var generate = ToolArgs.OptionalBool(ctx, "generate") ?? answers.IsConfigured;
+
+        if (!generate)
+            return await ToolResults.Text(FormatAnswerContext(question, results));
+
+        if (!answers.IsConfigured)
+        {
+            // RF risk mitigation: generate requested but no provider — raw context + warning.
+            return await ToolResults.Text(
+                FormatAnswerContext(question, results)
+                + "\n\n(warning: no chat provider configured — returning raw context)");
+        }
+
+        try
+        {
+            var answer = await answers.AnswerAsync(question, results, ct);
+            var text = new StringBuilder(answer.Answer);
+            if (answer.Citations.Count > 0)
+            {
+                text.Append("\n\nCitations:");
+                foreach (var c in answer.Citations)
+                    text.Append("\n[").Append(c.Index).Append("] ")
+                        .Append(c.Title).Append(" — ").Append(c.Source)
+                        .Append(" (").Append(c.Uri).Append(')');
+            }
+            return await ToolResults.Structured(text.ToString(), answer);
+        }
+        catch (Chat.ChatProviderException ex)
+        {
+            return await ToolResults.Error($"answer generation failed: {ex.Message}");
+        }
     }
 
     private static async ValueTask<CallToolResult> WriteKnowledgeAsync(

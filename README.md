@@ -37,6 +37,15 @@ a single Kestrel-hosted .NET 10 process.
     "Provider": "sqlite",                      // sqlite | postgres (pgvector)
     "ConnectionString": ""
   },
+  "Chat": {
+    "Provider": "none",                        // none | ollama | openai — server-side answer synthesis
+    "Endpoint": "http://localhost:11434",
+    "Model": "llama3.1",
+    "ApiKey": "",                              // env var only: Chat__ApiKey — never committed
+    "Temperature": 0.2,
+    "MaxTokens": 512,
+    "TimeoutSeconds": 120
+  },
   "DeepWiki": {
     "Enabled": true,
     "Endpoint": "https://mcp.deepwiki.com/mcp",

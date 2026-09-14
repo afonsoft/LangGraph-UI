@@ -1,3 +1,4 @@
+using KnowledgeHub.Server.Chat;
 using KnowledgeHub.Server.Embeddings;
 using KnowledgeHub.Server.Mcp.Upstream;
 
@@ -17,6 +18,9 @@ public static class ConfigurationValidator
     private static readonly HashSet<string> VectorStoreProviders = new(StringComparer.OrdinalIgnoreCase)
         { "sqlite", "postgres" };
 
+    private static readonly HashSet<string> ChatProviders = new(StringComparer.OrdinalIgnoreCase)
+        { "none", "ollama", "openai" };
+
     /// <summary>Throws <see cref="InvalidOperationException"/> listing every problem found.</summary>
     public static void Validate(IConfiguration configuration)
     {
@@ -24,6 +28,7 @@ public static class ConfigurationValidator
         ValidateEmbeddings(configuration, problems);
         ValidateVectorStore(configuration, problems);
         ValidateDeepWiki(configuration, problems);
+        ValidateChat(configuration, problems);
 
         if (problems.Count > 0)
             throw new InvalidOperationException(
@@ -73,6 +78,31 @@ public static class ConfigurationValidator
 
         if (section["TimeoutSeconds"] is { } t && (!int.TryParse(t, out var ts) || ts <= 0))
             problems.Add($"DeepWiki:TimeoutSeconds '{t}' must be a positive integer");
+    }
+
+    private static void ValidateChat(IConfiguration cfg, List<string> problems)
+    {
+        var section = cfg.GetSection(ChatProviderOptions.SectionName);
+        var provider = section["Provider"];
+        if (string.IsNullOrWhiteSpace(provider) || provider.Equals("none", StringComparison.OrdinalIgnoreCase))
+            return;
+        if (!ChatProviders.Contains(provider))
+        {
+            problems.Add($"Chat:Provider '{provider}' is invalid (expected: none | ollama | openai)");
+            return;
+        }
+
+        if (!IsHttpUri(section["Endpoint"]))
+            problems.Add($"Chat:Endpoint '{section["Endpoint"]}' is required and must be an absolute http(s) URI when Provider={provider}");
+        if (string.IsNullOrWhiteSpace(section["Model"]))
+            problems.Add($"Chat:Model is required when Provider={provider}");
+
+        if (section["TimeoutSeconds"] is { } t && (!int.TryParse(t, out var ts) || ts <= 0))
+            problems.Add($"Chat:TimeoutSeconds '{t}' must be a positive integer");
+        if (section["Temperature"] is { } temp && !double.TryParse(temp, out _))
+            problems.Add($"Chat:Temperature '{temp}' must be a number");
+        if (section["MaxTokens"] is { } mt && (!int.TryParse(mt, out var m) || m <= 0))
+            problems.Add($"Chat:MaxTokens '{mt}' must be a positive integer");
     }
 
     private static bool IsHttpUri(string? value) =>

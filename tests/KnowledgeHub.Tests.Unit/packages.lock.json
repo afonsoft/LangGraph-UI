@@ -293,8 +293,8 @@
       },
       "Microsoft.Extensions.AI.Abstractions": {
         "type": "Transitive",
-        "resolved": "10.8.3",
-        "contentHash": "K0B05oApxmviWalNHPMBBcRC7erKiDATz3ENNR/jqTR9JwIwLRefgDhj2jCRwL1aca99pXUe0qyQC73/xIuZig=="
+        "resolved": "10.9.0",
+        "contentHash": "//nASHMCJVxnYfE/WSzfaLOao6/q816kPpgB9rxU0gfSmAny1u3rfQT0D4xAmcIo4yQqJs7rAeBB+M/dIMdZYA=="
       },
       "Microsoft.Extensions.Caching.Abstractions": {
         "type": "Transitive",
@@ -729,6 +729,7 @@
           "KnowledgeHub.Shared": "[1.0.0, )",
           "Microsoft.AspNetCore.Components.WebAssembly.Server": "[10.0.12, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.12, )",
+          "Microsoft.Extensions.AI.Abstractions": "[10.9.0, )",
           "Npgsql": "[10.0.3, )",
           "Pgvector": "[0.3.2, )",
           "UglyToad.PdfPig": "[1.7.0-custom-5, )",

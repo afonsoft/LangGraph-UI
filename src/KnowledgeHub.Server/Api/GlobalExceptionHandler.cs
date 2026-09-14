@@ -1,3 +1,4 @@
+using KnowledgeHub.Server.Chat;
 using KnowledgeHub.Server.Embeddings;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,7 @@ public sealed class GlobalExceptionHandler(
         {
             BadHttpRequestException bad => (bad.StatusCode, "Bad request"),
             EmbeddingProviderException => (StatusCodes.Status502BadGateway, "Embedding provider failure"),
+            ChatProviderException => (StatusCodes.Status502BadGateway, "Chat provider failure"),
             OperationCanceledException => (499, "Request cancelled"),
             InvalidOperationException => (StatusCodes.Status500InternalServerError, "Operation failed"),
             _ => (StatusCodes.Status500InternalServerError, "Unexpected error")

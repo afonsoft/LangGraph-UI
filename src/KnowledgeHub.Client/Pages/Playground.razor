@@ -125,6 +125,26 @@
                         {
                             <pre class="border rounded p-3 bg-light mb-0" style="max-height: 480px; overflow: auto;">@_result.Value.ToString()</pre>
                         }
+                        else if (_structuredAnswer is not null)
+                        {
+                            <div class="mb-2" style="white-space: pre-wrap;">@_structuredAnswer</div>
+                            @if (_citations.Count > 0)
+                            {
+                                <div class="border-top pt-2 mt-2">
+                                    <small class="text-muted d-block mb-1">Citações</small>
+                                    <ul class="list-unstyled mb-0">
+                                        @foreach (var c in _citations)
+                                        {
+                                            <li>
+                                                <code>[@c.Index]</code> @c.Title —
+                                                <span class="text-muted">@c.Source</span>
+                                                <small class="text-muted">(@c.Uri)</small>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        }
                         else if (_texts.Count > 0)
                         {
                             @foreach (var text in _texts)
@@ -153,6 +173,8 @@
     private bool _isError;
     private JsonElement? _result;
     private List<string> _texts = [];
+    private string? _structuredAnswer;
+    private List<CitationModel> _citations = [];
     private double? _elapsedMs;
 
     protected override async Task OnInitializedAsync() => await LoadToolsAsync();
@@ -262,6 +284,7 @@
                     .Select(c => c.GetProperty("text").GetString() ?? "")
                     .ToList()
                 : [];
+            (_structuredAnswer, _citations) = ParseStructured(result);
             _elapsedMs = sw.Elapsed.TotalMilliseconds;
         }
         catch (Exception ex)
@@ -272,6 +295,37 @@
         {
             _running = false;
         }
+    }
+
+    private static (string? Answer, List<CitationModel> Citations) ParseStructured(JsonElement result)
+    {
+        if (!result.TryGetProperty("structuredContent", out var sc) ||
+            !sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
+            return (null, []);
+
+        var citations = new List<CitationModel>();
+        if (sc.TryGetProperty("citations", out var cs) && cs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in cs.EnumerateArray())
+            {
+                citations.Add(new CitationModel
+                {
+                    Index = c.TryGetProperty("index", out var i) ? i.GetInt32() : 0,
+                    Source = c.TryGetProperty("source", out var s) ? s.GetString() ?? "" : "",
+                    Title = c.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                    Uri = c.TryGetProperty("uri", out var u) ? u.GetString() ?? "" : ""
+                });
+            }
+        }
+        return (a.GetString(), citations);
+    }
+
+    private sealed class CitationModel
+    {
+        public int Index { get; init; }
+        public string Source { get; init; } = "";
+        public string Title { get; init; } = "";
+        public string Uri { get; init; } = "";
     }
 
     private sealed class FieldModel
