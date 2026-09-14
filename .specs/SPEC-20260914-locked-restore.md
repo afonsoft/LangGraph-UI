@@ -88,3 +88,15 @@ N/A — build infra.
 ## Open Questions / Pending Ambiguity
 
 - None.
+
+## 10. Conclusão
+
+Implementado em `feature/Devin-20260914-persistence-hardening`.
+
+- `Directory.Build.props` com `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>`.
+- `packages.lock.json` gerados para todos os 6 projetos (4 src + 2 tests).
+- Dockerfile usa `--locked-mode` no restore para builds reprodutíveis.
+- Zero breaking para dev local; locked-mode é opt-in via CLI/CI.
+- Co-localizado no branch com migrations e embedding-guard.
+
+Status: **Done** — SPEC concluída.
