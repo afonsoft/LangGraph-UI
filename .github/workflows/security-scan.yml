@@ -23,25 +23,36 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['csharp', 'javascript']
+        include:
+          - language: csharp
+            build-mode: autobuild
+          - language: javascript
+            build-mode: none
 
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
 
+      - name: 📦 Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
       - name: 🔍 Initialize CodeQL
-        uses: github/codeql-action/init@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63   # v4
         with:
           languages: ${{ matrix.language }}
           queries: security-extended,security-and-quality
+          build-mode: ${{ matrix.build-mode }}
 
       - name: 🔍 Autobuild
-        uses: github/codeql-action/autobuild@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        if: matrix.language == 'csharp'
+        uses: github/codeql-action/autobuild@b96794f015dfd88f77b49b1c93e0fa7110f94c63   # v4
 
       - name: 🔍 Perform Analysis
-        uses: github/codeql-action/analyze@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63   # v4
         with:
-          category: "/language:${{matrix.language}}"
+          category: "/language:${{ matrix.language }}"
 
   snyk:
     name: 🛡️ Snyk Security
@@ -62,19 +73,26 @@ jobs:
       - name: 🔧 Restore Dependencies
         run: dotnet restore KnowledgeHub.slnx --ignore-failed-sources
 
+      - name: 🔑 Check Snyk token
+        id: snyk-token
+        run: |
+          if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+            echo "present=true" >> $GITHUB_OUTPUT
+          else
+            echo "present=false" >> $GITHUB_OUTPUT
+            echo "::notice::SNYK_TOKEN não configurado — pulando Snyk"
+          fi
+
       - name: 🛡️ Install Snyk CLI
+        if: steps.snyk-token.outputs.present == 'true'
         run: |
           curl -s https://static.snyk.io/cli/latest/snyk-linux -o snyk
           chmod +x ./snyk
           sudo mv ./snyk /usr/local/bin/
 
       - name: 🛡️ Run Snyk Security Scan
-        run: |
-          if [ -z "$SNYK_TOKEN" ]; then
-            echo "⚠️ SNYK_TOKEN is not set or empty, skipping Snyk scan"
-            exit 0
-          fi
-          snyk test --severity-threshold=high --all-projects
+        if: steps.snyk-token.outputs.present == 'true'
+        run: snyk test --severity-threshold=high --all-projects
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
@@ -90,15 +108,20 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
 
+      - name: 🐳 Build image to scan
+        run: docker build -t knowledgehub:scan .
+
       - name: 🔐 Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@6c175e9cf3a346f74c8a7ffbd2a2c31c723bc16b   # v0.24.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25   # v0.36.0
         with:
-          image-ref: 'knowledgehub:latest'
+          image-ref: 'knowledgehub:scan'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
 
       - name: 🔐 Upload Trivy Results
-        uses: github/codeql-action/upload-sarif@eec0bff2f6c15bf3f1e8a0152f94d17664a06a06   # v4
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63   # v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
