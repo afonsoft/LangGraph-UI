@@ -9,7 +9,8 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-hitl-tool-approval` |
 | DependsOn | `SPEC-20260914-agent-chat-loop` |
-| Status | `Approved` |
+| Status | `Done` |
+| Ticket | `#32` |
 
 ## 1. User Story
 
@@ -64,12 +65,12 @@ Hoje tools mutating executam imediatamente — na UI do Playground é o próprio
 
 ## 7. Critérios de aceite
 
-- [ ] Agente tentando `write_note` com gate ativo → resposta `awaiting_approval`, nada escrito no vault.
-- [ ] `approve` → loop continua e arquivo é criado; `deny` → agente recebe tool result "denied" e responde sem escrever.
-- [ ] Timeout → `expired`, não executa.
-- [ ] Cliente MCP externo chamando `write_note` direto → executa (comportamento atual preservado).
-- [ ] UI lista pending em tempo real via SignalR.
-- [ ] Suite verde.
+- [x] Agente tentando `write_note` com gate ativo → resposta `awaiting_approval`, nada escrito no vault.
+- [x] `approve` → loop continua e arquivo é criado; `deny` → agente recebe tool result "denied" e responde sem escrever.
+- [x] Timeout → `expired`, não executa.
+- [x] Cliente MCP externo chamando `write_note` direto → executa (comportamento atual preservado).
+- [x] UI lista pending em tempo real via SignalR.
+- [x] Suite verde.
 
 ## 8. Riscos
 

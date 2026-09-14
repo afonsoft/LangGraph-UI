@@ -24,7 +24,7 @@ public sealed class KnowledgeSourceService(
         [SourceType.WebPage] = ["url"],
         [SourceType.RestApi] = ["endpoint"],
         [SourceType.SqlDatabase] = ["connectionString", "query"],
-        [SourceType.DocumentFile] = ["filePath"]
+        [SourceType.DocumentFile] = ["path"]
     };
 
     public async Task<IReadOnlyList<KnowledgeSourceDto>> ListAsync(SourceType? type, bool? active, CancellationToken ct = default)
@@ -167,7 +167,9 @@ public sealed class KnowledgeSourceService(
         AutoSyncEnabled = s.AutoSyncEnabled,
         SyncIntervalMinutes = s.SyncIntervalMinutes,
         CreatedAt = s.CreatedAt,
-        LastSyncAt = s.LastSyncAt
+        LastSyncAt = s.LastSyncAt,
+        LastSyncStatus = s.LastSyncStatus,
+        LastError = s.LastError
     };
 
     /// <summary>Strip sensitive keys so API responses never echo secrets (SPEC-02 §Guardrails).</summary>

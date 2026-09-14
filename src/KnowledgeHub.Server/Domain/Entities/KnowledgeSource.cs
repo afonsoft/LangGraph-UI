@@ -14,6 +14,10 @@ public sealed class KnowledgeSource
     public int? SyncIntervalMinutes { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastSyncAt { get; set; }
+    /// <summary>Outcome of the last sync run: completed | failed (SPEC-20260914-obsidian-webdav RF-002).</summary>
+    public string? LastSyncStatus { get; set; }
+    /// <summary>Human-readable reason for the last sync failure; cleared on success.</summary>
+    public string? LastError { get; set; }
 
     public List<KnowledgeDocument> Documents { get; set; } = [];
 }

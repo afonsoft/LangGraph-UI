@@ -1,4 +1,5 @@
 using System.Text.Json;
+using KnowledgeHub.McpEngine.Activity;
 using KnowledgeHub.Server.BackgroundServices;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
@@ -29,10 +30,52 @@ public static class KnowledgeHubServiceCollectionExtensions
                 cfg.GetSection(EmbeddingOptions.SectionName).Bind(options));
 
         services.AddHttpClient("embeddings");
+        services.AddHttpClient("webpage", c => c.Timeout = TimeSpan.FromSeconds(30));
+
+        // SPEC-20260914-webpage-docfile-connectors: connector registry.
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.WebPageConnector>();
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.DocumentFileConnector>();
         services.AddSingleton<IEmbeddingProvider>(sp =>
             EmbeddingProviderFactory.Create(
                 sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value,
                 sp.GetRequiredService<IHttpClientFactory>()));
+
+        // SPEC-20260914-llm-answer-synthesis RF-001: optional chat client.
+        // Provider=none → IChatClient is not registered; consumers use GetService.
+        services.AddOptions<Chat.ChatProviderOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(Chat.ChatProviderOptions.SectionName).Bind(options));
+        services.AddHttpClient("chat");
+        if (!configuration.GetValue("Chat:Provider", "none").Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
+                Chat.ChatClientFactory.Create(
+                    sp.GetRequiredService<IOptions<Chat.ChatProviderOptions>>().Value,
+                    sp.GetRequiredService<IHttpClientFactory>())!);
+        }
+        services.AddScoped<IAnswerService>(sp => new AnswerService(
+            sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
+            sp.GetRequiredService<IOptions<Chat.ChatProviderOptions>>().Value,
+            sp.GetRequiredService<ILogger<AnswerService>>()));
+
+        // SPEC-20260914-agent-chat-loop: model→tools→model loop over the live catalog.
+        services.AddOptions<Agent.AgentOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(Agent.AgentOptions.SectionName).Bind(options));
+        services.AddScoped<IAgentService>(sp => new AgentService(
+            sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
+            sp,
+            sp.GetRequiredService<IDynamicToolCatalog>(),
+            sp.GetRequiredService<Data.KnowledgeHubDbContext>(),
+            sp.GetRequiredService<IOptions<Agent.AgentOptions>>().Value,
+            sp.GetService<IMcpActivityFeed>(),
+            sp.GetRequiredService<ILogger<AgentService>>()));
+        services.AddScoped<IApprovalService>(sp => new ApprovalService(
+            sp.GetRequiredService<Data.KnowledgeHubDbContext>(),
+            TimeSpan.FromMinutes(
+                sp.GetRequiredService<IOptions<Agent.AgentOptions>>().Value.ApprovalTimeoutMinutes),
+            sp.GetService<IMcpActivityFeed>()));
+        services.AddScoped<IConversationService, ConversationService>();
 
         services.AddScoped<IVectorStore>(sp =>
         {
@@ -47,6 +90,7 @@ public static class KnowledgeHubServiceCollectionExtensions
         });
 
         services.AddScoped<IKnowledgeSourceService, KnowledgeSourceService>();
+        services.AddScoped<Search.ILexicalSearchService, Search.LexicalSearchService>();
         services.AddScoped<ISearchService, SearchService>();
 
         services.AddSingleton<IngestionService>();

@@ -2,6 +2,7 @@
 @using System.Text.Json
 @using KnowledgeHub.Shared.Contracts
 @inject ToolsApiClient Tools
+@inject StreamingApiClient Streaming
 @inject ToastService Toast
 
 <PageTitle>Playground — KnowledgeHub</PageTitle>
@@ -94,14 +95,30 @@
                         </div>
                     }
 
-                    <div class="d-flex align-items-center gap-2 mt-3">
-                        <Button Color="Color.Primary" Icon="fa-solid fa-play" Text="Executar"
-                                IsAsync="true" OnClick="RunToolAsync" IsDisabled="_running" />
-                        @if (_elapsedMs is not null)
-                        {
-                            <span class="text-muted">@_elapsedMs.Value.ToString("F0") ms</span>
-                        }
-                    </div>
+                    @if (_awaitingWriteConfirm)
+                    {
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <strong>Confirma escrita?</strong> Esta tool modifica a base.
+                            <pre class="border rounded p-2 mt-2 mb-2 bg-light" style="white-space: pre-wrap;">@_pendingArgsJson</pre>
+                            <div class="d-flex gap-2">
+                                <Button Size="Size.Small" Color="Color.Warning" Text="Confirmar escrita"
+                                        IsAsync="true" OnClick="RunToolAsync" />
+                                <Button Size="Size.Small" Color="Color.Secondary" Text="Cancelar"
+                                        OnClick="() => _awaitingWriteConfirm = false" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <Button Color="Color.Primary" Icon="fa-solid fa-play" Text="Executar"
+                                    IsAsync="true" OnClick="RunToolAsync" IsDisabled="_running" />
+                            @if (_elapsedMs is not null)
+                            {
+                                <span class="text-muted">@_elapsedMs.Value.ToString("F0") ms</span>
+                            }
+                        </div>
+                    }
                 </BodyTemplate>
             </Card>
 
@@ -124,6 +141,49 @@
                         @if (_showRaw)
                         {
                             <pre class="border rounded p-3 bg-light mb-0" style="max-height: 480px; overflow: auto;">@_result.Value.ToString()</pre>
+                        }
+                        else if (_structuredAnswer is not null)
+                        {
+                            <div class="mb-2" style="white-space: pre-wrap;">@_structuredAnswer</div>
+                            @if (_agentSteps.Count > 0)
+                            {
+                                <div class="border-top pt-2 mt-2">
+                                    <small class="text-muted d-block mb-1">
+                                        Etapas do agente — @_agentIterations iteraç(ões) · @_agentLatencyMs.ToString("F0") ms
+                                    </small>
+                                    <ul class="list-unstyled mb-0">
+                                        @foreach (var s in _agentSteps)
+                                        {
+                                            <li class="d-flex align-items-center gap-2 mb-1">
+                                                <Badge Color="Color.Secondary">#@s.Iteration</Badge>
+                                                <code>@s.Tool</code>
+                                                <small class="text-muted text-truncate" style="max-width: 45%;">@s.ArgsSummary</small>
+                                                <small class="text-muted ms-auto">@s.ElapsedMs.ToString("F0") ms</small>
+                                                @if (s.IsError)
+                                                {
+                                                    <Badge Color="Color.Danger">erro</Badge>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                            @if (_citations.Count > 0)
+                            {
+                                <div class="border-top pt-2 mt-2">
+                                    <small class="text-muted d-block mb-1">Citações</small>
+                                    <ul class="list-unstyled mb-0">
+                                        @foreach (var c in _citations)
+                                        {
+                                            <li>
+                                                <code>[@c.Index]</code> @c.Title —
+                                                <span class="text-muted">@c.Source</span>
+                                                <small class="text-muted">(@c.Uri)</small>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
                         }
                         else if (_texts.Count > 0)
                         {
@@ -153,7 +213,14 @@
     private bool _isError;
     private JsonElement? _result;
     private List<string> _texts = [];
+    private string? _structuredAnswer;
+    private List<CitationModel> _citations = [];
+    private List<AgentStepModel> _agentSteps = [];
+    private int _agentIterations;
+    private double _agentLatencyMs;
     private double? _elapsedMs;
+    private bool _awaitingWriteConfirm;
+    private string? _pendingArgsJson;
 
     protected override async Task OnInitializedAsync() => await LoadToolsAsync();
 
@@ -183,6 +250,7 @@
         _selected = tool;
         _result = null;
         _elapsedMs = null;
+        _awaitingWriteConfirm = false;
         BuildFields();
     }
 
@@ -248,9 +316,27 @@
             }
         }
 
+        // RF-003: mutating tools invoked from the UI require an explicit
+        // inline confirmation carrying the assembled args (HITL gate).
+        if (!_selected.ReadOnly && !_awaitingWriteConfirm)
+        {
+            _pendingArgsJson = JsonSerializer.Serialize(
+                args, new JsonSerializerOptions { WriteIndented = true });
+            _awaitingWriteConfirm = true;
+            return;
+        }
+        _awaitingWriteConfirm = false;
+
         _running = true;
         _result = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // SPEC-20260914-streaming-answers RF-002: agent/ask run over SSE so tokens
+        // and tool steps render incrementally; falls back to the sync call when
+        // the stream fails before the first event.
+        if (_selected.Name is "agent_chat" or "ask_knowledge" && await TryStreamAsync(args, sw))
+            return;
+
         try
         {
             var result = await Tools.CallAsync(_selected.Name, JsonSerializer.Serialize(args));
@@ -262,6 +348,7 @@
                     .Select(c => c.GetProperty("text").GetString() ?? "")
                     .ToList()
                 : [];
+            (_structuredAnswer, _citations, _agentSteps, _agentIterations, _agentLatencyMs) = ParseStructured(result);
             _elapsedMs = sw.Elapsed.TotalMilliseconds;
         }
         catch (Exception ex)
@@ -272,6 +359,149 @@
         {
             _running = false;
         }
+    }
+
+    /// <summary>Consumes the SSE endpoint; returns false when nothing arrived (caller falls back).</summary>
+    private async Task<bool> TryStreamAsync(Dictionary<string, JsonElement> args, System.Diagnostics.Stopwatch sw)
+    {
+        var path = _selected!.Name == "agent_chat" ? "api/agent/stream" : "api/ask/stream";
+        _result = JsonSerializer.SerializeToElement(new { });
+        _structuredAnswer = "";
+        _citations = [];
+        _agentSteps = [];
+        _isError = false;
+        _texts = [];
+        var received = false;
+        try
+        {
+            await foreach (var msg in Streaming.StreamAsync(path, args))
+            {
+                received = true;
+                var data = msg.Data.TryGetProperty("data", out var d) ? d : msg.Data;
+                switch (msg.Event)
+                {
+                    case "token":
+                        _structuredAnswer += data.GetProperty("delta").GetString();
+                        break;
+                    case "tool_start":
+                        _agentSteps.Add(new AgentStepModel
+                        {
+                            Iteration = _agentSteps.Count + 1,
+                            Tool = data.TryGetProperty("tool", out var ts) ? ts.GetString() ?? "" : "",
+                            ArgsSummary = data.TryGetProperty("args", out var aa) ? aa.GetString() ?? "" : ""
+                        });
+                        break;
+                    case "tool_end":
+                        var last = _agentSteps.LastOrDefault();
+                        if (last is not null)
+                        {
+                            _agentSteps[^1] = last with
+                            {
+                                IsError = data.TryGetProperty("isError", out var ie) && ie.GetBoolean(),
+                                ElapsedMs = data.TryGetProperty("elapsedMs", out var em) ? em.GetDouble() : 0
+                            };
+                        }
+                        break;
+                    case "awaiting_approval":
+                        _structuredAnswer += $"\n\n⏳ Aguardando aprovação da tool '{data.GetProperty("tool").GetString()}' — veja /approvals.";
+                        break;
+                    case "done":
+                        (_structuredAnswer, _citations, _agentSteps, _agentIterations, _agentLatencyMs) =
+                            ParseStructuredContent(data);
+                        break;
+                    case "error":
+                        _isError = true;
+                        _texts = [data.TryGetProperty("message", out var m) ? m.GetString() ?? "stream error" : "stream error"];
+                        break;
+                }
+                StateHasChanged();
+            }
+            _elapsedMs = sw.Elapsed.TotalMilliseconds;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (received)
+            {
+                _isError = true;
+                _texts = [ex.Message];
+                return true;
+            }
+            _result = null;
+            _structuredAnswer = null;
+            return false; // connection never established — sync fallback
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
+        ParseStructured(JsonElement result)
+    {
+        if (!result.TryGetProperty("structuredContent", out var sc) ||
+            !sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
+            return (null, [], [], 0, 0);
+        return ParseStructuredContent(sc);
+    }
+
+    private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
+        ParseStructuredContent(JsonElement sc)
+    {
+        if (!sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
+            return (null, [], [], 0, 0);
+
+        var steps = new List<AgentStepModel>();
+        if (sc.TryGetProperty("steps", out var st) && st.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var s in st.EnumerateArray())
+            {
+                steps.Add(new AgentStepModel
+                {
+                    Iteration = s.TryGetProperty("iteration", out var it) ? it.GetInt32() : 0,
+                    Tool = s.TryGetProperty("tool", out var tn) ? tn.GetString() ?? "" : "",
+                    ArgsSummary = s.TryGetProperty("argsSummary", out var ag) ? ag.GetString() ?? "" : "",
+                    IsError = s.TryGetProperty("isError", out var ie) && ie.GetBoolean(),
+                    ElapsedMs = s.TryGetProperty("elapsedMs", out var em) ? em.GetDouble() : 0
+                });
+            }
+        }
+
+        var iterations = sc.TryGetProperty("iterations", out var itr) ? itr.GetInt32() : 0;
+        var latencyMs = sc.TryGetProperty("latencyMs", out var lm) ? lm.GetDouble() : 0;
+        var citations = new List<CitationModel>();
+        if (sc.TryGetProperty("citations", out var cs) && cs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in cs.EnumerateArray())
+            {
+                citations.Add(new CitationModel
+                {
+                    Index = c.TryGetProperty("index", out var i) ? i.GetInt32() : 0,
+                    Source = c.TryGetProperty("source", out var s) ? s.GetString() ?? "" : "",
+                    Title = c.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                    Uri = c.TryGetProperty("uri", out var u) ? u.GetString() ?? "" : ""
+                });
+            }
+        }
+        return (a.GetString(), citations, steps, iterations, latencyMs);
+    }
+
+    private sealed record AgentStepModel
+    {
+        public int Iteration { get; init; }
+        public string Tool { get; init; } = "";
+        public string ArgsSummary { get; init; } = "";
+        public bool IsError { get; init; }
+        public double ElapsedMs { get; init; }
+    }
+
+    private sealed class CitationModel
+    {
+        public int Index { get; init; }
+        public string Source { get; init; } = "";
+        public string Title { get; init; } = "";
+        public string Uri { get; init; } = "";
     }
 
     private sealed class FieldModel

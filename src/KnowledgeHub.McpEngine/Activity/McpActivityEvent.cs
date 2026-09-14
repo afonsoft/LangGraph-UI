@@ -6,7 +6,9 @@ public enum McpActivityKind
     SessionOpened,
     SessionClosed,
     Request,
-    ToolCall
+    ToolCall,
+    ApprovalRequested,
+    ApprovalResolved
 }
 
 /// <summary>One observable MCP activity entry for the Monitor UI.</summary>

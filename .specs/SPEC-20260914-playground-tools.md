@@ -9,7 +9,7 @@
 | Stack | `.NET 10`, `Blazor WASM`, `MCP` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-playground-tools` |
-| Ticket | `[A DEFINIR]` |
+| Ticket | `—` |
 | Status | `Done` |
 
 ## 1. User Story

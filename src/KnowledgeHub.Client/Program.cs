@@ -13,6 +13,9 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddScoped<SourceApiClient>();
 builder.Services.AddScoped<SearchApiClient>();
 builder.Services.AddScoped<ToolsApiClient>();
+builder.Services.AddScoped<ApprovalsApiClient>();
+builder.Services.AddScoped<ThreadsApiClient>();
+builder.Services.AddScoped<StreamingApiClient>();
 builder.Services.AddTransient<McpMonitorClient>();
 
 await builder.Build().RunAsync();

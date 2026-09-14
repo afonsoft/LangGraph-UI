@@ -1,0 +1,179 @@
+using System.Net;
+using KnowledgeHub.Server.Domain.Entities;
+using KnowledgeHub.Shared.Contracts;
+
+namespace KnowledgeHub.Server.Ingestion.Connectors;
+
+/// <summary>
+/// WebPage connector (SPEC-20260914-webpage-docfile-connectors RF-001/RF-004):
+/// fetches public pages, extracts the main content, optionally crawls same-origin
+/// links (depth ≤ 2, ≤ 100 pages, 250 ms politeness). SSRF guard blocks
+/// private/loopback targets unless <c>allowPrivateHosts</c> is set.
+/// </summary>
+public sealed class WebPageConnector(
+    IHttpClientFactory httpClientFactory,
+    ILogger<WebPageConnector> logger) : ISourceConnector
+{
+    private static readonly TimeSpan Politeness = TimeSpan.FromMilliseconds(250);
+
+    public SourceType Type => SourceType.WebPage;
+
+    public async Task<FetchResult> FetchAsync(KnowledgeSource source, CancellationToken cancellationToken)
+    {
+        var config = ConnectorConfig.Parse(source.ConfigurationJson);
+        var url = config.String("url");
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var start) || start.Scheme is not ("http" or "https"))
+            throw new InvalidOperationException($"WebPage source '{source.Name}' has no valid 'url'");
+
+        var allowPrivate = config.Bool("allowPrivateHosts");
+        var crawlDepth = config.Int("crawlDepth", 0, 0, 2);
+        var maxPages = config.Int("maxPages", 20, 1, 100);
+        var includeSelector = config.String("includeSelector");
+        var excludeSelector = config.String("excludeSelector");
+
+        if (!allowPrivate)
+            await GuardPublicAsync(start, cancellationToken);
+
+        var robots = await FetchRobotsAsync(start, cancellationToken);
+
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<(Uri Uri, int Depth)>();
+        queue.Enqueue((start, 0));
+        visited.Add(start.GetLeftPart(UriPartial.Path));
+
+        var documents = new List<RawDocument>();
+        var warnings = new List<string>();
+        var client = httpClientFactory.CreateClient("webpage");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("KnowledgeHub/1.0");
+
+        while (queue.Count > 0 && documents.Count < maxPages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (page, depth) = queue.Dequeue();
+
+            if (!robots.Allows(page))
+            {
+                logger.LogInformation("robots.txt disallows {Url} — skipped", page);
+                warnings.Add($"{page}: disallowed by robots.txt");
+                continue;
+            }
+
+            string? html = null;
+            try
+            {
+                using var response = await client.GetAsync(page, cancellationToken);
+                if (response.IsSuccessStatusCode
+                    && response.Content.Headers.ContentType?.MediaType == "text/html")
+                    html = await response.Content.ReadAsStringAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                logger.LogWarning(ex, "Fetch failed for {Url} — skipped", page);
+                warnings.Add($"{page}: fetch failed ({ex.Message})");
+            }
+
+            if (html is not null)
+            {
+                var text = HtmlTextExtractor.Extract(html, includeSelector, excludeSelector);
+                if (text.Length > 0)
+                {
+                    var title = HtmlTextExtractor.ExtractTitle(html) ?? page.AbsolutePath.Trim('/');
+                    documents.Add(new RawDocument(page.AbsoluteUri, title, text));
+                }
+
+                if (depth < crawlDepth)
+                {
+                    foreach (var link in HtmlTextExtractor.ExtractLinks(html, page))
+                    {
+                        if (visited.Add(link) && visited.Count <= maxPages)
+                            queue.Enqueue((new Uri(link), depth + 1));
+                    }
+                }
+            }
+
+            if (queue.Count > 0)
+                await Task.Delay(Politeness, cancellationToken);
+        }
+
+        return new FetchResult(documents, warnings);
+    }
+
+    /// <summary>SSRF guard: refuse loopback/link-local/private targets.</summary>
+    public static async Task GuardPublicAsync(Uri uri, CancellationToken ct)
+    {
+        IPAddress[] addresses;
+        try
+        {
+            addresses = await Dns.GetHostAddressesAsync(uri.Host, ct);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Cannot resolve host '{uri.Host}'", ex);
+        }
+
+        if (addresses.Length == 0 || addresses.Any(IsPrivate))
+            throw new InvalidOperationException(
+                $"WebPage url '{uri.Host}' resolves to a private/loopback address — " +
+                "set 'allowPrivateHosts': true in the source configuration to opt in");
+    }
+
+    public static bool IsPrivate(IPAddress ip) =>
+        IPAddress.IsLoopback(ip)
+        || ip.IsIPv6LinkLocal
+        || (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+            && (ip.GetAddressBytes()[0] & 0xFE) == 0xFC) // fc00::/7 unique-local
+        || (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+            && ip.GetAddressBytes() is { } b
+            && (b[0] == 10
+                || (b[0] == 172 && b[1] is >= 16 and <= 31)
+                || (b[0] == 192 && b[1] == 168)
+                || (b[0] == 169 && b[1] == 254)));
+
+    private async Task<RobotsPolicy> FetchRobotsAsync(Uri start, CancellationToken ct)
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("webpage");
+            var robotsUri = new Uri($"{start.Scheme}://{start.Authority}/robots.txt");
+            using var response = await client.GetAsync(robotsUri, ct);
+            return response.IsSuccessStatusCode
+                ? RobotsPolicy.Parse(await response.Content.ReadAsStringAsync(ct))
+                : RobotsPolicy.AllowAll;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return RobotsPolicy.AllowAll;
+        }
+    }
+
+    /// <summary>Minimal robots.txt: honor the `User-agent: *` group's Disallow prefixes.</summary>
+    public sealed class RobotsPolicy
+    {
+        public static readonly RobotsPolicy AllowAll = new([]);
+
+        private readonly List<string> _disallow;
+        private RobotsPolicy(List<string> disallow) => _disallow = disallow;
+
+        public static RobotsPolicy Parse(string robotsTxt)
+        {
+            var disallow = new List<string>();
+            var appliesToUs = false;
+            foreach (var rawLine in robotsTxt.Split('\n'))
+            {
+                var line = rawLine.Split('#')[0].Trim();
+                var colon = line.IndexOf(':');
+                if (colon <= 0) continue;
+                var field = line[..colon].Trim();
+                var value = line[(colon + 1)..].Trim();
+                if (field.Equals("User-agent", StringComparison.OrdinalIgnoreCase))
+                    appliesToUs = value is "*" or "KnowledgeHub";
+                else if (appliesToUs && field.Equals("Disallow", StringComparison.OrdinalIgnoreCase) && value.Length > 0)
+                    disallow.Add(value);
+            }
+            return new RobotsPolicy(disallow);
+        }
+
+        public bool Allows(Uri page) =>
+            !_disallow.Any(d => page.AbsolutePath.StartsWith(d, StringComparison.OrdinalIgnoreCase));
+    }
+}

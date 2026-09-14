@@ -17,6 +17,69 @@ namespace KnowledgeHub.Server.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.ConversationMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ThreadId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TokenEstimate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ToolName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ThreadId");
+
+                    b.ToTable("ThreadMessages");
+                });
+
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.ConversationThread", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastActivityAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Summary")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Threads");
+                });
+
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.DocumentChunk", b =>
                 {
                     b.Property<Guid>("Id")
@@ -103,7 +166,13 @@ namespace KnowledgeHub.Server.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("LastError")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastSyncAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastSyncStatus")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -127,6 +196,67 @@ namespace KnowledgeHub.Server.Migrations
                     b.ToTable("Sources");
                 });
 
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.ToolApproval", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApprovedArgsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArgumentsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ResumedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StateJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ThreadId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("Approvals");
+                });
+
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.ConversationMessage", b =>
+                {
+                    b.HasOne("KnowledgeHub.Server.Domain.Entities.ConversationThread", "Thread")
+                        .WithMany("Messages")
+                        .HasForeignKey("ThreadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Thread");
+                });
+
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.DocumentChunk", b =>
                 {
                     b.HasOne("KnowledgeHub.Server.Domain.Entities.KnowledgeDocument", "Document")
@@ -147,6 +277,11 @@ namespace KnowledgeHub.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Source");
+                });
+
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.ConversationThread", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.KnowledgeDocument", b =>

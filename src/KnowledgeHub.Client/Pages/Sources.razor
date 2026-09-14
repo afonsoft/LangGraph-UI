@@ -38,6 +38,25 @@
                 @(v.Value?.LocalDateTime.ToString("g") ?? "—")
             </Template>
         </TableColumn>
+        <TableColumn Field="@context.LastSyncStatus" FieldExpression="@(() => context.LastSyncStatus)" Text="Status">
+            <Template Context="v">
+                @switch (v.Row.LastSyncStatus)
+                {
+                    case "completed":
+                        <Badge Color="Color.Success">ok</Badge>
+                        break;
+                    case "failed":
+                        <Badge Color="Color.Danger" title="@v.Row.LastError">falhou</Badge>
+                        break;
+                    case "skipped":
+                        <Badge Color="Color.Warning" title="@v.Row.LastError">skip</Badge>
+                        break;
+                    default:
+                        <span class="text-muted">—</span>
+                        break;
+                }
+            </Template>
+        </TableColumn>
         <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="300">
             <Template Context="v">
                 <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" Text="Editar"

@@ -152,12 +152,12 @@ public class SourcesApiTests : IClassFixture<SourcesApiTests.Fixture>
     [Fact]
     public async Task Sync_UnimplementedConnector_ReturnsSkipped()
     {
-        // WebPage connector is registered but not implemented in the MVP → "skipped"
+        // RestApi connector is registered but intentionally not implemented → "skipped"
         var response = await _client.PostAsJsonAsync("/api/sources", new
         {
             name = $"sync-{Guid.NewGuid():N}",
-            type = "WebPage",
-            configuration = new { url = "https://example.com" }
+            type = "RestApi",
+            configuration = new { endpoint = "https://example.com/api" }
         });
         var created = await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>();
 

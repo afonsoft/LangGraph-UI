@@ -41,7 +41,7 @@ public sealed class SourceQueryToolsProvider : IToolProvider
                 var query = ToolArgs.RequiredString(ctx, "query");
                 var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
                 var search = ctx.Services!.GetRequiredService<ISearchService>();
-                var results = await search.SearchAsync(query, topK, source.Id, ct);
+                var results = await search.SearchAsync(query, topK, source.Id, ct: ct);
                 return await ToolResults.Text(KnowledgeToolsProvider.FormatHits(results));
             }
         }).ToList();

@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / Blazor WebAssembly + BootstrapBlazor` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260913-knowledge-hub-platform` |
-| Ticket | `[A DEFINIR — GitHub Issue via /create-issues]` |
-| Status | `Approved` |
+| Ticket | `#6` |
+| Status | `Done` |
 
 ## 1. User Story
 

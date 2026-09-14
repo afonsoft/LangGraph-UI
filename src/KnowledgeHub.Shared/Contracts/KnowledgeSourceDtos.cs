@@ -38,6 +38,10 @@ public sealed record KnowledgeSourceDto
     public int? SyncIntervalMinutes { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastSyncAt { get; init; }
+    /// <summary>Outcome of the last sync run: completed | failed.</summary>
+    public string? LastSyncStatus { get; init; }
+    /// <summary>Reason for the last sync failure; null when healthy.</summary>
+    public string? LastError { get; init; }
 }
 
 /// <summary>Indexed document summary under a source.</summary>

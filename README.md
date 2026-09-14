@@ -10,15 +10,17 @@ a single Kestrel-hosted .NET 10 process.
 | Route | Purpose |
 |---|---|
 | `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`) |
-| `/api/sources`, `/api/search` | REST API |
+| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API |
+| `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP (modern clients) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
 | `/hubs/mcp` | SignalR feed for the MCP monitor |
 
 ## MCP tools
 
-`search_knowledge`, `ask_knowledge`, `write_knowledge`, `read_document`,
-`write_note`, `query_{source_slug}` per active source, plus DeepWiki bypass:
+`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`,
+`read_document`, `write_note`, `query_{source_slug}` per active source,
+plus DeepWiki bypass:
 `ask_question`, `read_wiki_structure`, `read_wiki_contents`.
 
 ## Configuration
@@ -36,6 +38,23 @@ a single Kestrel-hosted .NET 10 process.
   "VectorStore": {
     "Provider": "sqlite",                      // sqlite | postgres (pgvector)
     "ConnectionString": ""
+  },
+  "Chat": {
+    "Provider": "none",                        // none | ollama | openai — server-side answer synthesis
+    "Endpoint": "http://localhost:11434",
+    "Model": "llama3.1",
+    "ApiKey": "",                              // env var only: Chat__ApiKey — never committed
+    "Temperature": 0.2,
+    "MaxTokens": 512,
+    "TimeoutSeconds": 120
+  },
+  "Agent": {
+    "MaxIterations": 10,                          // model→tools→model rounds cap (agent_chat / POST /api/agent)
+    "MaxToolCalls": 20,                           // total tool invocations cap
+    "MaxToolResultChars": 4000,                   // truncation before results re-enter the model
+    "RequireApprovalFor": ["*"],                  // mutating tools need human approval inside the agent loop
+    "ApprovalTimeoutMinutes": 30,                 // pending approvals expire after this
+    "MaxContextTokens": 8000                      // thread history window (chars/4) — older turns are summarized
   },
   "DeepWiki": {
     "Enabled": true,
@@ -86,6 +105,45 @@ container freely — data survives). `docker compose up -d` is equivalent to
 `--docker` mode. Port and providers can be overridden via a local `.env`
 (`KNOWLEDGEHUB_PORT=5550`, `EMBEDDINGS_*`, `VECTORSTORE_*`, `DEEPWIKI_*`) —
 both `docker compose` and `install.sh` read it; `--port` still wins.
+
+## Obsidian via WebDAV
+
+A remote Obsidian vault can be indexed without an in-app WebDAV client: mount
+it on the **host** as a local folder and register it as an `ObsidianVault`
+source. KnowledgeHub consumes it like any local vault (SPEC-20260914-obsidian-webdav).
+
+Host mount with `davfs2`:
+
+```bash
+sudo apt install davfs2
+sudo mkdir -p /srv/webdav/obsidian
+# credentials live in davfs2 secrets — never in the repo or in configuration.json
+echo '/srv/webdav/obsidian  user  <password>' | sudo tee -a /etc/davfs2/secrets
+sudo mount -t davfs2 https://<webdav-host>/remote.php/dav/files/<user>/ /srv/webdav/obsidian
+```
+
+Persist across reboots via `/etc/fstab` (note `_netdev` — waits for the network):
+
+```fstab
+https://<webdav-host>/remote.php/dav/files/<user>/  /srv/webdav/obsidian  davfs  _netdev,rw,uid=<user>,gid=<user>  0  0
+```
+
+Then bind the mount into the container (see the commented volume in
+`docker-compose.yml`) and create the source with `configuration.path` set to
+the **container** path — e.g. `/vaults/obsidian`, not the host path.
+
+Operational notes:
+
+- **Use `autoSync` + `syncIntervalMinutes`.** davfs2/FUSE mounts do not
+  propagate inotify for *remote* changes — the file watcher only sees writes
+  made through this mount. Polling (`autoSync`) is the update mechanism.
+- **Mount `ro` for read-only vaults** — `write_note` needs `rw` and fails
+  clearly otherwise.
+- **Cache tuning:** davfs2 `cache_size`/`file_refresh` in `davfs2.conf` trade
+  sync latency vs. bandwidth.
+- **Mount down** → sync fails per-source with `LastSyncStatus=failed` and a
+  `mount unavailable?` hint on the source; other sources stay healthy and the
+  watcher re-arms automatically once the mount is back (≤10 s refresh).
 
 ## Development
 

@@ -9,7 +9,8 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-conversation-threads` |
 | DependsOn | `SPEC-20260914-agent-chat-loop` |
-| Status | `Approved` |
+| Status | `Done` |
+| Ticket | `#31` |
 
 ## 1. User Story
 
@@ -60,10 +61,10 @@ O `agent_chat` é stateless — cada chamada começa do zero. LangGraph resolve 
 
 ## 7. Critérios de aceite
 
-- [ ] `threadId` preserva contexto entre chamadas (pergunta de follow-up resolve referência anterior).
-- [ ] Histórico longo → `Summary` populado, janela respeita `MaxContextTokens`, conversa continua coerente.
-- [ ] CRUD de threads via REST + UI funcional.
-- [ ] Suite verde; migration aplica sobre DB existente.
+- [x] `threadId` preserva contexto entre chamadas (pergunta de follow-up resolve referência anterior).
+- [x] Histórico longo → `Summary` populado, janela respeita `MaxContextTokens`, conversa continua coerente.
+- [x] CRUD de threads via REST + UI funcional.
+- [x] Suite verde; migration aplica sobre DB existente.
 
 ## 8. Riscos
 

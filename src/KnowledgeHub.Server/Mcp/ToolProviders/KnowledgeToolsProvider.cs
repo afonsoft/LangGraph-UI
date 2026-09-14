@@ -19,15 +19,31 @@ public sealed class KnowledgeToolsProvider : IToolProvider
     private static readonly JsonObject SearchSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "query":{"type":"string","description":"Texto ou pergunta a buscar"},
-          "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"}
+          "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"},
+          "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"}
         },"required":["query"]}
         """)!.AsObject();
 
     private static readonly JsonObject AskSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "question":{"type":"string","description":"Pergunta em linguagem natural"},
-          "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"}
+          "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"},
+          "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"},
+          "generate":{"type":"boolean","description":"Sintetizar resposta via LLM configurado no servidor (default: true quando Chat:Provider configurado)"}
         },"required":["question"]}
+        """)!.AsObject();
+
+    private static readonly JsonObject AgentSchema = JsonNode.Parse("""
+        {"type":"object","properties":{
+          "prompt":{"type":"string","description":"Pergunta/tarefa em linguagem natural — o agente itera tools até responder"},
+          "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist de tools expostas ao modelo (default: todas as read-only)"},
+          "maxIterations":{"type":"integer","description":"Teto de iterações model→tools→model (default 10)"},
+          "allowWrite":{"type":"boolean","description":"Opt-in: expõe tools de escrita (write_knowledge, write_note)"},
+          "threadId":{"type":"string","description":"GUID de thread existente — continua a conversa com contexto"},
+          "persist":{"type":"boolean","description":"Cria thread nova e persiste os turnos desta chamada"}
+        },"required":["prompt"]}
         """)!.AsObject();
 
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
@@ -53,25 +69,27 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 {
                     var query = ToolArgs.RequiredString(ctx, "query");
                     var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
+                    var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
                     var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(query, topK, null, ct);
+                    var results = await search.SearchAsync(query, topK, sourceId, mode, ct);
                     return await ToolResults.Text(FormatHits(results));
                 }
             },
             new CatalogTool
             {
                 Name = "ask_knowledge",
-                Description = "Responde uma pergunta usando o conhecimento indexado. Retorna contexto agregado com citações de fonte para o LLM sintetizar a resposta.",
+                Description = "Responde uma pergunta usando o conhecimento indexado. Com um chat provider configurado (Chat:Provider) sintetiza a resposta com citações [n]; caso contrário retorna o contexto agregado.",
                 InputSchema = AskSchema,
                 ReadOnly = true,
-                Handler = async (ctx, ct) =>
-                {
-                    var question = ToolArgs.RequiredString(ctx, "question");
-                    var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
-                    var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(question, topK, null, ct);
-                    return await ToolResults.Text(FormatAnswerContext(question, results));
-                }
+                Handler = AskKnowledgeAsync
+            },
+            new CatalogTool
+            {
+                Name = "agent_chat",
+                Description = "Agente multi-step: itera model→tools→model sobre o catálogo vivo até responder. Requer Chat:Provider configurado.",
+                InputSchema = AgentSchema,
+                ReadOnly = true, // mutating tools still require allowWrite opt-in
+                Handler = AgentChatAsync
             },
             new CatalogTool
             {
@@ -82,6 +100,121 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             }
         ];
         return Task.FromResult(tools);
+    }
+
+    /// <summary>
+    /// Resolves the optional `source` slug and `mode` args shared by
+    /// search_knowledge/ask_knowledge (SPEC-20260914-hybrid-retrieval RF-003).
+    /// </summary>
+    private static async Task<(Guid? SourceId, SearchMode Mode)> ResolveScopeAsync(
+        ToolCallContext ctx, CancellationToken ct)
+    {
+        var modeArg = ToolArgs.OptionalString(ctx, "mode");
+        var mode = modeArg is null
+            ? SearchMode.Hybrid
+            : Enum.TryParse<SearchMode>(modeArg, ignoreCase: true, out var parsed)
+                ? parsed
+                : throw new McpProtocolException(
+                    $"invalid mode '{modeArg}' (expected: hybrid | semantic | lexical)", McpErrorCode.InvalidParams);
+
+        var sourceSlug = ToolArgs.OptionalString(ctx, "source");
+        if (sourceSlug is null)
+            return (null, mode);
+
+        var db = ctx.Services!.GetRequiredService<KnowledgeHubDbContext>();
+        var active = await db.Sources.Where(s => s.IsActive).OrderBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name }).ToListAsync(ct);
+        var slugs = ToolSlugger.Assign(active.Select(s => (s.Id, s.Name)));
+        var sourceId = slugs.FirstOrDefault(kv => kv.Value == sourceSlug).Key;
+        return sourceId == Guid.Empty
+            ? throw new McpProtocolException($"unknown source slug '{sourceSlug}'", McpErrorCode.InvalidParams)
+            : (sourceId, mode);
+    }
+
+    /// <summary>
+    /// SPEC-20260914-llm-answer-synthesis RF-002/RF-004: with a configured chat
+    /// provider and generate!=false, synthesizes a cited answer (structuredContent).
+    /// Otherwise falls back to the legacy aggregated-context payload.
+    /// </summary>
+    private static async ValueTask<CallToolResult> AskKnowledgeAsync(
+        ToolCallContext ctx, CancellationToken ct)
+    {
+        var question = ToolArgs.RequiredString(ctx, "question");
+        var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
+        var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
+        var search = ctx.Services!.GetRequiredService<ISearchService>();
+        var results = await search.SearchAsync(question, topK, sourceId, mode, ct);
+
+        var answers = ctx.Services!.GetRequiredService<IAnswerService>();
+        var generate = ToolArgs.OptionalBool(ctx, "generate") ?? answers.IsConfigured;
+
+        if (!generate)
+            return await ToolResults.Text(FormatAnswerContext(question, results));
+
+        if (!answers.IsConfigured)
+        {
+            // RF risk mitigation: generate requested but no provider — raw context + warning.
+            return await ToolResults.Text(
+                FormatAnswerContext(question, results)
+                + "\n\n(warning: no chat provider configured — returning raw context)");
+        }
+
+        try
+        {
+            var answer = await answers.AnswerAsync(question, results, ct);
+            var text = new StringBuilder(answer.Answer);
+            if (answer.Citations.Count > 0)
+            {
+                text.Append("\n\nCitations:");
+                foreach (var c in answer.Citations)
+                    text.Append("\n[").Append(c.Index).Append("] ")
+                        .Append(c.Title).Append(" — ").Append(c.Source)
+                        .Append(" (").Append(c.Uri).Append(')');
+            }
+            return await ToolResults.Structured(text.ToString(), answer);
+        }
+        catch (Chat.ChatProviderException ex)
+        {
+            return await ToolResults.Error($"answer generation failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>SPEC-20260914-agent-chat-loop RF-002: agent loop as an MCP tool.</summary>
+    private static async ValueTask<CallToolResult> AgentChatAsync(
+        ToolCallContext ctx, CancellationToken ct)
+    {
+        var agent = ctx.Services!.GetRequiredService<IAgentService>();
+        if (!agent.IsConfigured)
+            return await ToolResults.Error("agent_chat requires a chat provider (Chat:Provider)");
+
+        var request = new AgentRequest
+        {
+            Prompt = ToolArgs.RequiredString(ctx, "prompt"),
+            Tools = ToolArgs.OptionalStringArray(ctx, "tools"),
+            MaxIterations = ToolArgs.OptionalInt(ctx, "maxIterations", 10, 50),
+            AllowWrite = ToolArgs.OptionalBool(ctx, "allowWrite") == true,
+            ThreadId = ToolArgs.OptionalString(ctx, "threadId") is { } tid && Guid.TryParse(tid, out var g) ? g : null,
+            Persist = ToolArgs.OptionalBool(ctx, "persist") == true
+        };
+
+        try
+        {
+            var result = await agent.RunAsync(request, ct);
+            var text = new StringBuilder(result.Answer);
+            if (result.Steps.Count > 0)
+            {
+                text.Append("\n\nSteps:");
+                foreach (var s in result.Steps)
+                    text.Append("\n- [").Append(s.Iteration).Append("] ")
+                        .Append(s.Tool).Append(' ').Append(s.ArgsSummary)
+                        .Append(s.IsError ? " (error)" : "");
+            }
+            return await ToolResults.Structured(text.ToString(), result);
+        }
+        catch (Chat.ChatProviderException ex)
+        {
+            return await ToolResults.Error($"agent run failed: {ex.Message}");
+        }
     }
 
     private static async ValueTask<CallToolResult> WriteKnowledgeAsync(
@@ -170,6 +303,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             var vector = await embeddings.EmbedAsync(chunk.TextContent, ct);
             await vectors.UpsertAsync(chunk.Id, doc2.Id, target.Id, vector, embeddings.ModelId, ct);
         }
+
+        // RF-004: keep the FTS index consistent with Chunks.
+        await ctx.Services!.GetRequiredService<Search.ILexicalSearchService>().ReconcileAsync(ct);
 
         return await ToolResults.Text(
             $"Stored '{title}' in source '{target.Name}'.\nDocument id: {doc2.Id}\nChunks indexed: {newChunks.Count}");

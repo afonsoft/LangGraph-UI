@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / C# 14` + `ModelContextProtocol.AspNetCore` (official MCP C# SDK, GA 1.x) |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260913-knowledge-hub-platform` |
-| Ticket | `[A DEFINIR — GitHub Issue via /create-issues]` |
-| Status | `Approved` |
+| Ticket | `#2` |
+| Status | `Done` |
 
 ## 1. User Story
 

@@ -9,6 +9,11 @@ services:
       - "${KNOWLEDGEHUB_PORT:-5000}:8080"
     volumes:
       - ./data:/data
+      # Obsidian via WebDAV (SPEC-20260914-obsidian-webdav RF-006): mount the
+      # remote on the HOST (davfs2/rclone — see README "Obsidian via WebDAV")
+      # and bind it read-only into the container. The container path is what
+      # goes in the source's configuration.path (e.g. /vaults/obsidian).
+      #   - /srv/webdav/obsidian:/vaults/obsidian:ro
     environment:
       # Kestrel AllowedHosts — appsettings pins localhost only; behind a reverse
       # proxy/tunnel the public hostname must be allowed (or use * since the

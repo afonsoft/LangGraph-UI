@@ -113,19 +113,43 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
     }
 
     [Fact]
-    public async Task Sync_MissingPath_ReturnsFailed()
+    public async Task Sync_MissingPath_ReturnsFailed_AndRecordsStatusOnSource()
     {
+        var missing = Path.Combine(Path.GetTempPath(), $"gone-{Guid.NewGuid():N}");
         var response = await _client.PostAsJsonAsync("/api/sources", new
         {
             name = $"gone-{Guid.NewGuid():N}",
             type = "ObsidianVault",
-            configuration = new { path = "/nonexistent/definitely" }
+            configuration = new { path = missing }
         });
         var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
 
         var result = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
             .Content.ReadFromJsonAsync<SyncResultDto>();
         Assert.Equal("failed", result!.Status);
+
+        // RF-002: failure is recorded on the source (mount-unavailable hint).
+        var fetched = await _client.GetFromJsonAsync<KnowledgeSourceDto>($"/api/sources/{source.Id}");
+        Assert.Equal("failed", fetched!.LastSyncStatus);
+        Assert.Contains("mount unavailable", fetched.LastError);
+
+        // Mount "comes back": recreate the path → next sync succeeds and clears the error.
+        Directory.CreateDirectory(missing);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(missing, "back.md"), "# Back\n\nmount recovered");
+            var result2 = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
+                .Content.ReadFromJsonAsync<SyncResultDto>();
+            Assert.Equal("completed", result2!.Status);
+
+            var fetched2 = await _client.GetFromJsonAsync<KnowledgeSourceDto>($"/api/sources/{source.Id}");
+            Assert.Equal("completed", fetched2!.LastSyncStatus);
+            Assert.Null(fetched2.LastError);
+        }
+        finally
+        {
+            Directory.Delete(missing, recursive: true);
+        }
     }
 
     [Fact]

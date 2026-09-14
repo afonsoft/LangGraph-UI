@@ -9,7 +9,7 @@
 | Stack | `.NET 10`, `Bash`, `Docker`, `docker-compose` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260913-install-deploy` |
-| Ticket | `[A DEFINIR — GitHub Issue via /create-issues]` |
+| Ticket | `—` |
 | Status | `Done` |
 
 ## 1. User Story

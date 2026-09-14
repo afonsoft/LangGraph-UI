@@ -25,7 +25,7 @@ public sealed class VaultWatcherService(
     private readonly ConcurrentDictionary<(Guid SourceId, string Path), DateTimeOffset> _pendingFiles = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFullSync = new();
 
-    private sealed record VaultWatch(string Root, FileSystemWatcher Watcher);
+    private sealed record VaultWatch(string Root, FileSystemWatcher Watcher, SourceType Type);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,11 +55,12 @@ public sealed class VaultWatcherService(
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
 
         var vaults = await db.Sources
-            .Where(s => s.IsActive && s.SourceType == SourceType.ObsidianVault)
+            .Where(s => s.IsActive && (s.SourceType == SourceType.ObsidianVault || s.SourceType == SourceType.DocumentFile))
             .ToListAsync(ct);
 
         var wanted = vaults
             .Select(s => (Source: s, Root: IngestionService.ResolveVaultRoot(s.ConfigurationJson)))
+            // DocumentFile roots only get a watcher when 'path' is a directory.
             .Where(x => x.Root is not null && Directory.Exists(x.Root))
             .ToDictionary(x => x.Source.Id, x => (x.Source, x.Root!));
 
@@ -77,17 +78,18 @@ public sealed class VaultWatcherService(
             if (_watches.ContainsKey(id))
                 continue;
 
-            var watcher = new FileSystemWatcher(root, "*.md")
+            var isVault = source.SourceType == SourceType.ObsidianVault;
+            var watcher = new FileSystemWatcher(root, isVault ? "*.md" : "*.*")
             {
                 IncludeSubdirectories = true,
                 EnableRaisingEvents = true,
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
             };
-            watcher.Created += (_, e) => Enqueue(id, root, e);
-            watcher.Changed += (_, e) => Enqueue(id, root, e);
-            watcher.Deleted += (_, e) => Enqueue(id, root, e);
-            watcher.Renamed += (_, e) => { Enqueue(id, root, e); EnqueueOldName(id, root, e); };
-            _watches[id] = new VaultWatch(root, watcher);
+            watcher.Created += (_, e) => Enqueue(id, source.SourceType, root, e);
+            watcher.Changed += (_, e) => Enqueue(id, source.SourceType, root, e);
+            watcher.Deleted += (_, e) => Enqueue(id, source.SourceType, root, e);
+            watcher.Renamed += (_, e) => { Enqueue(id, source.SourceType, root, e); EnqueueOldName(id, source.SourceType, root, e); };
+            _watches[id] = new VaultWatch(root, watcher, source.SourceType);
             _lastFullSync.TryAdd(id, DateTimeOffset.MinValue);
             logger.LogInformation("Watching vault '{Name}' at {Root}", source.Name, root);
         }
@@ -95,17 +97,23 @@ public sealed class VaultWatcherService(
         await Task.Delay(RefreshInterval, ct);
     }
 
-    private void Enqueue(Guid sourceId, string root, FileSystemEventArgs e)
+    private void Enqueue(Guid sourceId, SourceType type, string root, FileSystemEventArgs e)
     {
         var relative = Path.GetRelativePath(root, e.FullPath);
         if (relative.Contains($"{Path.DirectorySeparatorChar}.", StringComparison.Ordinal) || relative.StartsWith('.'))
             return; // .obsidian/ and hidden dirs excluded
+        if (type == SourceType.DocumentFile
+            && !Ingestion.Connectors.DocumentFileConnector.SupportedExtensions.Contains(Path.GetExtension(e.FullPath)))
+            return;
         _pendingFiles[(sourceId, relative)] = DateTimeOffset.UtcNow + Debounce;
     }
 
-    private void EnqueueOldName(Guid sourceId, string root, RenamedEventArgs e)
+    private void EnqueueOldName(Guid sourceId, SourceType type, string root, RenamedEventArgs e)
     {
         var relative = Path.GetRelativePath(root, e.OldFullPath);
+        if (type == SourceType.DocumentFile
+            && !Ingestion.Connectors.DocumentFileConnector.SupportedExtensions.Contains(Path.GetExtension(e.OldFullPath)))
+            return;
         _pendingFiles[(sourceId, relative)] = DateTimeOffset.UtcNow + Debounce;
     }
 
@@ -133,7 +141,10 @@ public sealed class VaultWatcherService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
         var autoSources = await db.Sources
-            .Where(s => s.IsActive && s.AutoSyncEnabled && s.SourceType == SourceType.ObsidianVault)
+            .Where(s => s.IsActive && s.AutoSyncEnabled
+                && (s.SourceType == SourceType.ObsidianVault
+                    || s.SourceType == SourceType.WebPage
+                    || s.SourceType == SourceType.DocumentFile))
             .Select(s => new { s.Id, s.SyncIntervalMinutes })
             .ToListAsync(ct);
 

@@ -26,6 +26,11 @@ public static class ToolArgs
         return Math.Min(value, max);
     }
 
+    public static bool? OptionalBool(ToolCallContext ctx, string name) =>
+        TryGet(ctx, name, out var el) && el.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? el.GetBoolean()
+            : null;
+
     public static string[]? OptionalStringArray(ToolCallContext ctx, string name)
     {
         if (!TryGet(ctx, name, out var el) || el.ValueKind != JsonValueKind.Array)
@@ -63,5 +68,14 @@ public static class ToolResults
         {
             Content = [new TextContentBlock { Text = message }],
             IsError = true
+        });
+
+    /// <summary>Text + structuredContent payload (SPEC-20260914-llm-answer-synthesis RF-002).</summary>
+    public static ValueTask<CallToolResult> Structured(string text, object structured) =>
+        ValueTask.FromResult(new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = text }],
+            StructuredContent = JsonSerializer.SerializeToElement(structured, JsonSerializerOptions.Web),
+            IsError = false
         });
 }
