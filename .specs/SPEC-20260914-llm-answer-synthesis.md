@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `Microsoft.Extensions.AI` (IChatClient), `Ollama`, `OpenAI` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-llm-answer-synthesis` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

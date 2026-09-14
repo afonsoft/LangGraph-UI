@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `HttpClient`, `HtmlAgilityPack` ou `SmartReader`-like |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-webpage-docfile-connectors` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

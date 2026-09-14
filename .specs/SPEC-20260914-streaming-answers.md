@@ -9,7 +9,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-streaming-answers` |
 | DependsOn | `SPEC-20260914-llm-answer-synthesis`, `SPEC-20260914-agent-chat-loop` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

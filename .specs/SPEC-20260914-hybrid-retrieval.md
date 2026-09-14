@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `EF Core SQLite (FTS5)`, vector store existente |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-hybrid-retrieval` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

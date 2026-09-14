@@ -9,7 +9,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-obsidian-webdav` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

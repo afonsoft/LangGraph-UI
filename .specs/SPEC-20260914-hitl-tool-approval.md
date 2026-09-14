@@ -9,7 +9,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-hitl-tool-approval` |
 | DependsOn | `SPEC-20260914-agent-chat-loop` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

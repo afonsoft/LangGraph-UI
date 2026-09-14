@@ -9,7 +9,7 @@
 | Stack | `.NET 10`, `Microsoft.AspNetCore.Mvc` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-infrastructure` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

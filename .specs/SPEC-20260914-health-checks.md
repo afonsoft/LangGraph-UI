@@ -9,7 +9,7 @@
 | Stack | `.NET 10`, `Microsoft.Extensions.Diagnostics.HealthChecks` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-infrastructure` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

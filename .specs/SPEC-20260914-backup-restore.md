@@ -9,7 +9,7 @@
 | Stack | `Bash`, `SQLite` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-infrastructure` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 
