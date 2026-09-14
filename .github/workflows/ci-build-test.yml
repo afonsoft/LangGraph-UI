@@ -123,12 +123,21 @@ jobs:
 
       - name: Validate WASM Assets
         run: |
-          index="src/KnowledgeHub.Client/bin/Release/net10.0/wwwroot/index.html"
-          if [ ! -f "$index" ]; then
-            echo "::error::Blazor WASM index.html nao encontrado em $index"
+          # Client is a Razor class library hosted by the Server: the build emits
+          # _framework payloads (blazor.boot.json, dotnet.wasm, .dll) into
+          # bin/<config>/net10.0/wwwroot; index.html lives in the source wwwroot
+          # and is served by the Server host.
+          fw="src/KnowledgeHub.Client/bin/Release/net10.0/wwwroot/_framework"
+          if [ ! -f "$fw/blazor.boot.json" ]; then
+            echo "::error::Blazor WASM _framework/blazor.boot.json nao encontrado em $fw"
+            exit 1
+          fi
+          if [ ! -f "src/KnowledgeHub.Client/wwwroot/index.html" ]; then
+            echo "::error::wwwroot/index.html ausente no projeto Client"
             exit 1
           fi
           echo "Blazor WASM assets gerados com sucesso"
+          ls "$fw" | head -5
 
   docker-build:
     name: Docker Image Build
@@ -152,4 +161,4 @@ jobs:
           push: false
           tags: knowledgehub:ci-test
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
