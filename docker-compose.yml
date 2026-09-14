@@ -10,6 +10,10 @@ services:
     volumes:
       - ./data:/data
     environment:
+      # Kestrel AllowedHosts — appsettings pins localhost only; behind a reverse
+      # proxy/tunnel the public hostname must be allowed (or use * since the
+      # tunnel is the trust boundary). Override via .env ALLOWED_HOSTS.
+      AllowedHosts: ${ALLOWED_HOSTS:-*}
       Embeddings__Provider: ${EMBEDDINGS_PROVIDER:-deterministic}
       Embeddings__Endpoint: ${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434}
       Embeddings__ApiKey: ${EMBEDDINGS_APIKEY:-}
