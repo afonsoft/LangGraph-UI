@@ -8,8 +8,8 @@
 | Stack | `.NET 10`, `EF Core SQLite`, `Docker`, `WebDAV/davfs2` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-obsidian-webdav` |
-| Ticket | `[A DEFINIR]` |
-| Status | `Approved` |
+| Ticket | `#36` |
+| Status | `Done` |
 
 ## 1. User Story
 

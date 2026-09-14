@@ -64,19 +64,32 @@
 
 ## 4. Approval gate
 
-- Decision: pending — awaiting user approval to create Issues (Phase 6) and/or hand off to orchestrator (Phase 7).
+- Decision: **APPROVED** by user ("Aprovado, pode executar com o execute-specs").
 - Note: every CONFIRMADO gap already maps to an existing Approved SPEC — no new Draft SPECs were generated (dedup against .specs/).
 
 ## 5. Issues
 
-- Epic: not created (gate pending)
-- Slices: not created
+- Epic: **#28** — E17 — Gap analysis 20260914: implement approved SPECs.
+- Slices: **#29–#42** created; dependencies recorded as `Blocked by: #N` in issue bodies (installed `gh` lacks `--add-linked-issue`).
 
-## 6. Orchestrator handoff
+## 6. Orchestrator handoff — OUTCOME (2026-09-14)
 
-- Not reached (gate pending). Pre-conditions ready: tree clean, gh authed, specs Approved.
+All 14 confirmed gaps implemented on `feature/Devin-20260914-infrastructure` (suite 184/184 green — 101 unit + 83 integration; `dotnet format` clean):
+
+| Gap | Issue | Commit | Status |
+| --- | --- | --- | --- |
+| config-validation / error-handling / health-checks / graceful-shutdown / backup-restore | #37–#41 | `2fcd97b` | done |
+| hybrid-retrieval | #34 | `0d84b23` | done (FTS5 + RRF) |
+| webpage-docfile-connectors | #35 | `999da38` | done (+ EF chunk-replace concurrency fix) |
+| llm-answer-synthesis | #29 | `b0b365a` | done |
+| obsidian-webdav | #36 | `e3b7733` | done |
+| agent-chat-loop | #30 | `6ebc418` | done |
+| hitl-tool-approval | #32 | `70d87ae` | done |
+| conversation-threads / streaming-answers | #31, #33 | `09671e3` | done (files entangled — single commit) |
+| spec-status-sync | #42 | — | done (all 27 SPECs `Done` + tickets; CLAUDE.md rewritten) |
 
 ## 7. Pendencies
 
 - INCONCLUSIVO: `--systemd` install path never verified on a real host.
-- Execution order implied by DependsOn: llm-answer-synthesis → agent-chat-loop → {conversation-threads, hitl-tool-approval, streaming-answers}; hybrid-retrieval and webpage-docfile-connectors independent; infra specs independent.
+- streaming-answers AC "funciona através de https://rag.afonsoft.dev" pendente de verificação E2E após deploy (nginx `proxy_buffering off` já documentado).
+- Build warning CS8604 em `IngestionService.cs:352` (Path.Combine com path anulável) — não bloqueante.

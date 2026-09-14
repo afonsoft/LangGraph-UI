@@ -9,7 +9,8 @@
 | Stack | `.NET 10`, `FluentValidation` (optional) or `DataAnnotations` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-infrastructure` |
-| Status | `Approved` |
+| Status | `Done` |
+| Ticket | `#40` |
 
 ## 1. User Story
 

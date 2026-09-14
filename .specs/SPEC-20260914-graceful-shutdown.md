@@ -9,7 +9,8 @@
 | Stack | `.NET 10` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-infrastructure` |
-| Status | `Approved` |
+| Status | `Done` |
+| Ticket | `#41` |
 
 ## 1. User Story
 

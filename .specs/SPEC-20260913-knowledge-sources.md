@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / C# 14 + EF Core SQLite` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260913-knowledge-hub-platform` |
-| Ticket | `[A DEFINIR — GitHub Issue via /create-issues]` |
-| Status | `Approved` |
+| Ticket | `#3` |
+| Status | `Done` |
 
 ## 1. User Story
 

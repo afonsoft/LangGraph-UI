@@ -9,7 +9,7 @@
 | Stack | `.NET 10`, `NuGet` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-persistence-hardening` |
-| Ticket | `[A DEFINIR]` |
+| Ticket | `—` |
 | Status | `Done` |
 
 ## 1. User Story
