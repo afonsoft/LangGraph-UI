@@ -2,6 +2,7 @@
 @using System.Text.Json
 @using KnowledgeHub.Shared.Contracts
 @inject ToolsApiClient Tools
+@inject StreamingApiClient Streaming
 @inject ToastService Toast
 
 <PageTitle>Playground — KnowledgeHub</PageTitle>
@@ -329,6 +330,13 @@
         _running = true;
         _result = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // SPEC-20260914-streaming-answers RF-002: agent/ask run over SSE so tokens
+        // and tool steps render incrementally; falls back to the sync call when
+        // the stream fails before the first event.
+        if (_selected.Name is "agent_chat" or "ask_knowledge" && await TryStreamAsync(args, sw))
+            return;
+
         try
         {
             var result = await Tools.CallAsync(_selected.Name, JsonSerializer.Serialize(args));
@@ -353,11 +361,95 @@
         }
     }
 
+    /// <summary>Consumes the SSE endpoint; returns false when nothing arrived (caller falls back).</summary>
+    private async Task<bool> TryStreamAsync(Dictionary<string, JsonElement> args, System.Diagnostics.Stopwatch sw)
+    {
+        var path = _selected!.Name == "agent_chat" ? "api/agent/stream" : "api/ask/stream";
+        _result = JsonSerializer.SerializeToElement(new { });
+        _structuredAnswer = "";
+        _citations = [];
+        _agentSteps = [];
+        _isError = false;
+        _texts = [];
+        var received = false;
+        try
+        {
+            await foreach (var msg in Streaming.StreamAsync(path, args))
+            {
+                received = true;
+                var data = msg.Data.TryGetProperty("data", out var d) ? d : msg.Data;
+                switch (msg.Event)
+                {
+                    case "token":
+                        _structuredAnswer += data.GetProperty("delta").GetString();
+                        break;
+                    case "tool_start":
+                        _agentSteps.Add(new AgentStepModel
+                        {
+                            Iteration = _agentSteps.Count + 1,
+                            Tool = data.TryGetProperty("tool", out var ts) ? ts.GetString() ?? "" : "",
+                            ArgsSummary = data.TryGetProperty("args", out var aa) ? aa.GetString() ?? "" : ""
+                        });
+                        break;
+                    case "tool_end":
+                        var last = _agentSteps.LastOrDefault();
+                        if (last is not null)
+                        {
+                            _agentSteps[^1] = last with
+                            {
+                                IsError = data.TryGetProperty("isError", out var ie) && ie.GetBoolean(),
+                                ElapsedMs = data.TryGetProperty("elapsedMs", out var em) ? em.GetDouble() : 0
+                            };
+                        }
+                        break;
+                    case "awaiting_approval":
+                        _structuredAnswer += $"\n\n⏳ Aguardando aprovação da tool '{data.GetProperty("tool").GetString()}' — veja /approvals.";
+                        break;
+                    case "done":
+                        (_structuredAnswer, _citations, _agentSteps, _agentIterations, _agentLatencyMs) =
+                            ParseStructuredContent(data);
+                        break;
+                    case "error":
+                        _isError = true;
+                        _texts = [data.TryGetProperty("message", out var m) ? m.GetString() ?? "stream error" : "stream error"];
+                        break;
+                }
+                StateHasChanged();
+            }
+            _elapsedMs = sw.Elapsed.TotalMilliseconds;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (received)
+            {
+                _isError = true;
+                _texts = [ex.Message];
+                return true;
+            }
+            _result = null;
+            _structuredAnswer = null;
+            return false; // connection never established — sync fallback
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
     private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
         ParseStructured(JsonElement result)
     {
         if (!result.TryGetProperty("structuredContent", out var sc) ||
             !sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
+            return (null, [], [], 0, 0);
+        return ParseStructuredContent(sc);
+    }
+
+    private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
+        ParseStructuredContent(JsonElement sc)
+    {
+        if (!sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
             return (null, [], [], 0, 0);
 
         var steps = new List<AgentStepModel>();
@@ -395,7 +487,7 @@
         return (a.GetString(), citations, steps, iterations, latencyMs);
     }
 
-    private sealed class AgentStepModel
+    private sealed record AgentStepModel
     {
         public int Iteration { get; init; }
         public string Tool { get; init; } = "";

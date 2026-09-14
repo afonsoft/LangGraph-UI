@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Threading.Channels;
 using KnowledgeHub.McpEngine.Activity;
 using KnowledgeHub.Server.Agent;
 using KnowledgeHub.Server.Api;
@@ -36,10 +38,87 @@ public sealed class AgentService(
 
     public async Task<AgentResponse> RunAsync(AgentRequest request, CancellationToken cancellationToken = default)
     {
+        var prep = await PrepareAsync(request, cancellationToken);
+        var loop = await BuildLoopAsync(request, prep.Messages, cancellationToken);
+        var result = await RunLoopAsync(prep.Client, loop, cancellationToken);
+        return await CompleteAsync(prep, request, result, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<SseEvent> StreamAsync(
+        AgentRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var prep = await PrepareAsync(request, cancellationToken);
+        var loop = await BuildLoopAsync(request, prep.Messages, cancellationToken);
+
+        var channel = Channel.CreateUnbounded<SseEvent>();
+        var run = RunLoopAsync(prep.Client, loop, cancellationToken, channel.Writer);
+
+        await foreach (var e in channel.Reader.ReadAllAsync(cancellationToken))
+            yield return e;
+
+        AgentResponse? result = null;
+        Exception? failure = null;
+        try
+        {
+            result = await run;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            failure = ex;
+        }
+        if (failure is not null)
+        {
+            yield return new SseEvent("error", new { message = failure.Message });
+            yield break;
+        }
+
+        var final = await CompleteAsync(prep, request, result!, cancellationToken);
+        if (final.AwaitingApprovalId is { } approvalId)
+        {
+            yield return new SseEvent("awaiting_approval", new
+            {
+                approvalId,
+                tool = final.PendingTool,
+                args = final.PendingArgsJson
+            });
+        }
+        yield return new SseEvent("done", final);
+    }
+
+    private sealed record Preparation(
+        IChatClient Client,
+        List<ChatMessage> Messages,
+        ConversationThread? Thread,
+        List<ConversationMessage> DroppedFromWindow);
+
+    /// <summary>Shared preamble: chat client, system prompt, thread window, user turns.</summary>
+    private async Task<Preparation> PrepareAsync(AgentRequest request, CancellationToken ct)
+    {
         var client = chatClient
             ?? throw new ChatProviderException("agent_chat requires a chat provider (Chat:Provider)");
 
         var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
+
+        // SPEC-20260914-conversation-threads: resolve/attach a thread and replay
+        // the context window (summary + most recent messages within budget).
+        ConversationThread? thread = null;
+        List<ConversationMessage> droppedFromWindow = [];
+        if (request.ThreadId is { } threadId)
+        {
+            thread = await db.Threads.Include(t => t.Messages)
+                .FirstOrDefaultAsync(t => t.Id == threadId, ct)
+                ?? throw new KeyNotFoundException($"thread '{threadId}' not found");
+            (var history, droppedFromWindow) = BuildContextWindow(thread);
+            messages.AddRange(history);
+        }
+        else if (request.Persist)
+        {
+            thread = new ConversationThread { Title = DeriveTitle(request.Prompt) };
+            db.Threads.Add(thread);
+            await db.SaveChangesAsync(ct);
+        }
+
         foreach (var m in request.Messages ?? [])
             messages.Add(new ChatMessage(
                 m.Role.Equals("assistant", StringComparison.OrdinalIgnoreCase) ? ChatRole.Assistant : ChatRole.User,
@@ -49,8 +128,22 @@ public sealed class AgentService(
         if (messages.Count == 1)
             throw new ArgumentException("prompt or messages[] is required");
 
-        var loop = await BuildLoopAsync(request, messages, cancellationToken);
-        return await RunLoopAsync(client, loop, cancellationToken);
+        return new Preparation(client, messages, thread, droppedFromWindow);
+    }
+
+    /// <summary>Persists the completed turn and schedules rolling summarization.</summary>
+    private async Task<AgentResponse> CompleteAsync(
+        Preparation prep, AgentRequest request, AgentResponse result, CancellationToken ct)
+    {
+        if (prep.Thread is null)
+            return result;
+        if (result.AwaitingApprovalId is null)
+        {
+            await PersistTurnAsync(prep.Thread, request, result, ct);
+            if (prep.DroppedFromWindow.Count > 0)
+                ScheduleSummarization(prep.Thread.Id, prep.DroppedFromWindow);
+        }
+        return result with { ThreadId = prep.Thread.Id };
     }
 
     public async Task<AgentResponse> ResumeAsync(
@@ -135,6 +228,111 @@ public sealed class AgentService(
         return await RunLoopAsync(client, loop, cancellationToken);
     }
 
+    // ---- conversation threads (SPEC-20260914-conversation-threads) -----------
+
+    /// <summary>Summary + most recent messages that fit MaxContextTokens (chars/4).</summary>
+    private (List<ChatMessage> History, List<ConversationMessage> Dropped) BuildContextWindow(
+        ConversationThread thread)
+    {
+        var history = new List<ChatMessage>();
+        if (!string.IsNullOrWhiteSpace(thread.Summary))
+            history.Add(new ChatMessage(ChatRole.System,
+                $"Resumo da conversa até aqui: {thread.Summary}"));
+
+        var ordered = thread.Messages.OrderBy(m => m.CreatedAt).ToList();
+        var budget = options.MaxContextTokens;
+        var window = new List<ConversationMessage>();
+        for (var i = ordered.Count - 1; i >= 0 && budget > 0; i--)
+        {
+            if (ordered[i].TokenEstimate > budget && window.Count > 0)
+                break;
+            window.Add(ordered[i]);
+            budget -= ordered[i].TokenEstimate;
+        }
+        window.Reverse();
+        var dropped = ordered.Take(ordered.Count - window.Count).ToList();
+
+        foreach (var m in window)
+        {
+            // Stored tool turns are replayed as assistant notes — providers reject
+            // tool messages without a matching tool_call.
+            var role = m.Role == "user" ? ChatRole.User : ChatRole.Assistant;
+            var text = m.Role == "tool" ? $"[tool {m.ToolName}] {m.Content}" : m.Content;
+            history.Add(new ChatMessage(role, text));
+        }
+        return (history, dropped);
+    }
+
+    /// <summary>Appends the user prompt, tool steps and final answer to the thread.</summary>
+    private async Task PersistTurnAsync(
+        ConversationThread thread, AgentRequest request, AgentResponse result, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        void Add(string role, string content, string? tool = null) =>
+            db.ThreadMessages.Add(new ConversationMessage
+            {
+                ThreadId = thread.Id,
+                Role = role,
+                Content = content,
+                ToolName = tool,
+                CreatedAt = now,
+                TokenEstimate = content.Length / 4
+            });
+
+        if (!string.IsNullOrWhiteSpace(request.Prompt))
+            Add("user", request.Prompt);
+        foreach (var s in result.Steps)
+            Add("tool", $"{s.ArgsSummary}{(s.IsError ? " (error)" : "")}", s.Tool);
+        Add("assistant", result.Answer);
+
+        thread.LastActivityAt = now;
+        if (thread.Title == "nova conversa" && !string.IsNullOrWhiteSpace(request.Prompt))
+            thread.Title = DeriveTitle(request.Prompt);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Rolling summary runs post-response; failures are logged, never thrown.</summary>
+    private void ScheduleSummarization(Guid threadId, List<ConversationMessage> dropped)
+    {
+        var scopeFactory = services.GetService<IServiceScopeFactory>();
+        if (scopeFactory is null || chatClient is null)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var scopeDb = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+                var thread = await scopeDb.Threads.FirstOrDefaultAsync(t => t.Id == threadId);
+                if (thread is null)
+                    return;
+
+                var transcript = string.Join("\n", dropped.Select(m =>
+                    m.Role == "tool" ? $"[tool {m.ToolName}] {m.Content}" : $"{m.Role}: {m.Content}"));
+                var prompt = thread.Summary is null
+                    ? $"Condense este trecho de conversa em um resumo curto preservando fatos e decisões:\n\n{transcript}"
+                    : $"Resumo anterior:\n{thread.Summary}\n\nIncorpore este novo trecho ao resumo, mantendo-o curto:\n\n{transcript}";
+
+                var response = await chatClient.GetResponseAsync(
+                    [new ChatMessage(ChatRole.User, prompt)]);
+                var summary = response.Text?.Trim();
+                if (!string.IsNullOrEmpty(summary))
+                {
+                    thread.Summary = summary;
+                    await scopeDb.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "thread {ThreadId} summarization failed", threadId);
+            }
+        });
+    }
+
+    private static string DeriveTitle(string? prompt) =>
+        string.IsNullOrWhiteSpace(prompt) ? "nova conversa"
+            : prompt.Trim() is { Length: > 60 } p ? p[..60] + "…" : prompt.Trim();
+
     private bool IsExpired(ToolApproval approval) =>
         approval.CreatedAt + TimeSpan.FromMinutes(options.ApprovalTimeoutMinutes) < DateTimeOffset.UtcNow;
 
@@ -171,89 +369,99 @@ public sealed class AgentService(
     }
 
     private async Task<AgentResponse> RunLoopAsync(
-        IChatClient client, LoopState loop, CancellationToken cancellationToken)
+        IChatClient client, LoopState loop, CancellationToken cancellationToken,
+        ChannelWriter<SseEvent>? sink = null)
     {
         var sw = Stopwatch.StartNew();
         var answer = "";
-
-        while (loop.Iterations < loop.MaxIterations && !loop.LimitReached)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            loop.Iterations++;
-
-            var response = await client.GetResponseAsync(
-                loop.Messages, new ChatOptions { Tools = [.. loop.Functions] }, cancellationToken);
-            loop.Messages.AddRange(response.Messages);
-
-            var calls = response.Messages
-                .SelectMany(m => m.Contents)
-                .OfType<FunctionCallContent>()
-                .ToList();
-
-            if (calls.Count == 0)
-            {
-                answer = response.Text?.Trim() ?? "";
-                break;
-            }
-
-            foreach (var call in calls)
+            while (loop.Iterations < loop.MaxIterations && !loop.LimitReached)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                loop.Iterations++;
 
-                // HITL gate: mutating tool → suspend into a pending approval.
-                if (loop.ToolsByName.TryGetValue(call.Name, out var gated) && RequiresApproval(gated))
-                {
-                    var approval = await SuspendAsync(loop, call, cancellationToken);
-                    logger.LogInformation("agent_chat awaiting approval {ApprovalId} for {Tool}", approval.Id, call.Name);
-                    return new AgentResponse
-                    {
-                        Answer = $"awaiting approval for tool '{call.Name}'",
-                        Steps = loop.Steps,
-                        ToolCalls = loop.Steps.Select(s => s.Tool).ToList(),
-                        Iterations = loop.Iterations,
-                        LatencyMs = sw.Elapsed.TotalMilliseconds,
-                        LimitReached = false,
-                        AwaitingApprovalId = approval.Id,
-                        PendingTool = call.Name,
-                        PendingArgsJson = approval.ArgumentsJson
-                    };
-                }
+                var response = await GetModelResponseAsync(client, loop, sink, cancellationToken);
+                loop.Messages.AddRange(response.Messages);
 
-                loop.ToolCalls++;
-                if (loop.ToolCalls > options.MaxToolCalls)
+                var calls = response.Messages
+                    .SelectMany(m => m.Contents)
+                    .OfType<FunctionCallContent>()
+                    .ToList();
+
+                if (calls.Count == 0)
                 {
-                    loop.LimitReached = true;
+                    answer = response.Text?.Trim() ?? "";
                     break;
                 }
 
-                var fn = loop.Functions.FirstOrDefault(f => f.Name == call.Name);
-                var stepSw = Stopwatch.StartNew();
-                object? result;
-                var isError = false;
-                try
+                foreach (var call in calls)
                 {
-                    result = fn is null
-                        ? $"ERROR: unknown tool '{call.Name}'"
-                        : await fn.InvokeAsync(ToArguments(call), cancellationToken);
-                    isError = result?.ToString()?.StartsWith("ERROR:") == true;
-                }
-                catch (Exception ex)
-                {
-                    isError = true;
-                    result = $"ERROR: {ex.Message}";
-                }
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                loop.Steps.Add(new AgentStep
-                {
-                    Iteration = loop.Iterations,
-                    Tool = call.Name,
-                    ArgsSummary = Summarize(call.Arguments),
-                    IsError = isError,
-                    ElapsedMs = stepSw.Elapsed.TotalMilliseconds
-                });
-                loop.Messages.Add(new ChatMessage(ChatRole.Tool,
-                    [new FunctionResultContent(call.CallId, result)]));
+                    // HITL gate: mutating tool → suspend into a pending approval.
+                    if (loop.ToolsByName.TryGetValue(call.Name, out var gated) && RequiresApproval(gated))
+                    {
+                        var approval = await SuspendAsync(loop, call, cancellationToken);
+                        logger.LogInformation("agent_chat awaiting approval {ApprovalId} for {Tool}", approval.Id, call.Name);
+                        return new AgentResponse
+                        {
+                            Answer = $"awaiting approval for tool '{call.Name}'",
+                            Steps = loop.Steps,
+                            ToolCalls = loop.Steps.Select(s => s.Tool).ToList(),
+                            Iterations = loop.Iterations,
+                            LatencyMs = sw.Elapsed.TotalMilliseconds,
+                            LimitReached = false,
+                            AwaitingApprovalId = approval.Id,
+                            PendingTool = call.Name,
+                            PendingArgsJson = approval.ArgumentsJson
+                        };
+                    }
+
+                    loop.ToolCalls++;
+                    if (loop.ToolCalls > options.MaxToolCalls)
+                    {
+                        loop.LimitReached = true;
+                        break;
+                    }
+
+                    var fn = loop.Functions.FirstOrDefault(f => f.Name == call.Name);
+                    sink?.TryWrite(new SseEvent("tool_start",
+                        new { tool = call.Name, args = Summarize(call.Arguments) }));
+                    var stepSw = Stopwatch.StartNew();
+                    object? result;
+                    var isError = false;
+                    try
+                    {
+                        result = fn is null
+                            ? $"ERROR: unknown tool '{call.Name}'"
+                            : await fn.InvokeAsync(ToArguments(call), cancellationToken);
+                        isError = result?.ToString()?.StartsWith("ERROR:") == true;
+                    }
+                    catch (Exception ex)
+                    {
+                        isError = true;
+                        result = $"ERROR: {ex.Message}";
+                    }
+
+                    sink?.TryWrite(new SseEvent("tool_end",
+                        new { tool = call.Name, isError, elapsedMs = stepSw.Elapsed.TotalMilliseconds }));
+                    loop.Steps.Add(new AgentStep
+                    {
+                        Iteration = loop.Iterations,
+                        Tool = call.Name,
+                        ArgsSummary = Summarize(call.Arguments),
+                        IsError = isError,
+                        ElapsedMs = stepSw.Elapsed.TotalMilliseconds
+                    });
+                    loop.Messages.Add(new ChatMessage(ChatRole.Tool,
+                        [new FunctionResultContent(call.CallId, result)]));
+                }
             }
+        }
+        finally
+        {
+            sink?.TryComplete();
         }
 
         if (loop.Iterations >= loop.MaxIterations)
@@ -276,6 +484,48 @@ public sealed class AgentService(
             LatencyMs = sw.Elapsed.TotalMilliseconds,
             LimitReached = loop.LimitReached
         };
+    }
+
+    /// <summary>
+    /// Streams the model response when the provider supports it (emitting token
+    /// events); falls back to a single buffered call + pseudo-token otherwise.
+    /// </summary>
+    private static async Task<ChatResponse> GetModelResponseAsync(
+        IChatClient client, LoopState loop, ChannelWriter<SseEvent>? sink, CancellationToken ct)
+    {
+        var chatOptions = new ChatOptions { Tools = [.. loop.Functions] };
+        IAsyncEnumerable<ChatResponseUpdate>? updates = null;
+        if (sink is not null)
+        {
+            try
+            {
+                updates = client.GetStreamingResponseAsync(loop.Messages, chatOptions, ct);
+            }
+            catch (NotSupportedException) { /* provider cannot stream */ }
+        }
+
+        if (updates is null)
+        {
+            var buffered = await client.GetResponseAsync(loop.Messages, chatOptions, ct);
+            if (sink is not null && buffered.Text is { Length: > 0 } text)
+                sink.TryWrite(new SseEvent("token", new { delta = text }));
+            return buffered;
+        }
+
+        var contents = new List<AIContent>();
+        var modelId = "";
+        await foreach (var update in updates.WithCancellation(ct))
+        {
+            modelId = update.ModelId ?? modelId;
+            foreach (var content in update.Contents)
+            {
+                contents.Add(content);
+                if (content is TextContent { Text.Length: > 0 } delta)
+                    sink?.TryWrite(new SseEvent("token", new { delta = delta.Text }));
+            }
+        }
+        var message = new ChatMessage(ChatRole.Assistant, contents);
+        return new ChatResponse(message) { ModelId = modelId };
     }
 
     /// <summary>Persists the suspended loop state + masked args; emits the feed event.</summary>

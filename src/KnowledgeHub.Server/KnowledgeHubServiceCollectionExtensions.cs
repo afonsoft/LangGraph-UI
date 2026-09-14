@@ -75,6 +75,7 @@ public static class KnowledgeHubServiceCollectionExtensions
             TimeSpan.FromMinutes(
                 sp.GetRequiredService<IOptions<Agent.AgentOptions>>().Value.ApprovalTimeoutMinutes),
             sp.GetService<IMcpActivityFeed>()));
+        services.AddScoped<IConversationService, ConversationService>();
 
         services.AddScoped<IVectorStore>(sp =>
         {

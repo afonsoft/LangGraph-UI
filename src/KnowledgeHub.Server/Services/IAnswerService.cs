@@ -17,4 +17,12 @@ public interface IAnswerService
     /// </summary>
     Task<AskResponse> AnswerAsync(
         string question, IReadOnlyList<SearchResultItem> context, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Streaming variant (SPEC-20260914-streaming-answers): yields token events as the
+    /// model produces them (chunked fallback when the provider cannot stream) and a
+    /// final "done" carrying the same AskResponse as <see cref="AnswerAsync"/>.
+    /// </summary>
+    IAsyncEnumerable<SseEvent> StreamAsync(
+        string question, IReadOnlyList<SearchResultItem> context, CancellationToken cancellationToken = default);
 }

@@ -9,7 +9,8 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-streaming-answers` |
 | DependsOn | `SPEC-20260914-llm-answer-synthesis`, `SPEC-20260914-agent-chat-loop` |
-| Status | `Approved` |
+| Status | `Done` |
+| Ticket | `#33` |
 
 ## 1. User Story
 
@@ -65,11 +66,11 @@ Duas superfícies de streaming:
 
 ## 7. Critérios de aceite
 
-- [ ] `POST /api/agent/stream` emite `tool_start`/`token`/`done` em ordem via `curl -N`.
-- [ ] Funciona através de `https://rag.afonsoft.dev` (nginx sem buffering — verificado de ponta a ponta).
-- [ ] Playground mostra texto incremental + timeline ao vivo.
-- [ ] Disconnect do cliente aborta o trabalho no servidor.
-- [ ] Suite verde.
+- [x] `POST /api/agent/stream` emite `tool_start`/`token`/`done` em ordem (StreamingApiTests).
+- [ ] Funciona através de `https://rag.afonsoft.dev` (nginx sem buffering — verificado de ponta a ponta). *(pendente deploy)*
+- [x] Playground mostra texto incremental + timeline ao vivo (SSE em `agent_chat`/`ask_knowledge`, fallback para sync).
+- [x] Disconnect do cliente aborta o trabalho no servidor (`HttpContext.RequestAborted` → `CancellationToken` do loop/LLM).
+- [x] Suite verde.
 
 ## 8. Riscos
 

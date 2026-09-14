@@ -10,7 +10,8 @@ a single Kestrel-hosted .NET 10 process.
 | Route | Purpose |
 |---|---|
 | `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`) |
-| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals` | REST API |
+| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API |
+| `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP (modern clients) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
 | `/hubs/mcp` | SignalR feed for the MCP monitor |
@@ -52,7 +53,8 @@ plus DeepWiki bypass:
     "MaxToolCalls": 20,                           // total tool invocations cap
     "MaxToolResultChars": 4000,                   // truncation before results re-enter the model
     "RequireApprovalFor": ["*"],                  // mutating tools need human approval inside the agent loop
-    "ApprovalTimeoutMinutes": 30                  // pending approvals expire after this
+    "ApprovalTimeoutMinutes": 30,                 // pending approvals expire after this
+    "MaxContextTokens": 8000                      // thread history window (chars/4) — older turns are summarized
   },
   "DeepWiki": {
     "Enabled": true,

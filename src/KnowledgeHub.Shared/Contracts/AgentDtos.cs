@@ -12,6 +12,10 @@ public sealed record AgentRequest
     public int? MaxIterations { get; init; }
     /// <summary>Opt-in: include mutating tools (write_knowledge/write_note) in the loop.</summary>
     public bool AllowWrite { get; init; }
+    /// <summary>Continue an existing conversation thread (SPEC-20260914-conversation-threads).</summary>
+    public Guid? ThreadId { get; init; }
+    /// <summary>Create a new thread and persist this run's turns when no ThreadId is given.</summary>
+    public bool Persist { get; init; }
 }
 
 /// <summary>One prior conversation turn for <see cref="AgentRequest.Messages"/>.</summary>
@@ -46,4 +50,6 @@ public sealed record AgentResponse
     public Guid? AwaitingApprovalId { get; init; }
     public string? PendingTool { get; init; }
     public string? PendingArgsJson { get; init; }
+    /// <summary>Thread this run was persisted to (when threadId/persist were used).</summary>
+    public Guid? ThreadId { get; init; }
 }

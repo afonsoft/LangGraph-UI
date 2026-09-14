@@ -16,4 +16,11 @@ public interface IAgentService
     /// result so the model can answer without mutating anything.
     /// </summary>
     Task<AgentResponse> ResumeAsync(Guid approvalId, bool allowDenied = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Streaming variant (SPEC-20260914-streaming-answers): yields token /
+    /// tool_start / tool_end / awaiting_approval events and finishes with "done"
+    /// carrying the same <see cref="AgentResponse"/> as <see cref="RunAsync"/>.
+    /// </summary>
+    IAsyncEnumerable<SseEvent> StreamAsync(AgentRequest request, CancellationToken cancellationToken = default);
 }

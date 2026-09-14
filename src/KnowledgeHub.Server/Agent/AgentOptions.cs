@@ -22,4 +22,11 @@ public sealed class AgentOptions
 
     /// <summary>Minutes a pending approval stays valid before it expires.</summary>
     public int ApprovalTimeoutMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// Estimated token budget for conversation history (chars/4). Older thread
+    /// messages beyond the window are condensed into a rolling summary.
+    /// (SPEC-20260914-conversation-threads RF-002)
+    /// </summary>
+    public int MaxContextTokens { get; set; } = 8000;
 }

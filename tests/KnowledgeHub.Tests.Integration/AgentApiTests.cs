@@ -39,11 +39,23 @@ public class AgentApiTests : IClassFixture<AgentApiTests.Fixture>, IClassFixture
     {
         public List<List<string>> ToolsSeen { get; } = [];
 
+        /// <summary>"role: text" for every message seen per call — lets tests assert context carry-over.</summary>
+        public List<List<string>> MessagesSeen { get; } = [];
+
         public Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         {
             var toolNames = options?.Tools?.Select(t => t.Name).ToList() ?? [];
             ToolsSeen.Add(toolNames);
+            MessagesSeen.Add(messages.Select(m => $"{m.Role.Value}:{m.Text}").ToList());
+
+            // Plain-text answer when no tools are offered (e.g. thread summarization calls).
+            if (toolNames.Count == 0)
+            {
+                return Task.FromResult(new ChatResponse(
+                    new ChatMessage(ChatRole.Assistant, "summary text"))
+                { ModelId = "scripted" });
+            }
 
             var loopForever = messages.Any(m => m.Role == ChatRole.User && (m.Text ?? "").Contains("LOOP_FOREVER"));
             var wantsWrite = messages.Any(m => m.Role == ChatRole.User && (m.Text ?? "").Contains("WRITE_TEST"));

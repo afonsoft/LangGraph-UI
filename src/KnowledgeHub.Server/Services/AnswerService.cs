@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using KnowledgeHub.Server.Chat;
@@ -54,6 +55,75 @@ public sealed partial class AnswerService(
         logger.LogDebug("Answer synthesized in {LatencyMs} ms (model {Model}, {Citations} citations)",
             sw.Elapsed.TotalMilliseconds, response.ModelId ?? options.Model, citations.Count);
         return Result(answer, citations, response.ModelId ?? options.Model, sw);
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<SseEvent> StreamAsync(
+        string question, IReadOnlyList<SearchResultItem> context,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+
+        if (context.Count == 0)
+        {
+            yield return new SseEvent("done", Result(NoMatchAnswer, [], null, sw));
+            yield break;
+        }
+
+        var client = chatClient
+            ?? throw new ChatProviderException("no chat provider configured (Chat:Provider=none)");
+
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, SystemPrompt),
+            new(ChatRole.User, BuildUserPrompt(question, context))
+        };
+        var chatOptions = new ChatOptions
+        {
+            Temperature = options.Temperature is null ? null : (float)options.Temperature,
+            MaxOutputTokens = options.MaxTokens
+        };
+
+        var streamed = new List<AIContent>();
+        IAsyncEnumerable<ChatResponseUpdate>? updates = null;
+        try
+        {
+            updates = client.GetStreamingResponseAsync(messages, chatOptions, cancellationToken);
+        }
+        catch (NotSupportedException) { /* provider cannot stream — fallback below */ }
+
+        string? model = null;
+        if (updates is not null)
+        {
+            await foreach (var update in updates.WithCancellation(cancellationToken))
+            {
+                model ??= update.ModelId;
+                foreach (var content in update.Contents)
+                {
+                    streamed.Add(content);
+                    if (content is TextContent { Text.Length: > 0 } text)
+                        yield return new SseEvent("token", new { delta = text.Text });
+                }
+            }
+        }
+        else
+        {
+            var response = await client.GetResponseAsync(messages, chatOptions, cancellationToken);
+            model = response.ModelId;
+            foreach (var m in response.Messages)
+                streamed.AddRange(m.Contents);
+            var text = response.Text?.Trim() ?? "";
+            // Pseudo-stream: emit the whole answer in ~24-char deltas.
+            for (var i = 0; i < text.Length; i += 24)
+                yield return new SseEvent("token", new { delta = text[i..Math.Min(i + 24, text.Length)] });
+        }
+
+        var answer = string.Concat(streamed.OfType<TextContent>().Select(c => c.Text)).Trim();
+        if (answer.Length == 0)
+            throw new ChatProviderException("chat provider returned an empty answer");
+
+        yield return new SseEvent("done",
+            Result(answer, ExtractCitations(answer, context), model ?? options.Model, sw));
     }
 
     public static string BuildUserPrompt(string question, IReadOnlyList<SearchResultItem> context)

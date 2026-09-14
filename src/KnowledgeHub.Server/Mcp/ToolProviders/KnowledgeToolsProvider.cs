@@ -40,7 +40,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
           "prompt":{"type":"string","description":"Pergunta/tarefa em linguagem natural — o agente itera tools até responder"},
           "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist de tools expostas ao modelo (default: todas as read-only)"},
           "maxIterations":{"type":"integer","description":"Teto de iterações model→tools→model (default 10)"},
-          "allowWrite":{"type":"boolean","description":"Opt-in: expõe tools de escrita (write_knowledge, write_note)"}
+          "allowWrite":{"type":"boolean","description":"Opt-in: expõe tools de escrita (write_knowledge, write_note)"},
+          "threadId":{"type":"string","description":"GUID de thread existente — continua a conversa com contexto"},
+          "persist":{"type":"boolean","description":"Cria thread nova e persiste os turnos desta chamada"}
         },"required":["prompt"]}
         """)!.AsObject();
 
@@ -190,7 +192,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             Prompt = ToolArgs.RequiredString(ctx, "prompt"),
             Tools = ToolArgs.OptionalStringArray(ctx, "tools"),
             MaxIterations = ToolArgs.OptionalInt(ctx, "maxIterations", 10, 50),
-            AllowWrite = ToolArgs.OptionalBool(ctx, "allowWrite") == true
+            AllowWrite = ToolArgs.OptionalBool(ctx, "allowWrite") == true,
+            ThreadId = ToolArgs.OptionalString(ctx, "threadId") is { } tid && Guid.TryParse(tid, out var g) ? g : null,
+            Persist = ToolArgs.OptionalBool(ctx, "persist") == true
         };
 
         try

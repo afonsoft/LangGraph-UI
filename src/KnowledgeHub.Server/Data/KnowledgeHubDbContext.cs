@@ -9,6 +9,8 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<KnowledgeDocument> Documents => Set<KnowledgeDocument>();
     public DbSet<DocumentChunk> Chunks => Set<DocumentChunk>();
     public DbSet<ToolApproval> Approvals => Set<ToolApproval>();
+    public DbSet<ConversationThread> Threads => Set<ConversationThread>();
+    public DbSet<ConversationMessage> ThreadMessages => Set<ConversationMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +45,24 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.Property(a => a.RequestedBy).IsRequired().HasMaxLength(32);
             e.Property(a => a.Status).IsRequired().HasMaxLength(16);
             e.HasIndex(a => a.Status);
+        });
+
+        modelBuilder.Entity<ConversationThread>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Title).IsRequired().HasMaxLength(300);
+            e.HasMany(t => t.Messages)
+                .WithOne(m => m.Thread!)
+                .HasForeignKey(m => m.ThreadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ConversationMessage>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.Property(m => m.Role).IsRequired().HasMaxLength(16);
+            e.Property(m => m.ToolName).HasMaxLength(200);
+            e.HasIndex(m => m.ThreadId);
         });
 
         modelBuilder.Entity<DocumentChunk>(e =>
