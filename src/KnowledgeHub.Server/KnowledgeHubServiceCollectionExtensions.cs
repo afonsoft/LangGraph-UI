@@ -92,7 +92,12 @@ public static class KnowledgeHubServiceCollectionExtensions
                 var tool = (await catalog.GetToolsAsync(ctx.Services!, ct))
                     .FirstOrDefault(t => t.Name == name)
                     ?? throw new McpProtocolException($"unknown tool '{name}'", McpErrorCode.MethodNotFound);
-                return await tool.Handler(ctx, ct);
+                return await tool.Handler(
+                    new KnowledgeHub.Server.Mcp.ToolCallContext
+                    {
+                        Services = ctx.Services!,
+                        Arguments = ctx.Params?.Arguments
+                    }, ct);
             };
 
             options.Handlers.ListResourcesHandler = async (ctx, ct) =>

@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 
 namespace KnowledgeHub.Server.Mcp;
 
@@ -15,5 +14,5 @@ public sealed record CatalogTool
     public required string Description { get; init; }
     public required JsonObject InputSchema { get; init; }
     public bool ReadOnly { get; init; }
-    public required Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>> Handler { get; init; }
+    public required Func<ToolCallContext, CancellationToken, ValueTask<CallToolResult>> Handler { get; init; }
 }

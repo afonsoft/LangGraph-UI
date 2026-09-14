@@ -1,97 +1,286 @@
 @page "/playground"
-@inject SearchApiClient Search
+@using System.Text.Json
+@using KnowledgeHub.Shared.Contracts
+@inject ToolsApiClient Tools
 @inject ToastService Toast
 
 <PageTitle>Playground — KnowledgeHub</PageTitle>
 
-<h3 class="mb-3">Playground de busca</h3>
+<h3 class="mb-3">Playground de tools MCP</h3>
 
-<div class="row g-2 align-items-end mb-4">
-    <div class="col-12 col-md-7">
-        <BootstrapInput @bind-Value="_query" DisplayText="Consulta" ShowLabel="true"
-                        PlaceHolder="ex.: o que é chunking?" OnEnterAsync="_ => RunSearchAsync()" />
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <Card>
+            <HeaderTemplate>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>Tools (@(_tools?.Count ?? 0))</span>
+                    <Button Size="Size.Small" Icon="fa-solid fa-rotate" IsAsync="true"
+                            OnClick="LoadToolsAsync" IsDisabled="_loading" />
+                </div>
+            </HeaderTemplate>
+            <BodyTemplate>
+                @if (_tools is null)
+                {
+                    <div class="text-muted">Carregando catálogo…</div>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var t in _tools)
+                        {
+                            <button type="button"
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(t.Name == _selected?.Name ? "active" : "")"
+                                    @onclick="() => SelectTool(t)">
+                                <code>@t.Name</code>
+                                @if (!t.ReadOnly)
+                                {
+                                    <Badge Color="Color.Warning">write</Badge>
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+            </BodyTemplate>
+        </Card>
     </div>
-    <div class="col-6 col-md-3">
-        <label class="form-label">topK: @_topK</label>
-        <input type="range" class="form-range" min="1" max="50" @bind="_topK" @bind:event="oninput" />
-    </div>
-    <div class="col-6 col-md-2">
-        <Button Color="Color.Primary" Icon="fa-solid fa-magnifying-glass" Text="Buscar"
-                IsAsync="true" OnClick="RunSearchAsync" IsDisabled="_searching" />
-    </div>
-</div>
 
-@if (_searched && _results is { Count: 0 })
-{
-    <div class="text-center text-muted py-5">
-        <div class="fs-1 mb-2"><i class="fa-solid fa-inbox"></i></div>
-        Nenhum resultado. Indexe uma fonte ou ajuste a consulta.
-    </div>
-}
-
-@if (_results is not null)
-{
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="text-muted">@_results.Count resultado(s)</span>
-        <Switch @bind-Value="_showRaw" DisplayText="JSON" ShowLabel="true" />
-    </div>
-
-    @if (_showRaw)
-    {
-        <pre class="border rounded p-3 bg-light" style="max-height: 480px; overflow: auto;">@System.Text.Json.JsonSerializer.Serialize(_results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
-    }
-    else
-    {
-        @foreach (var r in _results)
+    <div class="col-12 col-lg-8">
+        @if (_selected is null)
+        {
+            <div class="text-center text-muted py-5">
+                <div class="fs-1 mb-2"><i class="fa-solid fa-arrow-left"></i></div>
+                Selecione uma tool à esquerda para testá-la.
+            </div>
+        }
+        else
         {
             <Card class="mb-3">
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between">
-                        <span><strong>@r.DocumentTitle</strong> <Badge Color="Color.Info">@r.SourceName</Badge></span>
-                        <Badge Color="@ScoreColor(r.Score)">@r.Score.ToString("F3")</Badge>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><code>@_selected.Name</code></span>
+                        @if (_selected.ReadOnly)
+                        {
+                            <Badge Color="Color.Success">read-only</Badge>
+                        }
+                        else
+                        {
+                            <Badge Color="Color.Warning">escrita real</Badge>
+                        }
                     </div>
                 </HeaderTemplate>
                 <BodyTemplate>
-                    <pre class="mb-1" style="white-space: pre-wrap;">@r.ChunkText</pre>
-                    <small class="text-muted"><code>@r.UriReference</code></small>
+                    <p class="text-muted">@_selected.Description</p>
+
+                    @foreach (var field in _fields)
+                    {
+                        <div class="mb-2">
+                            <label class="form-label">
+                                <code>@field.Name</code>
+                                @if (field.Required)
+                                {
+                                    <span class="text-danger">*</span>
+                                }
+                                <small class="text-muted ms-1">@field.Type@(field.Description is not null ? $" — {field.Description}" : "")</small>
+                            </label>
+                            @if (field.Simple)
+                            {
+                                <BootstrapInput @bind-Value="field.TextValue" PlaceHolder="@field.Type" />
+                            }
+                            else
+                            {
+                                <Textarea @bind-Value="field.TextValue" rows="3"
+                                          placeholder="@(field.Type == "array" ? "[\"a\", \"b\"]" : "{ }")" />
+                            }
+                        </div>
+                    }
+
+                    <div class="d-flex align-items-center gap-2 mt-3">
+                        <Button Color="Color.Primary" Icon="fa-solid fa-play" Text="Executar"
+                                IsAsync="true" OnClick="RunToolAsync" IsDisabled="_running" />
+                        @if (_elapsedMs is not null)
+                        {
+                            <span class="text-muted">@_elapsedMs.Value.ToString("F0") ms</span>
+                        }
+                    </div>
                 </BodyTemplate>
             </Card>
+
+            @if (_result is not null)
+            {
+                <Card>
+                    <HeaderTemplate>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Resultado</span>
+                            <div>
+                                @if (_isError)
+                                {
+                                    <Badge Color="Color.Danger">isError</Badge>
+                                }
+                                <Switch @bind-Value="_showRaw" DisplayText="JSON" ShowLabel="true" />
+                            </div>
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (_showRaw)
+                        {
+                            <pre class="border rounded p-3 bg-light mb-0" style="max-height: 480px; overflow: auto;">@_result.Value.ToString()</pre>
+                        }
+                        else if (_texts.Count > 0)
+                        {
+                            @foreach (var text in _texts)
+                            {
+                                <pre class="mb-1 @( _isError ? "text-danger" : "")" style="white-space: pre-wrap;">@text</pre>
+                            }
+                        }
+                        else
+                        {
+                            <pre class="border rounded p-3 bg-light mb-0" style="max-height: 480px; overflow: auto;">@_result.Value.ToString()</pre>
+                        }
+                    </BodyTemplate>
+                </Card>
+            }
         }
-    }
-}
+    </div>
+</div>
 
 @code {
-    private string? _query;
-    private int _topK = 5;
-    private bool _searching;
-    private bool _searched;
+    private IReadOnlyList<ToolDescriptorDto>? _tools;
+    private ToolDescriptorDto? _selected;
+    private List<FieldModel> _fields = [];
+    private bool _loading;
+    private bool _running;
     private bool _showRaw;
-    private IReadOnlyList<SearchResultItem>? _results;
+    private bool _isError;
+    private JsonElement? _result;
+    private List<string> _texts = [];
+    private double? _elapsedMs;
 
-    private async Task RunSearchAsync()
+    protected override async Task OnInitializedAsync() => await LoadToolsAsync();
+
+    private async Task LoadToolsAsync()
     {
-        if (string.IsNullOrWhiteSpace(_query)) return;
-        _searching = true;
+        _loading = true;
         try
         {
-            var response = await Search.SearchAsync(_query, _topK);
-            _results = response?.Results ?? [];
-            _searched = true;
+            _tools = (await Tools.ListAsync())?.Tools ?? [];
+            if (_selected is null)
+                _selected = _tools.FirstOrDefault(t => t.Name == "search_knowledge") ?? _tools.FirstOrDefault();
+            if (_selected is not null)
+                BuildFields();
         }
         catch (Exception ex)
         {
-            await Toast.Error("Busca falhou", ex.Message);
+            await Toast.Error("Falha ao listar tools", ex.Message);
         }
         finally
         {
-            _searching = false;
+            _loading = false;
         }
     }
 
-    private static Color ScoreColor(double score) => score switch
+    private void SelectTool(ToolDescriptorDto tool)
     {
-        >= 0.5 => Color.Success,
-        >= 0.2 => Color.Warning,
-        _ => Color.Secondary
-    };
+        _selected = tool;
+        _result = null;
+        _elapsedMs = null;
+        BuildFields();
+    }
+
+    private void BuildFields()
+    {
+        _fields = [];
+        if (_selected is null) return;
+        var schema = _selected.InputSchema;
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("properties", out var props))
+            return;
+
+        var required = schema.TryGetProperty("required", out var req)
+            ? req.EnumerateArray().Select(e => e.GetString()!).ToHashSet()
+            : [];
+
+        foreach (var p in props.EnumerateObject())
+        {
+            var type = p.Value.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String
+                ? t.GetString()!
+                : p.Value.TryGetProperty("anyOf", out _) ? "anyOf" : "object";
+            var description = p.Value.TryGetProperty("description", out var d) ? d.GetString() : null;
+            _fields.Add(new FieldModel
+            {
+                Name = p.Name,
+                Type = type,
+                Description = description,
+                Required = required.Contains(p.Name),
+                Simple = type is "string" or "integer" or "number" or "boolean"
+            });
+        }
+    }
+
+    private async Task RunToolAsync()
+    {
+        if (_selected is null) return;
+
+        var missing = _fields.Where(f => f.Required && string.IsNullOrWhiteSpace(f.TextValue)).Select(f => f.Name).ToList();
+        if (missing.Count > 0)
+        {
+            await Toast.Error("Campos obrigatórios", string.Join(", ", missing));
+            return;
+        }
+
+        // Assemble the arguments JSON from the form fields.
+        var args = new Dictionary<string, JsonElement>();
+        foreach (var f in _fields.Where(f => !string.IsNullOrWhiteSpace(f.TextValue)))
+        {
+            try
+            {
+                args[f.Name] = f.Type switch
+                {
+                    "integer" or "number" => JsonSerializer.SerializeToElement(double.Parse(f.TextValue!)),
+                    "boolean" => JsonSerializer.SerializeToElement(bool.Parse(f.TextValue!)),
+                    "string" => JsonSerializer.SerializeToElement(f.TextValue),
+                    _ => JsonDocument.Parse(f.TextValue!).RootElement.Clone()
+                };
+            }
+            catch
+            {
+                await Toast.Error($"Valor inválido em '{f.Name}'", $"esperado {f.Type}");
+                return;
+            }
+        }
+
+        _running = true;
+        _result = null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var result = await Tools.CallAsync(_selected.Name, JsonSerializer.Serialize(args));
+            _result = result;
+            _isError = result.TryGetProperty("isError", out var e) && e.GetBoolean();
+            _texts = result.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+                ? content.EnumerateArray()
+                    .Where(c => c.TryGetProperty("type", out var t) && t.GetString() == "text")
+                    .Select(c => c.GetProperty("text").GetString() ?? "")
+                    .ToList()
+                : [];
+            _elapsedMs = sw.Elapsed.TotalMilliseconds;
+        }
+        catch (Exception ex)
+        {
+            await Toast.Error("Chamada falhou", ex.Message);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private sealed class FieldModel
+    {
+        public required string Name { get; init; }
+        public required string Type { get; init; }
+        public string? Description { get; init; }
+        public bool Required { get; init; }
+        public bool Simple { get; init; }
+        public string? TextValue { get; set; }
+    }
 }

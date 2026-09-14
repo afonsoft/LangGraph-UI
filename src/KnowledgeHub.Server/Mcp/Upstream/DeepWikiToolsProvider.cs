@@ -51,7 +51,7 @@ public sealed partial class DeepWikiToolsProvider(
                 {
                     ValidateRepoArg(ctx, out _);
                     var question = ToolArgs.RequiredString(ctx, "question");
-                    return await upstream.CallAsync("ask_question", ctx.Params?.Arguments, ct);
+                    return await upstream.CallAsync("ask_question", ctx.Arguments, ct);
                 }
             },
             new CatalogTool
@@ -63,7 +63,7 @@ public sealed partial class DeepWikiToolsProvider(
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
-                    return await upstream.CallAsync("read_wiki_structure", ctx.Params?.Arguments, ct);
+                    return await upstream.CallAsync("read_wiki_structure", ctx.Arguments, ct);
                 }
             },
             new CatalogTool
@@ -75,7 +75,7 @@ public sealed partial class DeepWikiToolsProvider(
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
-                    return await upstream.CallAsync("read_wiki_contents", ctx.Params?.Arguments, ct);
+                    return await upstream.CallAsync("read_wiki_contents", ctx.Arguments, ct);
                 }
             }
         ];
@@ -86,9 +86,9 @@ public sealed partial class DeepWikiToolsProvider(
     /// Client-side validation (SPEC-07 RF-004): repoName is a string or
     /// ≤10-element string array, each element matching owner/repo.
     /// </summary>
-    public static void ValidateRepoArg(RequestContext<CallToolRequestParams> ctx, out IReadOnlyList<string> repos)
+    public static void ValidateRepoArg(ToolCallContext ctx, out IReadOnlyList<string> repos)
     {
-        var arguments = ctx.Params?.Arguments;
+        var arguments = ctx.Arguments;
         if (arguments is null || !arguments.TryGetValue("repoName", out var el))
             throw new McpProtocolException("missing required argument 'repoName'", McpErrorCode.InvalidParams);
         repos = ValidateRepoName(el);
