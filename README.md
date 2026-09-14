@@ -75,4 +75,6 @@ dotnet test
 dotnet format --verify-no-changes
 ```
 
-Specs live in `.specs/`; work is tracked in GitHub Issues #2–#8.
+Specs live in `.specs/`; architecture diagrams (Mermaid + draw.io) in
+[`docs/architecture/`](docs/architecture/system-architecture.md); work is tracked
+in GitHub Issues #2–#8.

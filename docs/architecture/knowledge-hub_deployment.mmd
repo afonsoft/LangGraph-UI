@@ -1,0 +1,29 @@
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    subgraph Host["🖥️ User machine (no .NET runtime needed)"]
+        EXE["🚀 KnowledgeHub<br/>single-file binary<br/>(self-contained, per-RID)"]
+        DB[("💾 knowledgehub.db<br/>beside the executable")]
+        EXT["📂 %TMP%/.net extraction<br/>native libs (e_sqlite3)"]
+        CFG["⚙️ appsettings.json + env vars<br/>DeepWiki__* Embeddings__* ..."]
+        EXE --> DB
+        EXE -.->|self-extract| EXT
+        CFG -.->|config| EXE
+    end
+
+    DEV["👨‍💻 dotnet publish -r linux-x64|win-x64|osx-arm64"] -->|produces| EXE
+
+    subgraph Net["🌐 Same port (ASPNETCORE_URLS, default :5000)"]
+        R1["/            → SPA + deep links"]
+        R2["/api/*       → REST"]
+        R3["/mcp         → Streamable HTTP"]
+        R4["/mcp/sse|msg → legacy SSE"]
+        R5["/hubs/mcp    → SignalR"]
+    end
+    EXE --- Net
+
+    classDef bin fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:darkgreen
+    classDef data fill:#f5f5f5,stroke:#666666,stroke-width:2px,color:black
+    classDef net fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
+    class EXE bin
+    class DB,EXT,CFG data
+    class R1,R2,R3,R4,R5 net
