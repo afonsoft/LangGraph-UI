@@ -48,6 +48,9 @@ CodeCoverage/
 publish/
 data/
 
+# skills.sh CLI canonical store (real copies live in .claude/skills/)
+.agents/
+
 # MSBuild Binary and Structured Log
 *.binlog
 

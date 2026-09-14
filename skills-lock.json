@@ -77,7 +77,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/notebooklm-mcp/SKILL.md",
-      "computedHash": "3db7ba53e15d2eb4363bdb9a39f023848510de7dde68c7021184ee483ed77aec"
+      "computedHash": "96ae14b5509edfc2dfe6c72371dc1374926c52e2e08086b569a8b2b259934ad1"
     },
     "observability-and-instrumentation": {
       "source": "afonsoft/skills",
@@ -95,7 +95,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/orchestrator/SKILL.md",
-      "computedHash": "ac1e68cdea7005c4145335db3aafd896f039148902d44894cca6b78bc0f00cda"
+      "computedHash": "75e747626f55cffc88184231022d9b269ea0e1d40cd8135dfc810aa43fb1ccb2"
     },
     "qa-analyst": {
       "source": "afonsoft/skills",
