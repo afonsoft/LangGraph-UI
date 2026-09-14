@@ -48,7 +48,8 @@ Options:
   --skip-tests      Skip dotnet build/test gate.
   -h, --help        Show this help.
 
-Env overrides: IMAGE_NAME, CONTAINER_NAME, EMBEDDINGS_*, VECTORSTORE_*, DEEPWIKI_*.
+Env overrides: IMAGE_NAME, CONTAINER_NAME, KNOWLEDGEHUB_PORT, ALLOWED_HOSTS,
+               EMBEDDINGS_*, VECTORSTORE_*, DEEPWIKI_*.
 EOF
 }
 
@@ -135,6 +136,7 @@ docker_deploy() {
   docker run -d --name "$CONTAINER_NAME" \
     -p "$PORT:$CONTAINER_PORT" \
     -v "$abs_data:/data" \
+    -e AllowedHosts="${ALLOWED_HOSTS:-*}" \
     --restart unless-stopped \
     "$IMAGE_NAME"
   info "Done. KnowledgeHub is up at http://localhost:$PORT"
