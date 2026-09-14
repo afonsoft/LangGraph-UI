@@ -1,0 +1,41 @@
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    autonumber
+    participant C as 🤖 MCP Client
+    participant K as 📨 /mcp (SDK transport)
+    participant F as 📊 Activity filters
+    participant CAT as 🧰 DynamicToolCatalog
+    participant S as 🔍 SearchService
+    participant V as 💾 IVectorStore
+    participant D as ☁️ DeepWikiUpstreamClient
+    participant W as 🌐 mcp.deepwiki.com
+
+    C->>K: POST initialize
+    K-->>C: 200 + Mcp-Session-Id
+    C->>K: notifications/initialized
+    C->>K: tools/list
+    K->>CAT: GetToolsAsync (live DB)
+    CAT-->>K: 9 tools (local + query_* + deepwiki)
+    K-->>C: tools[]
+
+    alt Local tool (search_knowledge)
+        C->>K: tools/call search_knowledge
+        K->>F: gate + telemetry start
+        K->>CAT: resolve + invoke
+        CAT->>S: SearchAsync(query, topK)
+        S->>V: cosine similarity (model-matched)
+        V-->>S: ranked chunks
+        S-->>CAT: hits
+        CAT-->>K: CallToolResult(text)
+        K-->>C: result
+    else DeepWiki bypass (read_wiki_structure)
+        C->>K: tools/call read_wiki_structure
+        K->>F: gate + telemetry start
+        K->>CAT: resolve + validate repoName
+        CAT->>D: CallAsync(tool, args)
+        D->>W: McpClient → tools/call (Streamable HTTP)
+        W-->>D: CallToolResult
+        D-->>CAT: pass-through (retry once on failure)
+        CAT-->>K: CallToolResult
+        K-->>C: result
+    end
