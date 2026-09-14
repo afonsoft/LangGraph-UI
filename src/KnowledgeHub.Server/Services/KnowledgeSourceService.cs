@@ -24,7 +24,7 @@ public sealed class KnowledgeSourceService(
         [SourceType.WebPage] = ["url"],
         [SourceType.RestApi] = ["endpoint"],
         [SourceType.SqlDatabase] = ["connectionString", "query"],
-        [SourceType.DocumentFile] = ["filePath"]
+        [SourceType.DocumentFile] = ["path"]
     };
 
     public async Task<IReadOnlyList<KnowledgeSourceDto>> ListAsync(SourceType? type, bool? active, CancellationToken ct = default)

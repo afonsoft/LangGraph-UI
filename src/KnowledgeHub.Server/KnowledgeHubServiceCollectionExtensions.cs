@@ -29,6 +29,11 @@ public static class KnowledgeHubServiceCollectionExtensions
                 cfg.GetSection(EmbeddingOptions.SectionName).Bind(options));
 
         services.AddHttpClient("embeddings");
+        services.AddHttpClient("webpage", c => c.Timeout = TimeSpan.FromSeconds(30));
+
+        // SPEC-20260914-webpage-docfile-connectors: connector registry.
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.WebPageConnector>();
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.DocumentFileConnector>();
         services.AddSingleton<IEmbeddingProvider>(sp =>
             EmbeddingProviderFactory.Create(
                 sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value,

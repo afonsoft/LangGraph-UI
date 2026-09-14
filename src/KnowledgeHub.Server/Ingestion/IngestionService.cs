@@ -10,6 +10,7 @@ using KnowledgeHub.Server.Services;
 using KnowledgeHub.Server.VectorStore;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KnowledgeHub.Server.Ingestion;
 
@@ -22,6 +23,7 @@ public sealed class IngestionService(
     IServiceScopeFactory scopeFactory,
     IEmbeddingProvider embeddings,
     IConfiguration configuration,
+    IEnumerable<Connectors.ISourceConnector> connectors,
     ILogger<IngestionService> logger) : IIngestionService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
@@ -45,7 +47,15 @@ public sealed class IngestionService(
                 return Fail(sourceId, "source not found");
 
             if (source.SourceType != SourceType.ObsidianVault)
-                return new SyncResultDto { Status = "skipped", Reason = $"connector {source.SourceType} not implemented", SourceId = sourceId, DurationMs = stopwatch.Elapsed.TotalMilliseconds };
+            {
+                // SPEC-20260914-webpage-docfile-connectors RF-003: route to the
+                // typed connector, then run the shared dedup→chunk→embed pipeline.
+                var connector = connectors.FirstOrDefault(c => c.Type == source.SourceType);
+                if (connector is null)
+                    return new SyncResultDto { Status = "skipped", Reason = $"connector {source.SourceType} not implemented", SourceId = sourceId, DurationMs = stopwatch.Elapsed.TotalMilliseconds };
+
+                return await SyncViaConnectorAsync(source, connector, db, vectors, scope, stopwatch, cancellationToken);
+            }
 
             var root = ResolveVaultRoot(source.ConfigurationJson);
             if (root is null || !Directory.Exists(root))
@@ -101,28 +111,18 @@ public sealed class IngestionService(
                 doc.ContentHash = hash;
                 doc.IndexedAt = DateTimeOffset.UtcNow;
 
-                doc.Chunks = chunks.Select((text, i) => new DocumentChunk
+                // AddRange via DbSet — reassigning doc.Chunks after RemoveRange makes EF Core
+                // emit an UPDATE for the deleted rows inside the same batch (concurrency error).
+                var newChunks = chunks.Select((text, i) => new DocumentChunk
                 {
                     KnowledgeDocumentId = doc.Id,
                     ChunkIndex = i,
                     TextContent = text
                 }).ToList();
+                db.Chunks.AddRange(newChunks);
 
                 await db.SaveChangesAsync(cancellationToken);
-
-                foreach (var chunk in doc.Chunks)
-                {
-                    try
-                    {
-                        var vector = await embeddings.EmbedAsync(chunk.TextContent, cancellationToken);
-                        await vectors.UpsertAsync(chunk.Id, doc.Id, sourceId, vector, embeddings.ModelId, cancellationToken);
-                        chunksCreated++;
-                    }
-                    catch (EmbeddingProviderException ex)
-                    {
-                        logger.LogWarning("Embedding failed for chunk {ChunkId}: {Message}", chunk.Id, ex.Message);
-                    }
-                }
+                chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);
                 processed++;
             }
 
@@ -166,6 +166,129 @@ public sealed class IngestionService(
         }
     }
 
+    /// <summary>
+    /// Shared pipeline for non-vault connectors: dedup by content hash, chunk,
+    /// embed, remove documents no longer returned by the fetch.
+    /// </summary>
+    private async Task<SyncResultDto> SyncViaConnectorAsync(
+        KnowledgeSource source,
+        Connectors.ISourceConnector connector,
+        KnowledgeHubDbContext db,
+        IVectorStore vectors,
+        AsyncServiceScope scope,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        var fetch = await connector.FetchAsync(source, cancellationToken);
+
+        var existing = await db.Documents
+            .Include(d => d.Chunks)
+            .Where(d => d.KnowledgeSourceId == source.Id)
+            .ToDictionaryAsync(d => d.UriReference, cancellationToken);
+
+        var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in fetch.Documents)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            seen.Add(raw.UriReference);
+
+            var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw.TextContent)));
+            if (existing.TryGetValue(raw.UriReference, out var doc) && doc.ContentHash == hash)
+            {
+                skipped++;
+                continue;
+            }
+
+            if (doc is null)
+            {
+                doc = new KnowledgeDocument
+                {
+                    KnowledgeSourceId = source.Id,
+                    Title = raw.Title,
+                    UriReference = raw.UriReference
+                };
+                db.Documents.Add(doc);
+            }
+            else
+            {
+                doc.Title = raw.Title;
+                db.Chunks.RemoveRange(doc.Chunks);
+            }
+
+            doc.RawContent = raw.TextContent;
+            doc.ContentHash = hash;
+            doc.IndexedAt = DateTimeOffset.UtcNow;
+
+            // AddRange via DbSet — see vault path above; nav reassignment after
+            // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
+            var newChunks = MarkdownChunker.Chunk(
+                raw.TextContent,
+                configuration.GetValue("Ingestion:MaxTokens", 500),
+                configuration.GetValue("Ingestion:OverlapTokens", 50))
+                .Select((text, i) => new DocumentChunk
+                {
+                    KnowledgeDocumentId = doc.Id,
+                    ChunkIndex = i,
+                    TextContent = text
+                }).ToList();
+            db.Chunks.AddRange(newChunks);
+
+            await db.SaveChangesAsync(cancellationToken);
+            chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, source.Id, vectors, cancellationToken);
+            processed++;
+        }
+
+        foreach (var (uri, doc) in existing)
+        {
+            if (seen.Contains(uri))
+                continue;
+            await vectors.DeleteByDocumentAsync(doc.Id, cancellationToken);
+            db.Documents.Remove(doc);
+            removed++;
+        }
+
+        source.LastSyncAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
+            .ReconcileAsync(cancellationToken);
+
+        return new SyncResultDto
+        {
+            Status = "completed",
+            SourceId = source.Id,
+            DocumentsProcessed = processed,
+            DocumentsSkipped = skipped,
+            DocumentsRemoved = removed,
+            ChunksCreated = chunksCreated,
+            DurationMs = stopwatch.Elapsed.TotalMilliseconds,
+            Reason = fetch.Warnings.Count == 0 ? null : $"{fetch.Warnings.Count} item(s) skipped: {string.Join("; ", fetch.Warnings.Take(5))}"
+        };
+    }
+
+    /// <summary>Embed + upsert each chunk; embedding failures are logged and tolerated.</summary>
+    private async Task<int> EmbedChunksAsync(
+        IEnumerable<DocumentChunk> chunks, Guid documentId, Guid sourceId,
+        IVectorStore vectors, CancellationToken cancellationToken)
+    {
+        var created = 0;
+        foreach (var chunk in chunks)
+        {
+            try
+            {
+                var vector = await embeddings.EmbedAsync(chunk.TextContent, cancellationToken);
+                await vectors.UpsertAsync(chunk.Id, documentId, sourceId, vector, embeddings.ModelId, cancellationToken);
+                created++;
+            }
+            catch (EmbeddingProviderException ex)
+            {
+                logger.LogWarning("Embedding failed for chunk {ChunkId}: {Message}", chunk.Id, ex.Message);
+            }
+        }
+        return created;
+    }
+
     /// <summary>Index (or remove) a single file — used by the vault watcher.</summary>
     public async Task SyncFileAsync(Guid sourceId, string relativePath, CancellationToken cancellationToken = default)
     {
@@ -190,55 +313,78 @@ public sealed class IngestionService(
                 .Include(d => d.Chunks)
                 .FirstOrDefaultAsync(d => d.KnowledgeSourceId == sourceId && d.UriReference == relativePath, cancellationToken);
 
-            if (!File.Exists(full))
+            var isDocFile = source.SourceType == SourceType.DocumentFile;
+
+            if (!File.Exists(full)
+                || isDocFile && !Connectors.DocumentFileConnector.SupportedExtensions.Contains(Path.GetExtension(full)))
             {
                 if (doc is not null)
                 {
                     await vectors.DeleteByDocumentAsync(doc.Id, cancellationToken);
                     db.Documents.Remove(doc);
                     await db.SaveChangesAsync(cancellationToken);
+                    await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
+                        .ReconcileAsync(cancellationToken);
                 }
                 return;
             }
 
-            var content = await File.ReadAllTextAsync(full, cancellationToken);
+            // DocumentFile hashes/extracts the *text*; vault hashes the raw file.
+            string content;
+            string title;
+            string body;
+            if (isDocFile)
+            {
+                content = await Connectors.DocumentFileConnector.ExtractTextAsync(
+                    full, Path.GetExtension(full), cancellationToken) ?? "";
+                if (content.Length == 0)
+                    return;
+                title = Path.GetFileNameWithoutExtension(full);
+                body = content;
+            }
+            else
+            {
+                content = await File.ReadAllTextAsync(full, cancellationToken);
+                var note = MarkdownNoteParser.Parse(content, Path.GetFileName(full));
+                title = note.Title;
+                body = note.Body;
+            }
+
             var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)));
             if (doc?.ContentHash == hash)
                 return;
 
-            var note = MarkdownNoteParser.Parse(content, Path.GetFileName(full));
             var chunks = MarkdownChunker.Chunk(
-                note.Body,
+                body,
                 configuration.GetValue("Ingestion:MaxTokens", 500),
                 configuration.GetValue("Ingestion:OverlapTokens", 50));
 
             if (doc is null)
             {
-                doc = new KnowledgeDocument { KnowledgeSourceId = sourceId, Title = note.Title, UriReference = relativePath };
+                doc = new KnowledgeDocument { KnowledgeSourceId = sourceId, Title = title, UriReference = relativePath };
                 db.Documents.Add(doc);
             }
             else
             {
-                doc.Title = note.Title;
+                doc.Title = title;
                 db.Chunks.RemoveRange(doc.Chunks);
             }
 
             doc.RawContent = content;
             doc.ContentHash = hash;
             doc.IndexedAt = DateTimeOffset.UtcNow;
-            doc.Chunks = chunks.Select((text, i) => new DocumentChunk
+
+            // AddRange via DbSet — see vault path above.
+            var newChunks = chunks.Select((text, i) => new DocumentChunk
             {
                 KnowledgeDocumentId = doc.Id,
                 ChunkIndex = i,
                 TextContent = text
             }).ToList();
+            db.Chunks.AddRange(newChunks);
 
             await db.SaveChangesAsync(cancellationToken);
-            foreach (var chunk in doc.Chunks)
-            {
-                var vector = await embeddings.EmbedAsync(chunk.TextContent, cancellationToken);
-                await vectors.UpsertAsync(chunk.Id, doc.Id, sourceId, vector, embeddings.ModelId, cancellationToken);
-            }
+            await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
                 .ReconcileAsync(cancellationToken);
