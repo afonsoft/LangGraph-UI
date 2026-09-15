@@ -22,3 +22,23 @@ public sealed record ApiKeyDto(
 
 /// <summary>Creation response — the only place the full `aft_*` secret appears.</summary>
 public sealed record ApiKeyCreatedDto(Guid Id, string Name, string Prefix, string Key);
+
+/// <summary>One audited request made with an `aft_*` key (SPEC-20260915-apikey-usage-audit §5).</summary>
+public sealed record ApiKeyUsageEventDto(
+    Guid Id,
+    DateTimeOffset Timestamp,
+    string HttpMethod,
+    string Path,
+    int StatusCode,
+    double DurationMs,
+    string? UserAgent);
+
+/// <summary>Per-key usage summary + recent audit events.</summary>
+public sealed record ApiKeyUsageDto(
+    int TotalCalls,
+    int CallsLast24h,
+    int CallsLast7d,
+    double AvgDurationMs,
+    int ErrorCount,
+    double ErrorRate,
+    List<ApiKeyUsageEventDto> RecentEvents);

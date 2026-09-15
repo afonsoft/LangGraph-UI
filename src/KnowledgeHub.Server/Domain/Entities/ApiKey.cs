@@ -18,4 +18,5 @@ public sealed class ApiKey
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastUsedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
+    public List<ApiKeyUsageEvent> UsageEvents { get; set; } = [];
 }

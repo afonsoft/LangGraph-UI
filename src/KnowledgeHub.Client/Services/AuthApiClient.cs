@@ -48,6 +48,10 @@ public sealed class AuthApiClient(HttpClient http)
         return await ReadAsync<object>(response, ct);
     }
 
+    // SPEC-20260915-apikey-usage-audit RF-006: per-key usage summary + audit trail.
+    public Task<ApiKeyUsageDto?> GetKeyUsageAsync(Guid id, CancellationToken ct = default) =>
+        http.GetFromJsonAsync<ApiKeyUsageDto>($"api/apikeys/{id}/usage", ct);
+
     private static async Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)

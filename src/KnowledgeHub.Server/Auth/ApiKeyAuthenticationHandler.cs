@@ -23,6 +23,8 @@ public sealed class ApiKeyAuthenticationHandler(
     /// <summary>Principals authenticated by an API key carry this claim — they bypass the password-change gate.</summary>
     public const string AuthMethodClaim = "auth_method";
     public const string PasswordChangedClaim = "pwd_changed";
+    /// <summary>SPEC-20260915-apikey-usage-audit RF-001: ties audited requests to the presenting key.</summary>
+    public const string KeyIdClaim = "key_id";
 
     private static readonly TimeSpan LastUsedWriteThrottle = TimeSpan.FromMinutes(1);
 
@@ -49,6 +51,7 @@ public sealed class ApiKeyAuthenticationHandler(
             new Claim(ClaimTypes.NameIdentifier, key.User.Id.ToString()),
             new Claim(ClaimTypes.Name, key.User.Username),
             new Claim(AuthMethodClaim, "apikey"),
+            new Claim(KeyIdClaim, key.Id.ToString()),
             new Claim(PasswordChangedClaim, "true")
         ], Scheme.Name);
 
