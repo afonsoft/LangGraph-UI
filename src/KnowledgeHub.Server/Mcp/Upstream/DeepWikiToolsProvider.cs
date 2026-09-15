@@ -20,15 +20,23 @@ public sealed partial class DeepWikiToolsProvider(
     private static readonly JsonObject AskSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "repoName":{"anyOf":[{"type":"string"},{"type":"array","items":{"type":"string"},"maxItems":10}],
-                      "description":"GitHub repo(s) in owner/repo format (max 10)"},
-          "question":{"type":"string","description":"Question about the repository"}
-        },"required":["repoName","question"]}
+                      "description":"GitHub repo(s) in owner/repo format (max 10)",
+                      "examples":["langchain-ai/langgraph"]},
+          "question":{"type":"string","description":"Question about the repository",
+                      "examples":["How does checkpointing work?"]}
+        },"required":["repoName","question"],
+        "examples":[
+          {"repoName":"langchain-ai/langgraph","question":"How does checkpointing work?"},
+          {"repoName":["langchain-ai/langgraph","afonsoft/skills"],"question":"Compare the architectures"}
+        ]}
         """)!.AsObject();
 
     private static readonly JsonObject RepoSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "repoName":{"type":"string","description":"GitHub repo in owner/repo format"}
-        },"required":["repoName"]}
+          "repoName":{"type":"string","description":"GitHub repo in owner/repo format",
+                      "examples":["langchain-ai/langgraph"]}
+        },"required":["repoName"],
+        "examples":[{"repoName":"langchain-ai/langgraph"}]}
         """)!.AsObject();
 
     [GeneratedRegex(@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")]

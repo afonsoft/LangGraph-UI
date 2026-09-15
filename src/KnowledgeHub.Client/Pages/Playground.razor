@@ -81,16 +81,21 @@
                                 {
                                     <span class="text-danger">*</span>
                                 }
-                                <small class="text-muted ms-1">@field.Type@(field.Description is not null ? $" — {field.Description}" : "")</small>
+                                <small class="text-muted ms-1">@field.TypeLabel@(field.Description is not null ? $" — {field.Description}" : "")</small>
                             </label>
-                            @if (field.Simple)
+                            @if (field.Kind is ToolFieldKind.Choice)
                             {
-                                <BootstrapInput @bind-Value="field.TextValue" PlaceHolder="@field.Type" />
+                                <Select @bind-Value="field.TextValue" Items="EnumItems(field)" />
+                            }
+                            else if (field.Simple)
+                            {
+                                <BootstrapInput @bind-Value="field.TextValue"
+                                                PlaceHolder="@(field.Placeholder ?? field.TypeLabel)" />
                             }
                             else
                             {
                                 <Textarea @bind-Value="field.TextValue" rows="3"
-                                          placeholder="@(field.Type == "array" ? "[\"a\", \"b\"]" : "{ }")" />
+                                          placeholder="@(field.Placeholder ?? "{ }")" />
                             }
                         </div>
                     }
@@ -113,6 +118,8 @@
                         <div class="d-flex align-items-center gap-2 mt-3">
                             <Button Color="Color.Primary" Icon="fa-solid fa-play" Text="Executar"
                                     IsAsync="true" OnClick="RunToolAsync" IsDisabled="_running" />
+                            <Button Color="Color.Secondary" Icon="fa-solid fa-wand-magic-sparkles"
+                                    Text="Preencher exemplo" OnClick="FillExample" />
                             @if (_elapsedMs is not null)
                             {
                                 <span class="text-muted">@_elapsedMs.Value.ToString("F0") ms</span>
@@ -206,7 +213,8 @@
 @code {
     private IReadOnlyList<ToolDescriptorDto>? _tools;
     private ToolDescriptorDto? _selected;
-    private List<FieldModel> _fields = [];
+    private List<ToolField> _fields = [];
+    private int _exampleIndex;
     private bool _loading;
     private bool _running;
     private bool _showRaw;
@@ -256,33 +264,25 @@
 
     private void BuildFields()
     {
-        _fields = [];
-        if (_selected is null) return;
-        var schema = _selected.InputSchema;
-        if (schema.ValueKind != JsonValueKind.Object ||
-            !schema.TryGetProperty("properties", out var props))
-            return;
-
-        var required = schema.TryGetProperty("required", out var req)
-            ? req.EnumerateArray().Select(e => e.GetString()!).ToHashSet()
-            : [];
-
-        foreach (var p in props.EnumerateObject())
-        {
-            var type = p.Value.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String
-                ? t.GetString()!
-                : p.Value.TryGetProperty("anyOf", out _) ? "anyOf" : "object";
-            var description = p.Value.TryGetProperty("description", out var d) ? d.GetString() : null;
-            _fields.Add(new FieldModel
-            {
-                Name = p.Name,
-                Type = type,
-                Description = description,
-                Required = required.Contains(p.Name),
-                Simple = type is "string" or "integer" or "number" or "boolean"
-            });
-        }
+        _fields = _selected is null ? [] : ToolArgumentBuilder.ParseFields(_selected.InputSchema).ToList();
+        _exampleIndex = 0;
     }
+
+    // SPEC-20260914-playground-tool-form RF-007: fills the form from the schema's
+    // `examples` (cycles when >1); schemas without examples get a minimal skeleton.
+    private void FillExample()
+    {
+        if (_selected is null) return;
+        var examples = ToolArgumentBuilder.GetExamples(_selected.InputSchema);
+        if (examples.Count > 0)
+            ToolArgumentBuilder.FillFromArguments(_fields, examples[_exampleIndex++ % examples.Count]);
+        else
+            ToolArgumentBuilder.FillSkeleton(_fields);
+    }
+
+    private static IEnumerable<SelectedItem> EnumItems(ToolField field)
+        => new[] { new SelectedItem("", "—") }
+            .Concat(field.EnumValues?.Select(v => new SelectedItem(v, v)) ?? []);
 
     private async Task RunToolAsync()
     {
@@ -295,25 +295,18 @@
             return;
         }
 
-        // Assemble the arguments JSON from the form fields.
+        // Assemble the arguments JSON from the form fields (schema-driven coercion).
         var args = new Dictionary<string, JsonElement>();
-        foreach (var f in _fields.Where(f => !string.IsNullOrWhiteSpace(f.TextValue)))
+        foreach (var f in _fields)
         {
-            try
+            if (!ToolArgumentBuilder.TryBuildArgument(f, f.TextValue, out var value, out var error))
             {
-                args[f.Name] = f.Type switch
-                {
-                    "integer" or "number" => JsonSerializer.SerializeToElement(double.Parse(f.TextValue!)),
-                    "boolean" => JsonSerializer.SerializeToElement(bool.Parse(f.TextValue!)),
-                    "string" => JsonSerializer.SerializeToElement(f.TextValue),
-                    _ => JsonDocument.Parse(f.TextValue!).RootElement.Clone()
-                };
-            }
-            catch
-            {
-                await Toast.Error($"Valor inválido em '{f.Name}'", $"esperado {f.Type}");
+                var hint = f.Placeholder is not null ? $" — ex.: {f.Placeholder}" : "";
+                await Toast.Error($"Valor inválido em '{f.Name}'", $"{error}{hint}");
                 return;
             }
+            if (value.ValueKind != JsonValueKind.Undefined)
+                args[f.Name] = value;
         }
 
         // RF-003: mutating tools invoked from the UI require an explicit
@@ -504,13 +497,4 @@
         public string Uri { get; init; } = "";
     }
 
-    private sealed class FieldModel
-    {
-        public required string Name { get; init; }
-        public required string Type { get; init; }
-        public string? Description { get; init; }
-        public bool Required { get; init; }
-        public bool Simple { get; init; }
-        public string? TextValue { get; set; }
-    }
 }

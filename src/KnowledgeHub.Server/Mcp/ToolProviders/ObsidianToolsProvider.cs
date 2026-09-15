@@ -16,18 +16,20 @@ public sealed class ObsidianToolsProvider : IToolProvider
 {
     private static readonly JsonObject ReadSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "path":{"type":"string","description":"Caminho relativo da nota dentro do vault (ex.: 'pasta/nota.md')"},
+          "path":{"type":"string","description":"Caminho relativo da nota dentro do vault","examples":["pasta/nota.md"]},
           "source":{"type":"string","description":"Slug do vault (default: primeiro vault ativo)"}
-        },"required":["path"]}
+        },"required":["path"],
+        "examples":[{"path":"pasta/nota.md"}]}
         """)!.AsObject();
 
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "path":{"type":"string","description":"Caminho relativo da nota (.md é acrescentado se ausente)"},
-          "content":{"type":"string","description":"Conteúdo markdown"},
-          "tags":{"type":"array","items":{"type":"string"},"description":"Tags → frontmatter"},
+          "path":{"type":"string","description":"Caminho relativo da nota (.md é acrescentado se ausente)","examples":["diario/2026-09-14"]},
+          "content":{"type":"string","description":"Conteúdo markdown","examples":["# Nota\n\nTexto."]},
+          "tags":{"type":"array","items":{"type":"string"},"description":"Tags → frontmatter","examples":[["diario"]]},
           "source":{"type":"string","description":"Slug do vault (default: primeiro vault ativo)"}
-        },"required":["path","content"]}
+        },"required":["path","content"],
+        "examples":[{"path":"diario/2026-09-14","content":"# Nota\n\nTexto.","tags":["diario"]}]}
         """)!.AsObject();
 
     public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
