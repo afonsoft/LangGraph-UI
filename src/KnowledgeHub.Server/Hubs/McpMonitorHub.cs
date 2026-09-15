@@ -12,7 +12,10 @@ public sealed class McpMonitorHub(IMcpActivityFeed feed) : Hub
 {
     public override async Task OnConnectedAsync()
     {
-        await Clients.Caller.SendAsync("Snapshot", feed.Snapshot());
+        // SPEC-20260915-mcp-monitor-activity RF-002: snapshot uses the same wire
+        // DTO as the live broadcast so the client replays it with one code path.
+        await Clients.Caller.SendAsync("Snapshot",
+            feed.Snapshot().Select(McpMonitorEventMapper.Map).ToList());
         await base.OnConnectedAsync();
     }
 }

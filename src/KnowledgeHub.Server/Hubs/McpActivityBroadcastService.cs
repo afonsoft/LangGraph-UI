@@ -45,16 +45,9 @@ public sealed class McpActivityBroadcastService(
                         new { sessionId = e.SessionId });
                     break;
                 default:
-                    await hub.Clients.All.SendAsync("Activity",
-                        new
-                        {
-                            timestamp = e.Timestamp,
-                            sessionId = e.SessionId,
-                            method = e.ToolName is null ? e.Method : $"{e.Method}:{e.ToolName}",
-                            detail = e.Error ?? e.Transport,
-                            durationMs = e.DurationMs,
-                            succeeded = e.Succeeded
-                        });
+                    // SPEC-20260915-mcp-monitor-activity RF-002: shared mapper —
+                    // identical wire shape to the hub snapshot.
+                    await hub.Clients.All.SendAsync("Activity", McpMonitorEventMapper.Map(e));
                     break;
             }
         }

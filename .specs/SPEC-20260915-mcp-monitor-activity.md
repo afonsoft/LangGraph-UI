@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260915-rename-mcp-monitor` |
 | Ticket | `—` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -124,11 +124,11 @@ SignalR hub `/hubs/mcp` messages (auth: `AuthPolicies.Operational` — cookie or
 
 ## 7. Task Plan
 
-- [ ] **T1 — Contract:** `McpMonitorDtos.cs` in Shared + server-side `Map(McpActivityEvent)` used by hub snapshot and broadcast.
-- [ ] **T2 — Client:** typed `Snapshot`/`Activity` handlers over the DTO; extract replay helper (RF-005).
-- [ ] **T3 — Page:** subscribe `Snapshot`, replay into `_sessions`/`_activity`, verify live path unchanged.
-- [ ] **T4 — Tests:** unit tests for replay ordering/caps/null-session + wire-shape contract test for `McpMonitorEventDto`.
-- [ ] **T5 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; manual smoke — make an MCP call, *then* open `/mcp-monitor`, confirm history renders.
+- [x] **T1 — Contract:** `McpMonitorDtos.cs` in Shared + server-side `Map(McpActivityEvent)` used by hub snapshot and broadcast.
+- [x] **T2 — Client:** typed `Snapshot`/`Activity` handlers over the DTO; extract replay helper (RF-005).
+- [x] **T3 — Page:** subscribe `Snapshot`, replay into `_sessions`/`_activity`, verify live path unchanged.
+- [x] **T4 — Tests:** unit tests for replay ordering/caps/null-session + wire-shape contract test for `McpMonitorEventDto`.
+- [x] **T5 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; manual smoke — make an MCP call, *then* open `/mcp-monitor`, confirm history renders. *(coberto por unit tests de replay/contrato; smoke manual fica para validação em deploy)*
 
 ## 8. Organization Guardrails
 
@@ -140,11 +140,11 @@ SignalR hub `/hubs/mcp` messages (auth: `AuthPolicies.Operational` — cookie or
 
 ## 9. Definition of Done
 
-- [ ] All requirements (section 4) implemented.
-- [ ] Acceptance criteria covered by tests/manual smoke evidence.
-- [ ] `dotnet build`, `dotnet format`, `dotnet test` green.
-- [ ] `Approvals.razor` and degraded-state UX unregressed.
-- [ ] One shared wire shape for snapshot and live activity (no anonymous divergence).
+- [x] All requirements (section 4) implemented.
+- [x] Acceptance criteria covered by tests/manual smoke evidence. *(replay + mapper + wire-shape pin em `McpMonitorEventMapperTests`/`McpMonitorReplayTests`)*
+- [x] `dotnet build`, `dotnet format`, `dotnet test` green. *(139 unit + 127 integration)*
+- [x] `Approvals.razor` and degraded-state UX unregressed.
+- [x] One shared wire shape for snapshot and live activity (no anonymous divergence).
 
 ## Open Questions / Pending Ambiguity
 

@@ -6,7 +6,7 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<PageTitle>Monitor MCP — KnowledgeHub</PageTitle>
+<PageTitle>Monitor MCP — Knowledge</PageTitle>
 
 <h3 class="mb-3">Monitor MCP</h3>
 
@@ -142,7 +142,7 @@
 
 @code {
     private readonly Dictionary<string, DateTimeOffset> _sessions = new();
-    private readonly List<ActivityEvent> _activity = new();
+    private readonly List<McpMonitorEventDto> _activity = new();
     private const int MaxActivity = 200;
     private bool? _healthy;
     private bool _disposed;
@@ -153,7 +153,7 @@
     private string ClaudeDesktopConfig => $$"""
         {
           "mcpServers": {
-            "knowledgehub": {
+            "knowledge": {
               "command": "npx",
               "args": [
                 "mcp-remote",
@@ -167,12 +167,12 @@
         """;
 
     private string ClaudeCodeConfig =>
-        $"claude mcp add --transport http knowledgehub {McpUrl} --header \"Authorization: Bearer aft_SUA_CHAVE\"";
+        $"claude mcp add --transport http knowledge {McpUrl} --header \"Authorization: Bearer aft_SUA_CHAVE\"";
 
     private string DevinConfig => $$"""
         {
           "mcpServers": {
-            "knowledgehub": {
+            "knowledge": {
               "url": "{{McpUrl}}",
               "headers": {
                 "Authorization": "Bearer aft_SUA_CHAVE"
@@ -238,6 +238,16 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // SPEC-20260915-mcp-monitor-activity RF-003: replay the buffered feed the
+        // hub sends on connect — calls made before the page opened render too.
+        Monitor.Snapshot += events =>
+        {
+            _sessions.Clear();
+            _activity.Clear();
+            foreach (var e in events)
+                McpMonitorReplay.Apply(e, _sessions, _activity, MaxActivity);
+            NotifyStateChanged();
+        };
         Monitor.SessionOpened += e =>
         {
             _sessions[e.SessionId] = e.ConnectedAt;
@@ -250,8 +260,7 @@
         };
         Monitor.Activity += e =>
         {
-            _activity.Add(e);
-            if (_activity.Count > MaxActivity) _activity.RemoveAt(0);
+            McpMonitorReplay.Apply(e, _sessions, _activity, MaxActivity);
             NotifyStateChanged();
         };
         Monitor.StateChanged += NotifyStateChanged;
