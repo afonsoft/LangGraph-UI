@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260915-rename-mcp-monitor` |
 | Ticket | `—` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -117,11 +117,11 @@ Only the MCP `initialize` response field `serverInfo.name` changes value (`"know
 
 ## 7. Task Plan
 
-- [ ] **T1 — MCP name:** `ServerInfo.Name` → `"knowledge"`; update any pinned test asserting `"knowledge-hub"`.
-- [ ] **T2 — UI strings:** `index.html`, `NavMenu`, `Home`, `Login`, all `<PageTitle>` suffixes.
-- [ ] **T3 — Snippets:** `McpMonitor.razor` config blocks → `knowledge`.
-- [ ] **T4 — Docs sweep:** `README.md` + `docs/` prose (best effort, identifiers stay).
-- [ ] **T5 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; grep sweep per AC.
+- [x] **T1 — MCP name:** `ServerInfo.Name` → `"knowledge"`; update any pinned test asserting `"knowledge-hub"`.
+- [x] **T2 — UI strings:** `index.html`, `NavMenu`, `Home`, `Login`, all `<PageTitle>` suffixes.
+- [x] **T3 — Snippets:** `McpMonitor.razor` config blocks → `knowledge`.
+- [x] **T4 — Docs sweep:** `README.md` + `docs/` prose (best effort, identifiers stay).
+- [x] **T5 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; grep sweep per AC.
 
 ## 8. Organization Guardrails
 
@@ -132,10 +132,10 @@ Only the MCP `initialize` response field `serverInfo.name` changes value (`"know
 
 ## 9. Definition of Done
 
-- [ ] All requirements (section 4) implemented.
-- [ ] Acceptance criteria verified (UI strings, `initialize` response, snippets, grep sweep).
-- [ ] `dotnet build`, `dotnet format`, `dotnet test` green.
-- [ ] No internal identifier (namespace/assembly/DB/infra) renamed.
+- [x] All requirements (section 4) implemented. *(incl. crawler `User-Agent: Knowledge/1.0` + robots `User-agent: Knowledge` — identidade externa)*
+- [x] Acceptance criteria verified (UI strings, `initialize` response via `TestMcp`/`McpTransportTests`, snippets, grep sweep — só restam identificadores internos e artefatos de `obj/`).
+- [x] `dotnet build`, `dotnet format`, `dotnet test` green. *(139 unit + 127 integration)*
+- [x] No internal identifier (namespace/assembly/DB/infra) renamed.
 
 ## Open Questions / Pending Ambiguity
 

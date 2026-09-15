@@ -1,4 +1,4 @@
-# KnowledgeHub
+# Knowledge
 
 All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API,
 native MCP server (Streamable HTTP + legacy SSE), SQLite persistence, pluggable
@@ -154,7 +154,7 @@ both `docker compose` and `install.sh` read it; `--port` still wins.
 
 A remote Obsidian vault can be indexed without an in-app WebDAV client: mount
 it on the **host** as a local folder and register it as an `ObsidianVault`
-source. KnowledgeHub consumes it like any local vault (SPEC-20260914-obsidian-webdav).
+source. Knowledge consumes it like any local vault (SPEC-20260914-obsidian-webdav).
 
 Host mount with `davfs2`:
 
