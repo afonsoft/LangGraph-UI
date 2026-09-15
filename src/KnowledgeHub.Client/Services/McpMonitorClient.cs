@@ -1,3 +1,4 @@
+using KnowledgeHub.Shared.Contracts;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -7,9 +8,6 @@ namespace KnowledgeHub.Client.Services;
 /// <summary>Hub event DTOs mirrored from SPEC-05 §5.</summary>
 public sealed record SessionOpenedEvent(string SessionId, DateTimeOffset ConnectedAt);
 public sealed record SessionClosedEvent(string SessionId);
-public sealed record ActivityEvent(
-    DateTimeOffset Timestamp, string? SessionId, string? Method,
-    string? Detail, double? DurationMs, bool? Succeeded);
 
 /// <summary>
 /// Wraps the SignalR connection to /hubs/mcp (SPEC-05 RF-003).
@@ -38,8 +36,8 @@ public sealed class McpMonitorClient(NavigationManager nav) : IAsyncDisposable
     public event Action? StateChanged;
     public event Action<SessionOpenedEvent>? SessionOpened;
     public event Action<SessionClosedEvent>? SessionClosed;
-    public event Action<ActivityEvent>? Activity;
-    public event Action<IReadOnlyList<object>>? Snapshot;
+    public event Action<McpMonitorEventDto>? Activity;
+    public event Action<IReadOnlyList<McpMonitorEventDto>>? Snapshot;
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -49,8 +47,8 @@ public sealed class McpMonitorClient(NavigationManager nav) : IAsyncDisposable
         {
             _connection.On<SessionOpenedEvent>("SessionOpened", e => SessionOpened?.Invoke(e));
             _connection.On<SessionClosedEvent>("SessionClosed", e => SessionClosed?.Invoke(e));
-            _connection.On<ActivityEvent>("Activity", e => Activity?.Invoke(e));
-            _connection.On<IReadOnlyList<object>>("Snapshot", s => Snapshot?.Invoke(s));
+            _connection.On<McpMonitorEventDto>("Activity", e => Activity?.Invoke(e));
+            _connection.On<IReadOnlyList<McpMonitorEventDto>>("Snapshot", s => Snapshot?.Invoke(s));
             _connection.Reconnecting += _ => { StateChanged?.Invoke(); return Task.CompletedTask; };
             _connection.Reconnected += _ => { StateChanged?.Invoke(); return Task.CompletedTask; };
             _connection.Closed += _ => { StateChanged?.Invoke(); return Task.CompletedTask; };

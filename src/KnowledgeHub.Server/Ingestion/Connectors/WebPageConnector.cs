@@ -44,7 +44,7 @@ public sealed class WebPageConnector(
         var documents = new List<RawDocument>();
         var warnings = new List<string>();
         var client = httpClientFactory.CreateClient("webpage");
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("KnowledgeHub/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Knowledge/1.0");
 
         while (queue.Count > 0 && documents.Count < maxPages)
         {
@@ -166,7 +166,7 @@ public sealed class WebPageConnector(
                 var field = line[..colon].Trim();
                 var value = line[(colon + 1)..].Trim();
                 if (field.Equals("User-agent", StringComparison.OrdinalIgnoreCase))
-                    appliesToUs = value is "*" or "KnowledgeHub";
+                    appliesToUs = value is "*" or "Knowledge";
                 else if (appliesToUs && field.Equals("Disallow", StringComparison.OrdinalIgnoreCase) && value.Length > 0)
                     disallow.Add(value);
             }

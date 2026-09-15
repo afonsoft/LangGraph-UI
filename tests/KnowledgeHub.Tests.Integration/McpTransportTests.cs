@@ -70,7 +70,7 @@ public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
         Assert.True(response.Headers.Contains("Mcp-Session-Id"));
 
         var body = await response.Content.ReadAsStringAsync(cts.Token);
-        Assert.Contains("knowledge-hub", body);
+        Assert.Contains("knowledge", body);
         Assert.Contains("protocolVersion", body);
         Assert.Contains("tools", body);
     }

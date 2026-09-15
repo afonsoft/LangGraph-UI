@@ -25,7 +25,7 @@ public sealed class TestMcp : IAsyncDisposable
             capabilities = new { },
             clientInfo = new { name = "test", version = "1.0" }
         });
-        Assert.Equal("knowledge-hub", init.GetProperty("serverInfo").GetProperty("name").GetString());
+        Assert.Equal("knowledge", init.GetProperty("serverInfo").GetProperty("name").GetString());
         await client.NotifyAsync("notifications/initialized");
         return client;
     }

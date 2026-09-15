@@ -1,4 +1,4 @@
-# KnowledgeHub — System Architecture
+# Knowledge — System Architecture
 
 All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP + legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, documents, APIs, SQL).
 
@@ -15,7 +15,7 @@ flowchart TB
         AG["LangGraph / Python agents<br/>(Streamable HTTP)"]
     end
 
-    subgraph KH["KnowledgeHub — single Kestrel process (.NET 10)"]
+    subgraph KH["Knowledge — single Kestrel process (.NET 10)"]
         direction TB
         SPA["Static host<br/>index.html + WASM assets"]
         API["REST API<br/>/api/sources · /api/search"]
