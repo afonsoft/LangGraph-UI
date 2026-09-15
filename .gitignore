@@ -47,6 +47,7 @@ CodeCoverage/
 # Deployment artifacts (SPEC-20260913-install-deploy)
 publish/
 data/
+knowledgehub.db
 
 # skills.sh CLI canonical store (real copies live in .claude/skills/)
 .agents/
