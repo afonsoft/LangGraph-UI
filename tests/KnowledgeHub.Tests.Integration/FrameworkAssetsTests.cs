@@ -140,4 +140,109 @@ public class FrameworkAssetsTests
             hasBr ? encoding == "br" : encoding == "gzip",
             $"expected Content-Encoding {(hasBr ? "br" : "gzip")}, got '{encoding}'");
     }
+
+    // ---- SPEC-20260915-wasm-boot-proxy-hardening --------------------------
+    // Proxies match blocked extensions in the request URL itself, so the
+    // mirror must also drop the suffix: /framework-assets/{stem}/{ext}.
+
+    private static (string Stem, string Ext) Split(string fileName)
+    {
+        var dot = fileName.LastIndexOf('.');
+        Assert.True(dot > 0, "fingerprinted asset must carry an extension: " + fileName);
+        return (fileName[..dot], fileName[(dot + 1)..]);
+    }
+
+    [Fact]
+    public async Task GetStemExt_KnownDatAsset_Returns200ImmutableCache()
+    {
+        // Covers RF-001/AC: extensionless URL serves the same bytes anonymously
+        await using var factory = new Fixture();
+        var env = factory.Services.GetRequiredService<IWebHostEnvironment>();
+        var (stem, ext) = Split(PickAsset(env, ".dat").Name);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/framework-assets/{stem}/{ext}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/octet-stream", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("immutable", response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task GetStemExt_KnownWasmAsset_ReturnsApplicationWasm()
+    {
+        // Covers RF-002: correct MIME restores WebAssembly.instantiateStreaming
+        await using var factory = new Fixture();
+        var env = factory.Services.GetRequiredService<IWebHostEnvironment>();
+        var (stem, ext) = Split(PickAsset(env, ".wasm").Name);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/framework-assets/{stem}/{ext}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/wasm", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task GetStemExt_EncB64_ReturnsTextPlainRoundTrip()
+    {
+        // Covers RF-003: base64 body decodes byte-for-byte to the real asset so
+        // the client-side SHA-256 check matches the boot integrity hash.
+        await using var factory = new Fixture();
+        var env = factory.Services.GetRequiredService<IWebHostEnvironment>();
+        var file = PickAsset(env, ".dat");
+        var (stem, ext) = Split(file.Name);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/framework-assets/{stem}/{ext}?enc=b64");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/plain", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("immutable", response.Headers.CacheControl?.ToString());
+        var expected = new MemoryStream();
+        await file.CreateReadStream().CopyToAsync(expected);
+        Assert.Equal(expected.ToArray(), Convert.FromBase64String(await response.Content.ReadAsStringAsync()));
+    }
+
+    [Fact]
+    public async Task GetStemExt_EncJunk_FallsBackToRawBytes()
+    {
+        // Covers RF-003 edge: only enc=b64 activates the encoded variant.
+        await using var factory = new Fixture();
+        var env = factory.Services.GetRequiredService<IWebHostEnvironment>();
+        var (stem, ext) = Split(PickAsset(env, ".dat").Name);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/framework-assets/{stem}/{ext}?enc=zip");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/octet-stream", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task GetStemExt_UnknownStem_Returns404()
+    {
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/framework-assets/no-such-file.abc123/dat");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("..foo", "dat")]          // traversal fragment in stem
+    [InlineData("ok.stem", "D4T")]        // uppercase ext rejected (regex is [a-z0-9])
+    [InlineData("ok.stem", "d-at")]       // illegal char in ext
+    [InlineData("bad%20stem", "dat")]     // illegal char in stem
+    public async Task GetStemExt_TraversalOrIllegalChars_Returns404(string stem, string ext)
+    {
+        // Covers AC: nothing outside _framework is ever served via the split route
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/framework-assets/{stem}/{ext}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }

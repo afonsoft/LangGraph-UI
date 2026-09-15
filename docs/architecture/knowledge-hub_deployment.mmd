@@ -18,7 +18,7 @@ flowchart LR
         R3["/mcp         → Streamable HTTP"]
         R4["/mcp/sse|msg → legacy SSE"]
         R5["/hubs/mcp    → SignalR"]
-        R6["/framework-assets/{f} → _framework mirror<br/>(extensionless, proxy-safe boot)"]
+        R6["/framework-assets/{stem}/{ext}[?enc=b64] → _framework mirror<br/>(no blocked suffix in URL, proxy-safe boot)"]
     end
     EXE --- Net
 
