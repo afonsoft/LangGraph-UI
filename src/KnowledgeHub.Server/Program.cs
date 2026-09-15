@@ -131,6 +131,32 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
     Predicate = r => r.Tags.Contains("ready")
 });
 
+// SPEC-20260915-boot-cache-revalidation RF-001: the mutable boot chain
+// (index.html fallback, boot.js, the unfingerprinted blazor.webassembly.js /
+// dotnet.js / dotnet.boot.js that the loader imports) must revalidate on every
+// navigation — otherwise a stale cached copy keeps pointing at immutable-cached
+// old fingerprints and a deploy never reaches the browser.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    var bootShell = path is "/js/boot.js"
+        or "/_framework/blazor.webassembly.js"
+        or "/_framework/dotnet.js"
+        or "/_framework/dotnet.boot.js"
+        || (!Path.HasExtension(path)
+            && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith("/health/", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith("/framework-assets/", StringComparison.OrdinalIgnoreCase));
+    if (bootShell)
+        context.Response.OnStarting(static state =>
+        {
+            ((HttpResponse)state).Headers.CacheControl = "no-cache";
+            return Task.CompletedTask;
+        }, context.Response);
+    await next();
+});
+
 app.MapStaticAssets();
 
 // SPEC-20260915-wasm-boot-proxy-fix RF-004: extensionless mirror of
