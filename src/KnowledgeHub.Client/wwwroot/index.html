@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KnowledgeHub</title>
     <base href="/" />
-    <link rel="preload" id="webassembly" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="_content/BootstrapBlazor/css/bootstrap.blazor.bundle.min.css" />
     <link rel="stylesheet" href="_content/BootstrapBlazor/css/motronic.min.css" />
@@ -31,7 +30,8 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="_content/BootstrapBlazor/js/bootstrap.blazor.bundle.min.js"></script>
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script src="js/boot.js"></script>
 </body>
 
 </html>
