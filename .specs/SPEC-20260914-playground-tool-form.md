@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-playground-tool-form` |
 | Ticket | `—` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
