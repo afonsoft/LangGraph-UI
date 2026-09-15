@@ -1,8 +1,90 @@
 @using System.Text.Json.Nodes
 
-@* SPEC-05 RF-002: create/edit form with per-type dynamic config fields. *@
+@* SPEC-05 RF-002: create/edit form with per-type dynamic config fields.
+   SPEC-20260915-sources-edit-dialog: readOnly flag, indexed-content summary,
+   friendly error surface and inline sync. *@
 
 <div class="row g-3">
+    @if (Model.Id is not null)
+    {
+        <div class="col-12">
+            <div class="border rounded p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>Resumo</strong>
+                    <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-rotate"
+                            Text="@(SyncRunning ? "Sincronizando…" : "Sincronizar agora")"
+                            IsDisabled="SyncRunning" OnClick="RequestSyncAsync" />
+                </div>
+                @if (SummaryLoading)
+                {
+                    <div class="text-muted small">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Carregando resumo…
+                    </div>
+                }
+                else if (SummaryFailed)
+                {
+                    <div class="text-muted small">Resumo indisponível — não foi possível carregar os documentos.</div>
+                }
+                else
+                {
+                    var docs = Documents ?? [];
+                    <div class="small">
+                        <strong>@docs.Count</strong> documento(s) ·
+                        <strong>@docs.Sum(d => d.ChunkCount)</strong> chunks ·
+                        última indexação: @(docs.Count > 0 ? docs.Max(d => d.IndexedAt).LocalDateTime.ToString("g") : "—")
+                    </div>
+                    <div class="small mt-1">
+                        Último sync: @(Source?.LastSyncAt?.LocalDateTime.ToString("g") ?? "—")
+                        @switch (Source?.LastSyncStatus)
+                        {
+                            case "completed":
+                                <Badge Color="Color.Success">ok</Badge>
+                                break;
+                            case "failed":
+                                <Badge Color="Color.Danger">falhou</Badge>
+                                break;
+                            case "skipped":
+                                <Badge Color="Color.Warning">skip</Badge>
+                                break;
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(Source?.LastError))
+                    {
+                        <div class="small text-danger mt-1">Último erro: @Source.LastError</div>
+                    }
+                    @if (docs.Count > 0)
+                    {
+                        <details class="mt-1">
+                            <summary class="small">Documentos indexados (mostrando @Math.Min(docs.Count, 20) de @docs.Count)</summary>
+                            <ul class="small mb-0 mt-1">
+                                @foreach (var d in docs.OrderByDescending(x => x.IndexedAt).Take(20))
+                                {
+                                    <li>@d.Title <span class="text-muted">(@d.ChunkCount chunks)</span></li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                }
+                @if (SyncResult is { } r)
+                {
+                    <div class="small mt-2 @(r.Status == "failed" ? "text-danger" : "text-muted")">
+                        Sync: <strong>@r.Status</strong> — @r.DocumentsProcessed processados,
+                        @r.DocumentsSkipped ignorados, @r.DocumentsRemoved removidos,
+                        @r.ChunksCreated chunks em @r.DurationMs.ToString("F0")ms
+                        @if (!string.IsNullOrEmpty(r.Reason))
+                        {
+                            <span>(@r.Reason)</span>
+                        }
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(SyncError))
+                {
+                    <div class="small text-danger mt-2">Sync falhou: @SyncError</div>
+                }
+            </div>
+        </div>
+    }
+
     <div class="col-12 col-md-6">
         <BootstrapInput @bind-Value="Model.Name" DisplayText="Nome *" ShowLabel="true" />
     </div>
@@ -50,6 +132,12 @@
     <div class="col-6 col-md-3">
         <Switch @bind-Value="Model.AutoSyncEnabled" DisplayText="Auto-sync" ShowLabel="true" />
     </div>
+    @if (Model.Type is SourceType.ObsidianVault)
+    {
+        <div class="col-6 col-md-3">
+            <Switch @bind-Value="Model.ReadOnly" DisplayText="Somente leitura" ShowLabel="true" />
+        </div>
+    }
     <div class="col-12 col-md-6">
         <BootstrapInputNumber @bind-Value="Model.SyncIntervalMinutes" DisplayText="Intervalo (min)" ShowLabel="true" IsNullable="true" />
     </div>
@@ -57,7 +145,16 @@
     @if (!string.IsNullOrEmpty(Error))
     {
         <div class="col-12">
-            <Alert Color="Color.Danger" ShowDismiss="false">@Error</Alert>
+            <Alert Color="Color.Danger" ShowDismiss="false">
+                <strong>Não foi possível salvar.</strong> @Error
+                @if (!string.IsNullOrEmpty(ErrorDetail) && ErrorDetail != Error)
+                {
+                    <details class="mt-1">
+                        <summary>Detalhes técnicos</summary>
+                        <pre class="mb-0 small" style="white-space: pre-wrap;">@ErrorDetail</pre>
+                    </details>
+                }
+            </Alert>
         </div>
     }
 </div>
@@ -68,6 +165,37 @@
 
     [Parameter]
     public string? Error { get; set; }
+
+    /// <summary>Raw technical detail (HTTP status + body) behind <see cref="Error"/>.</summary>
+    [Parameter]
+    public string? ErrorDetail { get; set; }
+
+    /// <summary>The source being edited — feeds the summary block.</summary>
+    [Parameter]
+    public KnowledgeSourceDto? Source { get; set; }
+
+    [Parameter]
+    public List<KnowledgeDocumentDto>? Documents { get; set; }
+
+    [Parameter]
+    public bool SummaryLoading { get; set; }
+
+    [Parameter]
+    public bool SummaryFailed { get; set; }
+
+    [Parameter]
+    public SyncResultDto? SyncResult { get; set; }
+
+    [Parameter]
+    public bool SyncRunning { get; set; }
+
+    [Parameter]
+    public string? SyncError { get; set; }
+
+    [Parameter]
+    public EventCallback OnSyncRequested { get; set; }
+
+    private Task RequestSyncAsync() => OnSyncRequested.InvokeAsync();
 
     /// <summary>Client-side required-field validation mirroring SPEC-02 server rules.</summary>
     public string? Validate()
@@ -87,10 +215,21 @@
         };
     }
 
-    /// <summary>Builds the JsonObject configuration payload from the per-type fields.</summary>
+    /// <summary>Config keys owned by this form — removed before re-adding so stale keys don't survive a type switch.</summary>
+    private static readonly string[] ManagedKeys =
+        ["path", "url", "endpoint", "headers", "connectionString", "query", "readOnly"];
+
+    /// <summary>
+    /// Builds the JsonObject configuration payload: starts from the original
+    /// configuration (preserving unknown keys), clears managed keys, then
+    /// writes the per-type fields plus the ObsidianVault readOnly flag.
+    /// </summary>
     public JsonObject BuildConfiguration()
     {
-        var config = new JsonObject();
+        var config = Model.OriginalConfiguration?.DeepClone() as JsonObject ?? new JsonObject();
+        foreach (var key in ManagedKeys)
+            config.Remove(key);
+
         switch (Model.Type)
         {
             case SourceType.ObsidianVault:
@@ -111,6 +250,10 @@
                     config["query"] = Model.Query;
                 break;
         }
+
+        if (Model.Type is SourceType.ObsidianVault && Model.ReadOnly)
+            config["readOnly"] = true;
+
         return config;
     }
 
@@ -122,6 +265,7 @@
         public SourceType Type { get; set; } = SourceType.ObsidianVault;
         public bool IsActive { get; set; } = true;
         public bool AutoSyncEnabled { get; set; }
+        public bool ReadOnly { get; set; }
         public int? SyncIntervalMinutes { get; set; }
         public string? Path { get; set; }
         public string? Url { get; set; }
@@ -129,6 +273,9 @@
         public string? Headers { get; set; }
         public string? ConnectionString { get; set; }
         public string? Query { get; set; }
+
+        /// <summary>Snapshot of the stored configuration — lets BuildConfiguration preserve unknown keys.</summary>
+        public JsonObject? OriginalConfiguration { get; set; }
 
         public static SourceEditModel FromDto(KnowledgeSourceDto dto) => new()
         {
@@ -138,13 +285,21 @@
             Type = dto.Type,
             IsActive = dto.IsActive,
             AutoSyncEnabled = dto.AutoSyncEnabled,
+            ReadOnly = ReadBool(dto.Configuration, "readOnly"),
             SyncIntervalMinutes = dto.SyncIntervalMinutes,
             Path = dto.Configuration?["path"]?.GetValue<string>(),
             Url = dto.Configuration?["url"]?.GetValue<string>(),
             Endpoint = dto.Configuration?["endpoint"]?.GetValue<string>(),
             Headers = dto.Configuration?["headers"]?.GetValue<string>(),
             ConnectionString = dto.Configuration?["connectionString"]?.GetValue<string>(),
-            Query = dto.Configuration?["query"]?.GetValue<string>()
+            Query = dto.Configuration?["query"]?.GetValue<string>(),
+            OriginalConfiguration = dto.Configuration?.DeepClone() as JsonObject
         };
+
+        private static bool ReadBool(JsonObject? config, string key) =>
+            config is not null
+            && config.TryGetPropertyValue(key, out var node)
+            && node is JsonValue value
+            && value.TryGetValue<bool>(out var b) && b;
     }
 }

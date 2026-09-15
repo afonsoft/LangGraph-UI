@@ -243,6 +243,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             : active.FirstOrDefault(s => slugs[s.Id] == sourceSlug)
               ?? throw new McpProtocolException($"unknown source slug '{sourceSlug}'", McpErrorCode.InvalidParams);
 
+        if (ObsidianNoteWriter.IsReadOnly(target))
+            return await ToolResults.Error($"source '{target.Name}' is read-only");
+
         if (target.SourceType == SourceType.ObsidianVault)
         {
             var root = IngestionService.ResolveVaultRoot(target.ConfigurationJson)

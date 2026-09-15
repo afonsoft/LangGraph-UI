@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using KnowledgeHub.Shared.Contracts;
 
 namespace KnowledgeHub.Client.Services;
@@ -51,25 +52,32 @@ public sealed class SourceApiClient(HttpClient http)
             return new ApiResult<T>(value, null);
         }
 
-        var error = await TryReadErrorAsync(response, ct);
-        return new ApiResult<T>(default, error ?? $"HTTP {(int)response.StatusCode}");
+        var (error, detail) = await TryReadErrorAsync(response, ct);
+        return new ApiResult<T>(default, error ?? $"HTTP {(int)response.StatusCode}", detail);
     }
 
-    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    private static async Task<(string? Error, string Detail)> TryReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
     {
+        var detail = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
         try
         {
-            var body = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>(cancellationToken: ct);
-            return body is not null && body.TryGetValue("error", out var e) ? e : null;
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!string.IsNullOrWhiteSpace(body))
+                detail += $"\n{body}";
+            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(body);
+            var error = dict is not null &&
+                (dict.TryGetValue("error", out var e) || dict.TryGetValue("detail", out e))
+                    ? e : null;
+            return (error, detail);
         }
         catch
         {
-            return response.StatusCode == HttpStatusCode.Conflict ? "Conflict" : null;
+            return (response.StatusCode == HttpStatusCode.Conflict ? "Conflict" : null, detail);
         }
     }
 }
 
-public sealed record ApiResult<T>(T? Value, string? Error)
+public sealed record ApiResult<T>(T? Value, string? Error, string? Detail = null)
 {
     public bool IsSuccess => Error is null;
 }

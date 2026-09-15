@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -136,6 +137,44 @@ public class McpToolsTests : IClassFixture<McpToolsTests.Fixture>
                 arguments = new { path = "../outside.md" }
             }));
         Assert.Contains("-32602", ex.Message);
+    }
+
+    [Fact]
+    public async Task ToolsCall_ReadOnlyVault_WritesRejected()
+    {
+        // SPEC-20260915-sources-edit-dialog RF-002: write tools refuse read-only sources.
+        var mcp = await ConnectAsync(_factory);
+        var http = await TestAuth.LoginAsync(_factory);
+
+        var name = $"rovault{Guid.NewGuid():N}";
+        var create = await http.PostAsJsonAsync("/api/sources", new
+        {
+            name,
+            type = "ObsidianVault",
+            configuration = new { path = _factory.Vault, readOnly = true }
+        });
+        create.EnsureSuccessStatusCode();
+        var slug = ToolSlugger.Slugify(name);
+
+        var noteResult = await mcp.SendAsync("tools/call", new
+        {
+            name = "write_note",
+            arguments = new { path = "blocked-note", content = "nope", source = slug }
+        });
+        Assert.True(noteResult.GetProperty("isError").GetBoolean());
+        Assert.Contains("read-only",
+            noteResult.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.False(File.Exists(Path.Combine(_factory.Vault, "blocked-note.md")));
+
+        var kwResult = await mcp.SendAsync("tools/call", new
+        {
+            name = "write_knowledge",
+            arguments = new { title = "Blocked", content = "nope", source = slug }
+        });
+        Assert.True(kwResult.GetProperty("isError").GetBoolean());
+        Assert.Contains("read-only",
+            kwResult.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.False(File.Exists(Path.Combine(_factory.Vault, "Blocked.md")));
     }
 
     [Fact]
