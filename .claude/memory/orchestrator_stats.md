@@ -7,9 +7,9 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 5` (PR aberto, aguardando merge + smoke em produção)
+- **current_phase**: `Phase 6` (todos os PRs mergeados, deploy em produção concluído e validado)
 - **repository**: `afonsoft/LangGraph-UI`
-- **branch**: `feature/Devin-20260915-wasm-boot-proxy-fix`
+- **branch**: `main` (`03e275e`)
 - **last_updated**: `2026-09-15`
 
 ---
@@ -162,7 +162,7 @@
   isolation: inline
   status: done
   completed_at: "2026-09-15"
-  validation: "commit b2817df; 10 new integration tests (130 unit + 101 integration green); live smoke localhost:5099; PR #49 — prod smoke pending deploy"
+  validation: "commit b2817df; 10 new integration tests (130 unit + 101 integration green); live smoke localhost:5099; PR #49 merged c89f08a; deployed — prod smoke green (index/boot.js/framework-assets/health/login/401-gate)"
 
 - id: TASK-009
   desc: "SignalR hub resilience — McpMonitorClient WS|LP + benign OCE + LastError; McpMonitor degraded UI + Reconectar + dispose guard"
@@ -174,7 +174,18 @@
   isolation: inline
   status: done
   completed_at: "2026-09-15"
-  validation: "130 unit + 91 integration green; PR #51 — prod smoke pending deploy"
+  validation: "130 unit + 91 integration green; PR #51 merged 5f69a53; deployed"
+
+- id: TASK-010
+  desc: "Deploy hotfix — docker-compose Auth__AdminInitialPassword default 123qwe (empty value crashed container at startup via ConfigurationValidator)"
+  tier: T1
+  skill: inline
+  issue: "—"
+  depends_on: [TASK-008, TASK-009]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-15"
+  validation: "PR #52 merged 03e275e; container healthy; https://rag.afonsoft.dev smoke: index/boot.js/framework-assets/health/login 200, api anon 401"
 ```
 
 ---
@@ -212,9 +223,9 @@
 
 ## Metrics
 
-- **tasks_started**: `8`
-- **tasks_completed**: `8`
+- **tasks_started**: `10`
+- **tasks_completed**: `10`
 - **tasks_blocked**: `0`
-- **human_interventions**: `6`
-- **validation_failures**: `0`
+- **human_interventions**: `7`
+- **validation_failures**: `1` (compose empty env → container crash-loop; fixed by TASK-010, PR #52)
 - **estimated_remaining_minutes**: `0`
