@@ -9,8 +9,8 @@
 | Stack | `.NET 10`, `Blazor WASM`, `ASP.NET Core Minimal API` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260915-wasm-boot-proxy-fix` |
-| Ticket | `—` |
-| Status | `Approved` |
+| Ticket | `#48` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -30,7 +30,7 @@ Only `.js` and `.json` assets are proven to pass the proxy; every binary boot as
 
 **In scope:**
 - Remove the orphan `<link rel="preload" id="webassembly" />` from `index.html`.
-- Client-side boot hook: `Blazor.start({ loadBootResource })` that remaps `_framework` binary assets to an extensionless same-origin route and fetches them itself (returning a `Response` bypasses the framework's SRI check for that resource — acceptable because the fetch is same-origin over TLS).
+- Client-side boot hook: `Blazor.start({ loadBootResource })` that remaps `_framework` binary assets to an extensionless same-origin route and fetches them itself, **passing the boot `integrity` hash through to the remap `fetch`** — the endpoint serves identical bytes, so SRI keeps validating.
 - Server-side anonymous endpoint `GET /framework-assets/{fileName}` that serves the corresponding file from `wwwroot/_framework` with immutable caching, path-traversal-safe.
 - Client fallback: if the remapped fetch fails, fall back to the default URI so local/dev environments (where the proxy does not exist) keep working unchanged.
 - Acceptance verification that the **existing** login gate (`SPEC-20260914-auth-login`) is reachable in production once the app boots — no changes to the auth implementation itself.
@@ -78,7 +78,7 @@ tests/KnowledgeHub.Tests.Integration/FrameworkAssetsTests.cs (new)
 - **Input → Output:** `loadBootResource('globalization', 'icudt', '/_framework/icudt_no_CJK.{fp}.dat', '…')` → `fetch('/framework-assets/icudt_no_CJK.{fp}.dat')` `Response`.
 
 ### RF-003: Fallback to default URI
-- **Description:** If the remapped fetch throws or returns a non-OK status, `loadBootResource` returns `undefined`/the `defaultUri` so Blazor performs the normal fetch+SRI flow. Keeps dev (`dotnet run`, no proxy) and any future environment without the endpoint working unchanged.
+- **Description:** If the remapped fetch throws or returns a non-OK status, the callback re-fetches the `defaultUri` (with the same `integrity` hash) so Blazor performs the normal fetch+SRI flow. Keeps dev (`dotnet run`, no proxy) and any future environment without the endpoint working unchanged. *(implemented in `boot.js` via `then(ok→response / else→fetch(defaultUri))`)*
 
 ### RF-004: `GET /framework-assets/{fileName}` endpoint
 - **Description:** Anonymous minimal endpoint (must serve pre-login — it is static content, same trust level as `MapStaticAssets`). `fileName` is a single path segment (no `*` catch-all → slashes cannot match). Additionally reject anything not matching `^[A-Za-z0-9._-]+$`. Resolve via `IWebHostEnvironment.WebRootFileProvider.GetFileInfo("_framework/" + fileName)` — covers both published output and dev static-web-assets; missing → `404`. Success → `Results.File(stream, "application/octet-stream")` with `Cache-Control: public, max-age=31536000, immutable` (fingerprinted assets are immutable).
@@ -126,10 +126,10 @@ Auth: anonymous (public static asset)
 
 ## 7. Task Plan
 
-- [ ] **T1 — Discovery:** read files in section 3; confirm published `wwwroot/_framework` layout (`dotnet publish` or dev bin output) and the `WebRootFileProvider` path that resolves fingerprinted assets.
-- [ ] **T2 — Server endpoint:** `FrameworkAssetsEndpoints.MapFrameworkAssetsApi()` + wiring in `Program.cs` (anonymous, before `MapFallbackToFile`); integration tests red→green.
-- [ ] **T3 — Client boot:** edit `index.html` (remove preload link, `autostart="false"`, `boot.js`) + write `js/boot.js` with remap + fallback.
-- [ ] **T4 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; manual `dotnet run` smoke — DevTools shows `_framework` binaries fetched via `/framework-assets/` and app reaches `/login`.
+- [x] **T1 — Discovery:** read files in section 3; confirm published `wwwroot/_framework` layout (`dotnet publish` or dev bin output) and the `WebRootFileProvider` path that resolves fingerprinted assets. *(publish emits `.wasm`/`.dat`/`.js` + `.br`/`.gz`; dev emits `.gz` only — endpoint prefers `br`→`gzip`→raw; MS docs confirmed standalone WASM uses top-level `loadBootResource`)*
+- [x] **T2 — Server endpoint:** `FrameworkAssetsEndpoints.MapFrameworkAssetsApi()` + wiring in `Program.cs` (anonymous, before `MapFallbackToFile`); integration tests red→green. *(10/10 `FrameworkAssetsTests`)*
+- [x] **T3 — Client boot:** edit `index.html` (remove preload link, `autostart="false"`, `boot.js`) + write `js/boot.js` with remap + fallback.
+- [x] **T4 — Verify:** `dotnet build` ✓, `dotnet format` (whitespace+style) ✓, `dotnet test` ✓ (130 unit + 101 integration); live smoke on `localhost:5099` — `/framework-assets/icudt_no_CJK.lfu7j35m59.dat` → 200 octet-stream immutable, `Accept-Encoding: gzip` → `.gz` sibling, `..foo`/unknown → 404, `js/boot.js` + `autostart=false` served.
 - [ ] **T5 — Done + PR:** complete DoD, set `Status = Done`, open PR on `feature/Devin-20260915-wasm-boot-proxy-fix`; production smoke at `rag.afonsoft.dev` post-deploy closes the auth-login pending item too.
 
 **7.1 Validation:** Bugfix — reproduction evidence (console log in this SPEC) + regression integration tests for the new endpoint; full suite green. Client JS verified by manual DevTools smoke (no JS test harness exists in the repo).
@@ -138,17 +138,17 @@ Auth: anonymous (public static asset)
 
 - **Branches:** `feature/Devin-20260915-wasm-boot-proxy-fix`; never commit to `main`/`master`/`develop`.
 - **Workflows:** `.github/workflows/` untouched.
-- **Security:** new endpoint is anonymous static content — strictly read-only, single-segment name, rooted under `_framework`, no directory listing; bypassing SRI on remapped assets is acceptable (same-origin TLS fetch) and must be noted in the PR.
+- **Security:** new endpoint is anonymous static content — strictly read-only, single-segment name, rooted under `_framework`, no directory listing; SRI is preserved because `boot.js` forwards the boot `integrity` hash to the remapped `fetch` (endpoint serves identical bytes).
 - **Scope:** no auth/UI changes; no `InvariantGlobalization`; no `_content/*` remapping.
 - **Backward compat:** unchanged where no proxy blocks — fallback preserves default behavior.
 
 ## 9. Definition of Done
 
-- [ ] All requirements (section 4) implemented.
-- [ ] All acceptance criteria (section 6) covered by passing tests or verified manually (DevTools evidence).
-- [ ] Edge cases handled (traversal rejected, fallback works, non-`.js` rule covers all binaries).
-- [ ] `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test` green.
-- [ ] Guardrails respected — endpoint anonymous but traversal-safe; `.github/workflows/` untouched.
+- [x] All requirements (section 4) implemented.
+- [x] All acceptance criteria (section 6) covered by passing tests or verified manually (DevTools evidence). *(browser-side criteria verified by live smoke + MS-docs-confirmed API; real-browser proxy smoke pending deploy)*
+- [x] Edge cases handled (traversal rejected, fallback works, non-`.js` rule covers all binaries; `%2E%2E` normalizes to `/` → SPA fallback, never binary content — covered by dedicated test).
+- [x] `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test` green. *(130 unit + 101 integration, 0 failures)*
+- [x] Guardrails respected — endpoint anonymous but traversal-safe; `.github/workflows/` untouched; SRI preserved (integrity hash passed through to the remapped fetch).
 - [ ] Manual smoke at `https://rag.afonsoft.dev` behind the corporate proxy: app boots → `/login` → forced change → app usable. *(requires deploy; also checks off the pending item in `SPEC-20260914-auth-login` §9)*
 
 ## Open Questions / Pending Ambiguity

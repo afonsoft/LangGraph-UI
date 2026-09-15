@@ -133,6 +133,11 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 
 app.MapStaticAssets();
 
+// SPEC-20260915-wasm-boot-proxy-fix RF-004: extensionless mirror of
+// _framework binaries — anonymous static content, same trust level as
+// MapStaticAssets, so the WASM boot survives proxies that block by extension.
+app.MapFrameworkAssetsApi();
+
 // SPEC-20260914-auth-login RF-006: everything operational requires an
 // authenticated principal that has cleared the password-change gate.
 // Public: /api/auth/login, /health/*, static assets + SPA fallback.
