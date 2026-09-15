@@ -82,7 +82,11 @@
                  Size="Size.Large" ShowSaveButton="true" SaveButtonText="Salvar"
                  CloseButtonText="Cancelar" OnSaveAsync="SaveAsync">
         <BodyTemplate>
-            <SourceEditDialog @ref="_edit" Model="_editModel" Error="_editError" />
+            <SourceEditDialog @ref="_edit" Model="_editModel" Error="_editError" ErrorDetail="_editErrorDetail"
+                              Source="_editSource" Documents="_editDocuments"
+                              SummaryLoading="_summaryLoading" SummaryFailed="_summaryFailed"
+                              SyncResult="_syncResult" SyncRunning="_syncRunning" SyncError="_syncError"
+                              OnSyncRequested="SyncFromDialogAsync" />
         </BodyTemplate>
     </ModalDialog>
 </Modal>
@@ -93,6 +97,14 @@
     private SourceEditDialog? _edit;
     private SourceEditDialog.SourceEditModel _editModel = new();
     private string? _editError;
+    private string? _editErrorDetail;
+    private KnowledgeSourceDto? _editSource;
+    private List<KnowledgeDocumentDto>? _editDocuments;
+    private bool _summaryLoading;
+    private bool _summaryFailed;
+    private SyncResultDto? _syncResult;
+    private bool _syncRunning;
+    private string? _syncError;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -112,15 +124,76 @@
     private Task ShowCreate()
     {
         _editModel = new SourceEditDialog.SourceEditModel();
-        _editError = null;
+        _editSource = null;
+        ResetDialogState();
         return _modal!.Toggle();
     }
 
     private Task ShowEdit(KnowledgeSourceDto dto)
     {
         _editModel = SourceEditDialog.SourceEditModel.FromDto(dto);
-        _editError = null;
+        _editSource = dto;
+        ResetDialogState();
+        _summaryLoading = true;
+        _ = LoadSummaryAsync(dto.Id);
         return _modal!.Toggle();
+    }
+
+    private void ResetDialogState()
+    {
+        _editError = null;
+        _editErrorDetail = null;
+        _editDocuments = null;
+        _summaryLoading = false;
+        _summaryFailed = false;
+        _syncResult = null;
+        _syncError = null;
+    }
+
+    private async Task LoadSummaryAsync(Guid id)
+    {
+        try
+        {
+            _editDocuments = await Api.DocumentsAsync(id) ?? [];
+            _summaryFailed = false;
+        }
+        catch
+        {
+            _editDocuments = null;
+            _summaryFailed = true;
+        }
+        finally
+        {
+            _summaryLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SyncFromDialogAsync()
+    {
+        if (_editModel.Id is not { } id || _syncRunning) return;
+        _syncRunning = true;
+        _syncResult = null;
+        _syncError = null;
+        try
+        {
+            var result = await Api.SyncAsync(id);
+            if (result.IsSuccess)
+            {
+                _syncResult = result.Value;
+                await ReloadAsync();
+                _editSource = _sources?.FirstOrDefault(s => s.Id == id) ?? _editSource;
+                await LoadSummaryAsync(id);
+            }
+            else
+            {
+                _syncError = result.Error;
+            }
+        }
+        finally
+        {
+            _syncRunning = false;
+        }
     }
 
     private async Task<bool> SaveAsync()
@@ -153,6 +226,7 @@
         if (!result.IsSuccess)
         {
             _editError = result.Error;
+            _editErrorDetail = result.Detail;
             return false;
         }
 

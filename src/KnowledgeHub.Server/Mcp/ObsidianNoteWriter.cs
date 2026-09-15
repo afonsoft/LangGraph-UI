@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Ingestion;
 using KnowledgeHub.Shared.Contracts;
@@ -30,6 +32,26 @@ public static class ObsidianNoteWriter
         var slugs = ToolSlugger.Assign(vaults.Select(v => (v.Id, v.Name)));
         var match = vaults.FirstOrDefault(v => slugs[v.Id] == sourceSlug);
         return match;
+    }
+
+    /// <summary>
+    /// SPEC-20260915-sources-edit-dialog RF-002: per-source write guard —
+    /// true when the source configuration carries <c>"readOnly": true</c>.
+    /// Absent/malformed flag means writable.
+    /// </summary>
+    public static bool IsReadOnly(Domain.Entities.KnowledgeSource source)
+    {
+        if (string.IsNullOrEmpty(source.ConfigurationJson))
+            return false;
+        try
+        {
+            return JsonNode.Parse(source.ConfigurationJson)?["readOnly"] is JsonValue value
+                && value.TryGetValue<bool>(out var readOnly) && readOnly;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Map a relative vault path to a canonical full path, or throw InvalidParams.</summary>

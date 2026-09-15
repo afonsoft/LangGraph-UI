@@ -98,6 +98,9 @@ public sealed class ObsidianToolsProvider : IToolProvider
                 sourceSlug is null ? "no active ObsidianVault source" : $"unknown vault slug '{sourceSlug}'",
                 McpErrorCode.InvalidParams);
 
+        if (ObsidianNoteWriter.IsReadOnly(vault))
+            return await ToolResults.Error($"vault '{vault.Name}' is read-only");
+
         var root = IngestionService.ResolveVaultRoot(vault.ConfigurationJson)
             ?? throw new McpProtocolException("vault source has no configured path", McpErrorCode.InvalidParams);
         var full = ObsidianNoteWriter.SafePath(root, path, forWrite: true);

@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260915-sources-edit-dialog` |
 | Ticket | `—` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -122,12 +122,12 @@ MCP behavior change (RF-002): `write_note`/`write_knowledge` return error result
 
 ## 7. Task Plan
 
-- [ ] **T1 — Model/UI:** `SourceEditModel.ReadOnly`, checkbox (ObsidianVault only), `BuildConfiguration`/`FromDto` round-trip incl. unknown keys.
-- [ ] **T2 — Enforcement:** `ObsidianNoteWriter.IsReadOnly` + guards in `write_note`/`write_knowledge`.
-- [ ] **T3 — Summary block:** async `DocumentsAsync` load in edit mode + stats + collapsible doc list + last-sync info.
-- [ ] **T4 — Error surface:** friendly alert + `<details>` raw detail.
-- [ ] **T5 — Inline sync:** button + busy state + inline `SyncResultDto` + summary refresh.
-- [ ] **T6 — Tests:** unit (IsReadOnly, round-trip) + integration (write rejected on read-only vault); `dotnet build`/`format`/`test` green.
+- [x] **T1 — Model/UI:** `SourceEditModel.ReadOnly`, checkbox (ObsidianVault only), `BuildConfiguration`/`FromDto` round-trip incl. unknown keys.
+- [x] **T2 — Enforcement:** `ObsidianNoteWriter.IsReadOnly` + guards in `write_note`/`write_knowledge`.
+- [x] **T3 — Summary block:** async `DocumentsAsync` load in edit mode + stats + collapsible doc list + last-sync info.
+- [x] **T4 — Error surface:** friendly alert + `<details>` raw detail (`ApiResult<T>.Detail`).
+- [x] **T5 — Inline sync:** button + busy state + inline `SyncResultDto` + summary refresh.
+- [x] **T6 — Tests:** unit (`ObsidianNoteWriterTests.IsReadOnly`) + integration (`ToolsCall_ReadOnlyVault_WritesRejected`); `dotnet build`/`format`/`test` green.
 
 ## 8. Organization Guardrails
 
@@ -138,11 +138,11 @@ MCP behavior change (RF-002): `write_note`/`write_knowledge` return error result
 
 ## 9. Definition of Done
 
-- [ ] All requirements (section 4) implemented.
-- [ ] Acceptance criteria covered by tests/manual evidence.
-- [ ] `dotnet build`, `dotnet format`, `dotnet test` green.
-- [ ] readOnly enforced server-side for both write tools.
-- [ ] Unknown configuration keys preserved on save.
+- [x] All requirements (section 4) implemented.
+- [x] Acceptance criteria covered by tests/manual evidence. *(readOnly enforcement pinado em integração; render do resumo/erro/sync inline é verificação manual de UI)*
+- [x] `dotnet build`, `dotnet format`, `dotnet test` green. *(146 unit + 128 integration)*
+- [x] readOnly enforced server-side for both write tools.
+- [x] Unknown configuration keys preserved on save.
 
 ## Open Questions / Pending Ambiguity
 
