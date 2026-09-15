@@ -163,6 +163,18 @@
   status: done
   completed_at: "2026-09-15"
   validation: "commit b2817df; 10 new integration tests (130 unit + 101 integration green); live smoke localhost:5099; PR #49 — prod smoke pending deploy"
+
+- id: TASK-009
+  desc: "SignalR hub resilience — McpMonitorClient WS|LP + benign OCE + LastError; McpMonitor degraded UI + Reconectar + dispose guard"
+  tier: T2
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260914-signalr-hub-resilience.md"
+  issue: "#50"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-15"
+  validation: "130 unit + 91 integration green; PR #51 — prod smoke pending deploy"
 ```
 
 ---
