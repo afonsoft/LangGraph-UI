@@ -1,6 +1,6 @@
 # SPEC-20260915 — Boot chain cache revalidation
 
-**Status:** Approved
+**Status:** Done
 **Data:** 2026-09-15
 **Autor:** Devin
 **Relacionada:** SPEC-20260915-wasm-boot-proxy-hardening, SPEC-20260915-table-record-item-factory

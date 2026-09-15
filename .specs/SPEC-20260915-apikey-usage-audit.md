@@ -10,7 +10,7 @@
 | Repository | `LangGraph-UI` |
 | Branch | `feature/Devin-20260915-apikey-usage-audit` |
 | Ticket | — |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 

@@ -10,7 +10,7 @@
 | Repository | `LangGraph-UI` |
 | Branch | `feature/Devin-20260915-mcp-monitor-client-config` |
 | Ticket | — |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
