@@ -130,7 +130,7 @@ Auth: anonymous (public static asset)
 - [x] **T2 — Server endpoint:** `FrameworkAssetsEndpoints.MapFrameworkAssetsApi()` + wiring in `Program.cs` (anonymous, before `MapFallbackToFile`); integration tests red→green. *(10/10 `FrameworkAssetsTests`)*
 - [x] **T3 — Client boot:** edit `index.html` (remove preload link, `autostart="false"`, `boot.js`) + write `js/boot.js` with remap + fallback.
 - [x] **T4 — Verify:** `dotnet build` ✓, `dotnet format` (whitespace+style) ✓, `dotnet test` ✓ (130 unit + 101 integration); live smoke on `localhost:5099` — `/framework-assets/icudt_no_CJK.lfu7j35m59.dat` → 200 octet-stream immutable, `Accept-Encoding: gzip` → `.gz` sibling, `..foo`/unknown → 404, `js/boot.js` + `autostart=false` served.
-- [ ] **T5 — Done + PR:** complete DoD, set `Status = Done`, open PR on `feature/Devin-20260915-wasm-boot-proxy-fix`; production smoke at `rag.afonsoft.dev` post-deploy closes the auth-login pending item too.
+- [x] **T5 — Done + PR:** PR #49 merged (`c89f08a`), deployed 2026-09-15. Post-deploy smoke: `GET /` → 200 serving `boot.js`+`autostart=false`; `GET /framework-assets/icudt_no_CJK.lfu7j35m59.dat` → 200 octet-stream via HTTPS público; `/health/ready` → 200; `/login` → 200; `/api/auth/me` anon → 401 (gate ativo). Browser smoke atrás do proxy Itaú (boot→login→troca forçada) aguarda validação do usuário.
 
 **7.1 Validation:** Bugfix — reproduction evidence (console log in this SPEC) + regression integration tests for the new endpoint; full suite green. Client JS verified by manual DevTools smoke (no JS test harness exists in the repo).
 
@@ -149,7 +149,7 @@ Auth: anonymous (public static asset)
 - [x] Edge cases handled (traversal rejected, fallback works, non-`.js` rule covers all binaries; `%2E%2E` normalizes to `/` → SPA fallback, never binary content — covered by dedicated test).
 - [x] `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test` green. *(130 unit + 101 integration, 0 failures)*
 - [x] Guardrails respected — endpoint anonymous but traversal-safe; `.github/workflows/` untouched; SRI preserved (integrity hash passed through to the remapped fetch).
-- [ ] Manual smoke at `https://rag.afonsoft.dev` behind the corporate proxy: app boots → `/login` → forced change → app usable. *(requires deploy; also checks off the pending item in `SPEC-20260914-auth-login` §9)*
+- [ ] Manual smoke at `https://rag.afonsoft.dev` behind the corporate proxy: app boots → `/login` → forced change → app usable. *(deployed 2026-09-15 — server-side smoke green; browser-side validation behind the Itaú SWG requires the user's browser; also checks off the pending item in `SPEC-20260914-auth-login` §9)*
 
 ## Open Questions / Pending Ambiguity
 
