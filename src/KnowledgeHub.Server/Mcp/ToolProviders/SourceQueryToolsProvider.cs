@@ -14,9 +14,10 @@ public sealed class SourceQueryToolsProvider : IToolProvider
 {
     private static readonly JsonObject Schema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "query":{"type":"string","description":"Texto ou pergunta a buscar nesta fonte"},
+          "query":{"type":"string","description":"Texto ou pergunta a buscar nesta fonte","examples":["termo de busca"]},
           "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"}
-        },"required":["query"]}
+        },"required":["query"],
+        "examples":[{"query":"termo de busca","topK":5}]}
         """)!.AsObject();
 
     public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)

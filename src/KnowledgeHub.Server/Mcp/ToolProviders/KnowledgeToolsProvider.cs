@@ -18,41 +18,45 @@ public sealed class KnowledgeToolsProvider : IToolProvider
 {
     private static readonly JsonObject SearchSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "query":{"type":"string","description":"Texto ou pergunta a buscar"},
+          "query":{"type":"string","description":"Texto ou pergunta a buscar","examples":["o que é RAG?"]},
           "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"},
           "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
           "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"}
-        },"required":["query"]}
+        },"required":["query"],
+        "examples":[{"query":"o que é RAG?","topK":5,"mode":"hybrid"}]}
         """)!.AsObject();
 
     private static readonly JsonObject AskSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "question":{"type":"string","description":"Pergunta em linguagem natural"},
+          "question":{"type":"string","description":"Pergunta em linguagem natural","examples":["Como funciona a sincronização?"]},
           "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"},
           "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
           "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"},
           "generate":{"type":"boolean","description":"Sintetizar resposta via LLM configurado no servidor (default: true quando Chat:Provider configurado)"}
-        },"required":["question"]}
+        },"required":["question"],
+        "examples":[{"question":"Como funciona a sincronização?","topK":5,"generate":true}]}
         """)!.AsObject();
 
     private static readonly JsonObject AgentSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "prompt":{"type":"string","description":"Pergunta/tarefa em linguagem natural — o agente itera tools até responder"},
-          "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist de tools expostas ao modelo (default: todas as read-only)"},
+          "prompt":{"type":"string","description":"Pergunta/tarefa em linguagem natural — o agente itera tools até responder","examples":["Resuma as notas da semana"]},
+          "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist de tools expostas ao modelo (default: todas as read-only)","examples":[["search_knowledge","ask_knowledge"]]},
           "maxIterations":{"type":"integer","description":"Teto de iterações model→tools→model (default 10)"},
           "allowWrite":{"type":"boolean","description":"Opt-in: expõe tools de escrita (write_knowledge, write_note)"},
           "threadId":{"type":"string","description":"GUID de thread existente — continua a conversa com contexto"},
           "persist":{"type":"boolean","description":"Cria thread nova e persiste os turnos desta chamada"}
-        },"required":["prompt"]}
+        },"required":["prompt"],
+        "examples":[{"prompt":"Resuma as notas da semana","tools":["search_knowledge","ask_knowledge"],"maxIterations":10,"persist":true}]}
         """)!.AsObject();
 
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "title":{"type":"string","description":"Título do documento (vira nome de arquivo em vaults)"},
-          "content":{"type":"string","description":"Conteúdo em markdown/texto"},
+          "title":{"type":"string","description":"Título do documento (vira nome de arquivo em vaults)","examples":["Nota de exemplo"]},
+          "content":{"type":"string","description":"Conteúdo em markdown/texto","examples":["# Título\n\nConteúdo em markdown."]},
           "source":{"type":"string","description":"Slug da fonte alvo (default: primeira ativa)"},
-          "tags":{"type":"array","items":{"type":"string"},"description":"Tags (frontmatter em vaults)"}
-        },"required":["title","content"]}
+          "tags":{"type":"array","items":{"type":"string"},"description":"Tags (frontmatter em vaults)","examples":[["exemplo"]]}
+        },"required":["title","content"],
+        "examples":[{"title":"Nota de exemplo","content":"# Título\n\nConteúdo em markdown.","tags":["exemplo"]}]}
         """)!.AsObject();
 
     public Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
