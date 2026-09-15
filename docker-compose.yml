@@ -30,7 +30,9 @@ services:
       DeepWiki__ApiKey: ${DEEPWIKI_APIKEY:-}
       # SPEC-20260914-auth-login: seeds `admin` on an empty Users table; the
       # forced password change applies on first login regardless of this value.
-      Auth__AdminInitialPassword: ${AUTH_ADMIN_INITIAL_PASSWORD:-}
+      # Defaults to the documented seed password — an empty value would trip
+      # ConfigurationValidator ("non-empty when set") and crash the container.
+      Auth__AdminInitialPassword: ${AUTH_ADMIN_INITIAL_PASSWORD:-123qwe}
     # Lets the container reach services on the Docker host (e.g. local Ollama).
     extra_hosts:
       - "host.docker.internal:host-gateway"
