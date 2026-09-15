@@ -13,6 +13,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<ConversationMessage> ThreadMessages => Set<ConversationMessage>();
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<ApiKeyUsageEvent> ApiKeyUsageEvents => Set<ApiKeyUsageEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -93,6 +94,19 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.Property(k => k.KeyHash).IsRequired().HasMaxLength(64);
             e.HasIndex(k => k.KeyHash).IsUnique();
             e.Property(k => k.Prefix).IsRequired().HasMaxLength(16);
+            e.HasMany(k => k.UsageEvents)
+                .WithOne(u => u.ApiKey!)
+                .HasForeignKey(u => u.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ApiKeyUsageEvent>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.Property(u => u.HttpMethod).IsRequired().HasMaxLength(16);
+            e.Property(u => u.Path).IsRequired().HasMaxLength(256);
+            e.Property(u => u.UserAgent).HasMaxLength(200);
+            e.HasIndex(u => new { u.ApiKeyId, u.Timestamp });
         });
     }
 }

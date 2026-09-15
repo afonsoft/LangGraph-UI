@@ -122,6 +122,10 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// SPEC-20260915-apikey-usage-audit RF-002: audit every request whose principal
+// authenticated via an aft_* API key (needs the post-auth claims).
+app.UseMiddleware<KnowledgeHub.Server.Auth.ApiKeyUsageMiddleware>();
+
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     Predicate = _ => false

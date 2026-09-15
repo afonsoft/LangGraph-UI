@@ -43,8 +43,10 @@
                 }
             </Template>
         </TableColumn>
-        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="120">
+        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="160">
             <Template Context="v">
+                <Button Size="Size.ExtraSmall" Color="Color.Info" Icon="fa-solid fa-chart-line"
+                        Text="Uso" OnClick="() => ShowUsage(v.Row)" />
                 @if (v.Row.RevokedAt is null)
                 {
                     <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-ban"
@@ -86,10 +88,85 @@
     </ModalDialog>
 </Modal>
 
+<Modal @ref="_usageModal">
+    <ModalDialog Title="Detalhes e uso da chave" Size="Size.Large" ShowSaveButton="false"
+                 CloseButtonText="Fechar">
+        <BodyTemplate>
+            @if (_usageKey is not null)
+            {
+                <div class="mb-3">
+                    <div><strong>@_usageKey.Name</strong> <code>@_usageKey.Prefix…</code>
+                        <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
+                                OnClick="() => CopyText(_usageKey.Prefix)" />
+                    </div>
+                    <small class="text-muted">
+                        id <code>@_usageKey.Id</code> · criada @_usageKey.CreatedAt.LocalDateTime.ToString("g") ·
+                        último uso @(_usageKey.LastUsedAt?.LocalDateTime.ToString("g") ?? "—")
+                    </small>
+                    <div class="alert alert-info py-1 mt-2 mb-0">
+                        <small>O segredo completo só é exibido uma vez, na criação da chave.</small>
+                    </div>
+                </div>
+            }
+            @if (_usageLoading)
+            {
+                <div class="text-muted">Carregando métricas…</div>
+            }
+            else if (_usage is not null)
+            {
+                <div class="row g-2 mb-3 text-center">
+                    <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@_usage.TotalCalls</div><small class="text-muted">total</small></BodyTemplate></Card></div>
+                    <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@_usage.CallsLast24h</div><small class="text-muted">24h</small></BodyTemplate></Card></div>
+                    <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@_usage.CallsLast7d</div><small class="text-muted">7d</small></BodyTemplate></Card></div>
+                    <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@_usage.AvgDurationMs.ToString("F0") ms</div><small class="text-muted">média</small></BodyTemplate></Card></div>
+                    <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@((_usage.ErrorRate * 100).ToString("F1"))%</div><small class="text-muted">erros</small></BodyTemplate></Card></div>
+                </div>
+                <div style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th>Hora</th><th>Método</th><th>Path</th><th>Status</th><th>ms</th><th>Client</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _usage.RecentEvents)
+                            {
+                                <tr>
+                                    <td>@e.Timestamp.LocalDateTime.ToString("g")</td>
+                                    <td><code>@e.HttpMethod</code></td>
+                                    <td><code>@e.Path</code></td>
+                                    <td>
+                                        @if (e.StatusCode >= 400)
+                                        {
+                                            <Badge Color="Color.Danger">@e.StatusCode</Badge>
+                                        }
+                                        else
+                                        {
+                                            <Badge Color="Color.Success">@e.StatusCode</Badge>
+                                        }
+                                    </td>
+                                    <td>@e.DurationMs.ToString("F0")</td>
+                                    <td><small class="text-muted">@(e.UserAgent ?? "—")</small></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (_usage.RecentEvents.Count == 0)
+                    {
+                        <div class="text-muted p-2">Nenhuma chamada registrada para esta chave.</div>
+                    }
+                </div>
+            }
+        </BodyTemplate>
+    </ModalDialog>
+</Modal>
+
 @code {
     private List<ApiKeyDto>? _keys;
     private Modal? _createModal;
     private Modal? _revealModal;
+    private Modal? _usageModal;
+    private ApiKeyDto? _usageKey;
+    private ApiKeyUsageDto? _usage;
+    private bool _usageLoading;
     private string _newName = "";
     private string? _createError;
     private string? _createdKey;
@@ -147,6 +224,33 @@
     {
         if (_createdKey is not null)
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", _createdKey);
+    }
+
+    // SPEC-20260915-apikey-usage-audit RF-006: details + metrics + audit dialog.
+    private async Task ShowUsage(ApiKeyDto key)
+    {
+        _usageKey = key;
+        _usage = null;
+        _usageLoading = true;
+        await _usageModal!.Toggle();
+        try
+        {
+            _usage = await Api.GetKeyUsageAsync(key.Id);
+        }
+        catch (Exception ex)
+        {
+            await Toast.Error("Erro", $"Falha ao carregar métricas: {ex.Message}");
+        }
+        finally
+        {
+            _usageLoading = false;
+        }
+    }
+
+    private async Task CopyText(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); }
+        catch { /* clipboard API may be unavailable (non-secure context) */ }
     }
 
     private async Task Revoke(ApiKeyDto key)
