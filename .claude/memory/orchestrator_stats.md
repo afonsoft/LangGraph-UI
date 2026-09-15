@@ -7,10 +7,10 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 4`
+- **current_phase**: `Phase 5` (PR aberto, aguardando merge + smoke em produção)
 - **repository**: `afonsoft/LangGraph-UI`
-- **branch**: `feature/Devin-20260913-knowledge-hub-platform`
-- **last_updated**: `2026-09-13`
+- **branch**: `feature/Devin-20260915-wasm-boot-proxy-fix`
+- **last_updated**: `2026-09-15`
 
 ---
 
@@ -151,6 +151,18 @@
   status: done
   completed_at: "2026-09-13"
   validation: "commit c6fff8f; linux-arm64 single binary smoke: SPA+/api+/mcp+/mcp/sse OK, db beside exe"
+
+- id: TASK-008
+  desc: "Proxy-safe WASM boot — /framework-assets mirror + loadBootResource remap; login gate reachable behind corporate proxy"
+  tier: T2
+  skill: /execute-spec
+  spec_ref: ".specs/SPEC-20260915-wasm-boot-proxy-fix.md"
+  issue: "#48"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-15"
+  validation: "commit b2817df; 10 new integration tests (130 unit + 101 integration green); live smoke localhost:5099; PR #49 — prod smoke pending deploy"
 ```
 
 ---
