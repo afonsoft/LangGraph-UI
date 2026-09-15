@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260915-table-record-item-factory` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -82,9 +82,9 @@ N/A — no API surface change.
 
 ## 7. Task Plan
 
-- [ ] **T1 — Fix:** add `CreateItemCallback` to `ApiKeys.razor` `Table`.
-- [ ] **T2 — Verify:** `dotnet build`, `dotnet format` (whitespace+style), `dotnet test`; smoke — serve app locally, `GET /` confirms page asset deploys (full render validation requires browser).
-- [ ] **T3 — PR + deploy:** merge → `docker compose` rebuild → prod smoke (`/api-keys` reachable post-login; error gone — user confirms behind proxy).
+- [x] **T1 — Fix:** `CreateItemCallback="CreatePlaceholder"` adicionado à `Table` de `ApiKeys.razor`.
+- [x] **T2 — Verify:** `dotnet build` ✓, `dotnet format` whitespace+style ✓, `dotnet test` ✓ (130 unit + 110 integration).
+- [x] **T3 — PR + deploy:** PR #56 merged (`3c5794a`), deployed 2026-09-15 via `docker compose` rebuild; container healthy, `/health/ready` 200, `/login` 200. Render de `/api-keys` sem o erro aguarda confirmação do usuário no browser.
 
 **7.1 Validation:** Bugfix — reproduction evidence (production error text, BootstrapBlazor source `Table.razor.cs:1091` + `Table.razor.Edit.cs:388-402`) + build/test gates; razor render path verified by manual browser smoke (no component-test harness in repo).
 
@@ -97,11 +97,11 @@ N/A — no API surface change.
 
 ## 9. Definition of Done
 
-- [ ] All requirements implemented.
-- [ ] Acceptance criteria covered by build/tests or verified manually.
-- [ ] `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test` green.
-- [ ] Guardrails respected.
-- [ ] Manual smoke at `https://rag.afonsoft.dev/api-keys`: page renders, create + revoke flows work.
+- [x] All requirements implemented.
+- [x] Acceptance criteria covered by build/tests or verified manually. *(render path: browser smoke pending user confirmation)*
+- [x] `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test` green.
+- [x] Guardrails respected.
+- [ ] Manual smoke at `https://rag.afonsoft.dev/api-keys`: page renders, create + revoke flows work. *(deployed 2026-09-15 — server-side green; browser validation pending)*
 
 ## Open Questions / Pending Ambiguity
 
