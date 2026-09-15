@@ -79,7 +79,7 @@ public class HealthAndErrorTests
     {
         // Covers AC: unhandled exception → application/problem+json, no stack trace
         await using var factory = new BrokenEmbeddingFixture();
-        using var client = factory.CreateClient();
+        using var client = await TestAuth.LoginAsync(factory);
 
         var response = await client.GetAsync("/api/search?query=test");
 

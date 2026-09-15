@@ -36,7 +36,7 @@ public class StreamingApiTests : IClassFixture<StreamingApiTests.Fixture>
     public StreamingApiTests(Fixture factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
         _dir = Path.Combine(Path.GetTempPath(), $"stream-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dir);
     }

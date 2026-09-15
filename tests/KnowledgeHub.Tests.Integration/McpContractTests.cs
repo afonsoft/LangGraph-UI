@@ -57,7 +57,7 @@ public class McpContractTests : IClassFixture<McpContractTests.Fixture>
     public async Task ToolCatalog_NamesSchemasAndHints_MatchPinnedContract()
     {
         var mcp = await ConnectAsync(_factory);
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
 
         var sourceName = $"ContractVault{Guid.NewGuid():N}";
         var create = await http.PostAsJsonAsync("/api/sources", new

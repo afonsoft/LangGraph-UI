@@ -1,11 +1,16 @@
 using KnowledgeHub.McpEngine;
 using KnowledgeHub.Server;
 using KnowledgeHub.Server.Api;
+using KnowledgeHub.Server.Auth;
 using KnowledgeHub.Server.Configuration;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
 using KnowledgeHub.Server.Health;
 using KnowledgeHub.Server.Hubs;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +36,54 @@ builder.Services.AddKnowledgeHubMcp(builder.Configuration);
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<McpActivityBroadcastService>();
 
+// SPEC-20260914-auth-login: cookie session (browser SPA) + aft_* API keys
+// (non-browser MCP/API/hub clients). Secure=SameAsRequest keeps dev/test over
+// plain http working while production (https) always gets Secure cookies.
+builder.Services.AddOptions<AuthOptions>()
+    .Configure<IConfiguration>((options, cfg) =>
+        cfg.GetSection(AuthOptions.SectionName).Bind(options));
+builder.Services.AddSingleton<PasswordService>();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(o =>
+    {
+        o.Cookie.HttpOnly = true;
+        o.Cookie.SameSite = SameSiteMode.Lax;
+        o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        o.SlidingExpiration = true;
+        o.ExpireTimeSpan = TimeSpan.FromHours(
+            builder.Configuration.GetValue("Auth:SessionHours", 12));
+        o.Events.OnRedirectToLogin = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        o.Events.OnRedirectToAccessDenied = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    })
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationHandler.SchemeName, _ => { });
+
+builder.Services.AddAuthorization(o =>
+{
+    o.AddPolicy(AuthPolicies.Authenticated, p => p
+        .AddAuthenticationSchemes(AuthPolicies.AnyScheme)
+        .RequireAuthenticatedUser());
+    o.AddPolicy(AuthPolicies.Operational, p => p
+        .AddAuthenticationSchemes(AuthPolicies.AnyScheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new PasswordChangedRequirement()));
+    o.AddPolicy(AuthPolicies.CookieSession, p => p
+        .AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new PasswordChangedRequirement()));
+});
+builder.Services.AddSingleton<IAuthorizationHandler, PasswordChangedHandler>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, PasswordGateResultHandler>();
+
 var app = builder.Build();
 
 // RF-005: apply pending migrations and log the path.
@@ -44,6 +97,10 @@ using (var scope = app.Services.CreateScope())
     await DatabaseMigrator.MigrateAsync(db, app.Logger);
     app.Logger.LogInformation("KnowledgeHub database ready at {Path}",
         DatabasePath.Resolve(app.Configuration));
+
+    // SPEC-20260914-auth-login RF-001: seed admin on empty Users table.
+    await AuthSeeder.SeedAsync(
+        db, scope.ServiceProvider.GetRequiredService<IOptions<AuthOptions>>(), app.Logger);
 
     // SPEC-20260914-embedding-dimension-guard: loud startup warning when the
     // persisted embeddings no longer match the configured provider.
@@ -62,6 +119,8 @@ using (var scope = app.Services.CreateScope())
 // MapStaticAssets resolves the #[.{fingerprint}] tokens in index.html to the
 // fingerprinted asset names (UseStaticFiles would serve the literal token).
 app.UseExceptionHandler();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
@@ -74,16 +133,21 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 
 app.MapStaticAssets();
 
-app.MapSourcesApi();
-app.MapSearchApi();
-app.MapAskApi();
-app.MapAgentApi();
-app.MapApprovalsApi();
-app.MapThreadsApi();
-app.MapStreamingApi();
-app.MapToolsApi();
-app.MapKnowledgeHubMcp();
-app.MapHub<McpMonitorHub>("/hubs/mcp");
+// SPEC-20260914-auth-login RF-006: everything operational requires an
+// authenticated principal that has cleared the password-change gate.
+// Public: /api/auth/login, /health/*, static assets + SPA fallback.
+app.MapAuthApi();
+app.MapApiKeysApi();
+app.MapSourcesApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapSearchApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapAskApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapAgentApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapApprovalsApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapThreadsApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapStreamingApi(); // RequireAuthorization applied per-endpoint inside (returns void)
+app.MapToolsApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapKnowledgeHubMcp().RequireAuthorization(AuthPolicies.Operational);
+app.MapHub<McpMonitorHub>("/hubs/mcp").RequireAuthorization(AuthPolicies.Operational);
 app.MapFallbackToFile("index.html");
 
 app.Run();

@@ -11,6 +11,8 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<ToolApproval> Approvals => Set<ToolApproval>();
     public DbSet<ConversationThread> Threads => Set<ConversationThread>();
     public DbSet<ConversationMessage> ThreadMessages => Set<ConversationMessage>();
+    public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +72,27 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.HasKey(c => c.Id);
             e.Property(c => c.TextContent).IsRequired();
             e.Property(c => c.Embedding).HasColumnType("BLOB");
+        });
+
+        modelBuilder.Entity<AppUser>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Username).IsRequired().HasMaxLength(64);
+            e.HasIndex(u => u.Username).IsUnique();
+            e.Property(u => u.PasswordHash).IsRequired();
+            e.HasMany(u => u.ApiKeys)
+                .WithOne(k => k.User!)
+                .HasForeignKey(k => k.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ApiKey>(e =>
+        {
+            e.HasKey(k => k.Id);
+            e.Property(k => k.Name).IsRequired().HasMaxLength(100);
+            e.Property(k => k.KeyHash).IsRequired().HasMaxLength(64);
+            e.HasIndex(k => k.KeyHash).IsUnique();
+            e.Property(k => k.Prefix).IsRequired().HasMaxLength(16);
         });
     }
 }

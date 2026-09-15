@@ -35,7 +35,7 @@ public class ToolsApiTests : IClassFixture<ToolsApiTests.Fixture>
     [Fact]
     public async Task ToolsList_ReturnsCatalog_MatchingMcpSurface()
     {
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
         var list = await http.GetFromJsonAsync<ToolListResponse>("api/tools");
         var names = list!.Tools.Select(t => t.Name).ToHashSet();
 
@@ -55,7 +55,7 @@ public class ToolsApiTests : IClassFixture<ToolsApiTests.Fixture>
     [Fact]
     public async Task ToolsList_ReflectsSourceRegistration()
     {
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
         var name = $"ApiVault{Guid.NewGuid():N}";
         var create = await http.PostAsJsonAsync("/api/sources", new
         {
@@ -76,7 +76,7 @@ public class ToolsApiTests : IClassFixture<ToolsApiTests.Fixture>
     [Fact]
     public async Task ToolsCall_SearchKnowledge_ReturnsTextContent()
     {
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
         var response = await http.PostAsJsonAsync("api/tools/search_knowledge", new { query = "nada", topK = 2 });
         response.EnsureSuccessStatusCode();
 
@@ -90,7 +90,7 @@ public class ToolsApiTests : IClassFixture<ToolsApiTests.Fixture>
     [Fact]
     public async Task ToolsCall_UnknownTool_Is404()
     {
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
         var response = await http.PostAsJsonAsync("api/tools/ghost_tool", new { });
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -98,7 +98,7 @@ public class ToolsApiTests : IClassFixture<ToolsApiTests.Fixture>
     [Fact]
     public async Task ToolsCall_MissingRequiredArg_IsIsErrorResult()
     {
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
         var response = await http.PostAsJsonAsync("api/tools/search_knowledge", new { });
         response.EnsureSuccessStatusCode();
 

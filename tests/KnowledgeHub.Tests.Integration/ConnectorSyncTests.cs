@@ -30,7 +30,7 @@ public class ConnectorSyncTests : IClassFixture<ConnectorSyncTests.Fixture>, IDi
 
     public ConnectorSyncTests(Fixture factory)
     {
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
         _dir = Path.Combine(Path.GetTempPath(), $"docs-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dir);
     }

@@ -38,7 +38,7 @@ public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
     public async Task Get_McpSse_EmitsEndpointEvent_WithSessionId()
     {
         // AC: GET /mcp/sse → first frame is `event: endpoint` carrying sessionId
-        var client = _factory.CreateClient();
+        var client = await TestAuth.LoginAsync(_factory);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         using var response = await client.GetAsync("/mcp/sse", HttpCompletionOption.ResponseHeadersRead, cts.Token);
@@ -58,7 +58,7 @@ public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
     public async Task Post_Mcp_StreamableHttp_Initialize_ReturnsServerInfo_AndSessionHeader()
     {
         // AC: POST initialize → /mcp returns valid result + Mcp-Session-Id header (stateful)
-        var client = _factory.CreateClient();
+        var client = await TestAuth.LoginAsync(_factory);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp") { Content = InitializeRequest() };
@@ -79,7 +79,7 @@ public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
     public async Task Post_McpMessage_WithUnknownSession_Fails()
     {
         // AC: expired/unknown sessionId → HTTP error (not a silent accept)
-        var client = _factory.CreateClient();
+        var client = await TestAuth.LoginAsync(_factory);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         using var response = await client.PostAsync("/mcp/message?sessionId=definitely-not-a-session", InitializeRequest(), cts.Token);
@@ -90,7 +90,7 @@ public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
     public async Task Post_Mcp_WithMalformedJson_ReturnsJsonRpcError()
     {
         // Edge case: malformed JSON → -32700 parse error from the SDK
-        var client = _factory.CreateClient();
+        var client = await TestAuth.LoginAsync(_factory);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")

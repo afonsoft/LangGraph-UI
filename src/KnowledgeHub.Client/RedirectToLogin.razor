@@ -1,0 +1,8 @@
+@inject NavigationManager Nav
+
+@code {
+    // SPEC-20260914-auth-login RF-011: unauthenticated page hits land on
+    // /login carrying the attempted URL for post-login return.
+    protected override void OnInitialized() =>
+        Nav.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(Nav.ToBaseRelativePath(Nav.Uri))}");
+}

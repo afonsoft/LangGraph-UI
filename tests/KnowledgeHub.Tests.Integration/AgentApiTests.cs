@@ -94,7 +94,7 @@ public class AgentApiTests : IClassFixture<AgentApiTests.Fixture>, IClassFixture
     {
         _factory = factory;
         _noChat = noChat;
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
         _dir = Path.Combine(Path.GetTempPath(), $"agent-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dir);
     }
@@ -206,7 +206,7 @@ public class AgentApiTests : IClassFixture<AgentApiTests.Fixture>, IClassFixture
     [Fact]
     public async Task Agent_NoProvider_RestBadRequest_AndMcpIsError()
     {
-        var client = _noChat.CreateClient();
+        var client = await TestAuth.LoginAsync(_noChat);
         var response = await client.PostAsJsonAsync("/api/agent", new { prompt = "x" });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 

@@ -44,7 +44,7 @@ public class SourcesApiTests : IClassFixture<SourcesApiTests.Fixture>
 
     private readonly HttpClient _client;
 
-    public SourcesApiTests(Fixture factory) => _client = factory.CreateClient();
+    public SourcesApiTests(Fixture factory) => _client = TestAuth.Login(factory);
 
     private static object VaultPayload(string name) => new
     {
