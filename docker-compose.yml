@@ -28,6 +28,9 @@ services:
       DeepWiki__Enabled: ${DEEPWIKI_ENABLED:-true}
       DeepWiki__Endpoint: ${DEEPWIKI_ENDPOINT:-https://mcp.deepwiki.com/mcp}
       DeepWiki__ApiKey: ${DEEPWIKI_APIKEY:-}
+      # SPEC-20260914-auth-login: seeds `admin` on an empty Users table; the
+      # forced password change applies on first login regardless of this value.
+      Auth__AdminInitialPassword: ${AUTH_ADMIN_INITIAL_PASSWORD:-}
     # Lets the container reach services on the Docker host (e.g. local Ollama).
     extra_hosts:
       - "host.docker.internal:host-gateway"

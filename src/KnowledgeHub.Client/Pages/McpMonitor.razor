@@ -1,4 +1,5 @@
 @page "/mcp-monitor"
+@attribute [Authorize]
 @inject McpMonitorClient Monitor
 @inject HttpClient Http
 @implements IAsyncDisposable

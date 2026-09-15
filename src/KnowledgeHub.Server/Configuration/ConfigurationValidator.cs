@@ -1,3 +1,4 @@
+using KnowledgeHub.Server.Auth;
 using KnowledgeHub.Server.Chat;
 using KnowledgeHub.Server.Embeddings;
 using KnowledgeHub.Server.Mcp.Upstream;
@@ -29,6 +30,7 @@ public static class ConfigurationValidator
         ValidateVectorStore(configuration, problems);
         ValidateDeepWiki(configuration, problems);
         ValidateChat(configuration, problems);
+        ValidateAuth(configuration, problems);
 
         if (problems.Count > 0)
             throw new InvalidOperationException(
@@ -103,6 +105,21 @@ public static class ConfigurationValidator
             problems.Add($"Chat:Temperature '{temp}' must be a number");
         if (section["MaxTokens"] is { } mt && (!int.TryParse(mt, out var m) || m <= 0))
             problems.Add($"Chat:MaxTokens '{mt}' must be a positive integer");
+    }
+
+    private static void ValidateAuth(IConfiguration cfg, List<string> problems)
+    {
+        var section = cfg.GetSection(AuthOptions.SectionName);
+        if (section["AdminInitialPassword"] is { } pw && string.IsNullOrWhiteSpace(pw))
+            problems.Add("Auth:AdminInitialPassword must be non-empty when set");
+        if (section["LockoutThreshold"] is { } t && (!int.TryParse(t, out var n) || n <= 0))
+            problems.Add($"Auth:LockoutThreshold '{t}' must be a positive integer");
+        if (section["LockoutMinutes"] is { } m && (!int.TryParse(m, out var mm) || mm <= 0))
+            problems.Add($"Auth:LockoutMinutes '{m}' must be a positive integer");
+        if (section["MinPasswordLength"] is { } l && (!int.TryParse(l, out var ll) || ll <= 0))
+            problems.Add($"Auth:MinPasswordLength '{l}' must be a positive integer");
+        if (section["SessionHours"] is { } h && (!int.TryParse(h, out var hh) || hh <= 0))
+            problems.Add($"Auth:SessionHours '{h}' must be a positive integer");
     }
 
     private static bool IsHttpUri(string? value) =>

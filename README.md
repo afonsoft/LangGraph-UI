@@ -16,6 +16,50 @@ a single Kestrel-hosted .NET 10 process.
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
 | `/hubs/mcp` | SignalR feed for the MCP monitor |
 
+## Authentication
+
+All surfaces except the health probes (`/health/*`) and `POST /api/auth/login`
+require authentication — the SPA, the REST API, `/mcp`, `/mcp/sse` and
+`/hubs/mcp`.
+
+**Browser (cookie).** The SPA signs in at `/login`; the session is an HttpOnly
+cookie (`SameSite=Lax`, `Secure`, 12 h sliding). On first startup an `admin`
+user is seeded with the password `123qwe` (override via
+`Auth__AdminInitialPassword`) and `mustChangePassword` forces the password
+change screen before any other page or API call. Password policy: ≥8 chars,
+different from the current one. Five consecutive failed logins lock the
+account for 5 minutes (`423 Locked`); wrong credentials return a generic `401`
+(no user enumeration).
+
+| Auth route | Purpose |
+|---|---|
+| `POST /api/auth/login` | `{ username, password }` → sets the session cookie |
+| `GET /api/auth/me` | `{ username, mustChangePassword }` |
+| `POST /api/auth/logout` | clears the session cookie |
+| `POST /api/auth/change-password` | `{ currentPassword, newPassword }` → `204`, clears the flag |
+| `GET /api/apikeys` · `POST /api/apikeys` · `DELETE /api/apikeys/{id}` | manage API keys (cookie session only) |
+
+**API keys (`aft_*`) for non-browser clients.** Create one under `/api-keys`
+(or `POST /api/apikeys`); the full secret `aft_<32-hex>` is shown **once** —
+only its SHA-256 hash is stored. Send it as a bearer token:
+
+```bash
+curl https://rag.afonsoft.dev/mcp \
+  -H "Authorization: Bearer aft_..." \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{...}}'
+```
+
+Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that
+cannot send headers may use `?access_token=`). API keys can call everything
+**except** the API-key management endpoints, which require a cookie session.
+Revoking a key (`DELETE /api/apikeys/{id}` or the UI) takes effect
+immediately.
+
+> **Breaking change for external MCP clients** (Cursor, Claude Desktop, …):
+> they must now send `Authorization: Bearer aft_...`. Generate the key in the
+> admin UI first.
+
 ## MCP tools
 
 `search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`,

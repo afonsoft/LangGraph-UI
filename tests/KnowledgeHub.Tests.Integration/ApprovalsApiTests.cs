@@ -61,7 +61,7 @@ public class ApprovalsApiTests : IClassFixture<ApprovalsApiTests.Fixture>, IClas
     {
         _factory = factory;
         _expiring = expiring;
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
     }
 
     private async Task<AgentResponse> StartWriteRunAsync(HttpClient client, string vaultPath)
@@ -158,7 +158,7 @@ public class ApprovalsApiTests : IClassFixture<ApprovalsApiTests.Fixture>, IClas
     [Fact]
     public async Task Expired_Approval_NeverExecutes()
     {
-        var client = _expiring.CreateClient();
+        var client = await TestAuth.LoginAsync(_expiring);
         var run = await StartWriteRunAsync(client, _expiring.Vault);
         var id = run.AwaitingApprovalId!.Value;
 

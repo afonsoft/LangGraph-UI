@@ -31,7 +31,7 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
 
     public IngestionSyncTests(Fixture factory)
     {
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
         _vault = Path.Combine(Path.GetTempPath(), $"vault-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_vault);
     }

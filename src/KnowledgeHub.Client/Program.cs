@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using KnowledgeHub.Client;
@@ -8,8 +9,22 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddBootstrapBlazor();
+builder.Services.AddAuthorizationCore();
 
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+// SPEC-20260914-auth-login: the shared HttpClient flows the session cookie
+// (same-origin) and routes 401/403-gate responses to the auth screens.
+builder.Services.AddTransient<AuthRedirectHandler>();
+builder.Services.AddScoped(sp =>
+{
+    var handler = sp.GetRequiredService<AuthRedirectHandler>();
+    handler.InnerHandler = new HttpClientHandler();
+    return new HttpClient(handler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+});
+builder.Services.AddScoped<AuthApiClient>();
+builder.Services.AddScoped<KhAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
+    sp.GetRequiredService<KhAuthenticationStateProvider>());
+
 builder.Services.AddScoped<SourceApiClient>();
 builder.Services.AddScoped<SearchApiClient>();
 builder.Services.AddScoped<ToolsApiClient>();

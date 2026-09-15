@@ -56,7 +56,7 @@ public class ThreadsApiTests : IClassFixture<ThreadsApiTests.Fixture>, IClassFix
     {
         _factory = factory;
         _tiny = tiny;
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class ThreadsApiTests : IClassFixture<ThreadsApiTests.Fixture>, IClassFix
     [Fact]
     public async Task Thread_LongHistory_PopulatesSummary()
     {
-        var client = _tiny.CreateClient();
+        var client = await TestAuth.LoginAsync(_tiny);
         var create = await client.PostAsJsonAsync("/api/threads", new { title = "long" });
         var thread = (await create.Content.ReadFromJsonAsync<ThreadDto>())!;
 

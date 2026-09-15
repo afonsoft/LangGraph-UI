@@ -16,7 +16,9 @@ public sealed class TestMcp : IAsyncDisposable
 
     public static async Task<TestMcp> ConnectAsync(WebApplicationFactory<Program> factory)
     {
-        var client = new TestMcp(factory.CreateClient());
+        // SPEC-20260914-auth-login: /mcp requires auth — default to the seeded
+        // admin cookie session; callers needing a specific principal pass a client.
+        var client = new TestMcp(await TestAuth.LoginAsync(factory));
         var init = await client.SendAsync("initialize", new
         {
             protocolVersion = "2025-03-26",

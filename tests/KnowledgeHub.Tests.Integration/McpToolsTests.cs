@@ -48,7 +48,7 @@ public class McpToolsTests : IClassFixture<McpToolsTests.Fixture>
     public async Task ToolsList_ReflectsSourceActivation()
     {
         var mcp = await ConnectAsync(_factory);
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
 
         var name = $"XVault{Guid.NewGuid():N}";
         var create = await http.PostAsJsonAsync("/api/sources", new
@@ -75,7 +75,7 @@ public class McpToolsTests : IClassFixture<McpToolsTests.Fixture>
     public async Task ToolsCall_SearchKnowledge_ReturnsRankedHits()
     {
         var mcp = await ConnectAsync(_factory);
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
 
         var create = await http.PostAsJsonAsync("/api/sources", new
         {
@@ -121,7 +121,7 @@ public class McpToolsTests : IClassFixture<McpToolsTests.Fixture>
     public async Task ToolsCall_ReadDocument_TraversalRejected()
     {
         var mcp = await ConnectAsync(_factory);
-        var http = _factory.CreateClient();
+        var http = await TestAuth.LoginAsync(_factory);
         await http.PostAsJsonAsync("/api/sources", new
         {
             name = $"v-{Guid.NewGuid():N}",

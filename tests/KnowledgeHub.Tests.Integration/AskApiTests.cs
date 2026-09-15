@@ -52,7 +52,7 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
     {
         _factory = factory;
         _noChat = noChat;
-        _client = factory.CreateClient();
+        _client = TestAuth.Login(factory);
         _dir = Path.Combine(Path.GetTempPath(), $"ask-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dir);
     }
@@ -179,7 +179,7 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
     [Fact]
     public async Task Ask_NoProvider_GenerateTrue_ReturnsBadRequest()
     {
-        var client = _noChat.CreateClient();
+        var client = await TestAuth.LoginAsync(_noChat);
         var response = await client.PostAsJsonAsync("/api/ask", new
         {
             question = "anything",
@@ -191,7 +191,7 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
     [Fact]
     public async Task Ask_NoProvider_DefaultFallsBackToContext()
     {
-        var client = _noChat.CreateClient();
+        var client = await TestAuth.LoginAsync(_noChat);
         var file = Path.Combine(_dir, "nochat.txt");
         await File.WriteAllTextAsync(file, "NOCHATTOKEN body");
         var src = await client.PostAsJsonAsync("/api/sources", new

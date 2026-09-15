@@ -1,0 +1,212 @@
+using System.Net;
+using System.Net.Http.Json;
+using KnowledgeHub.Shared.Contracts;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
+
+namespace KnowledgeHub.Tests.Integration;
+
+// Covers SPEC-20260914-auth-login RF-006..RF-010 + acceptance criteria:
+// anonymous 401, login + forced password change, lockout, aft_* keys on /mcp.
+// Each test gets its own host+DB — auth state (password, lockout, keys) is
+// mutable and must not leak between tests.
+public class AuthFlowTests
+{
+    public sealed class Fixture : WebApplicationFactory<Program>
+    {
+        public string DbPath { get; } = Path.Combine(Path.GetTempPath(), $"kh-auth-{Guid.NewGuid():N}.db");
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Database:Path"] = DbPath
+                }));
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            await base.DisposeAsync();
+            try { File.Delete(DbPath); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
+    public async Task Anonymous_OperationalEndpoints_Return401()
+    {
+        // Covers AC: anonymous /api/sources → 401 (and /mcp).
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/sources")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/tools")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/auth/me")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Anonymous_HealthEndpoints_StayPublic()
+    {
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/health/live")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_SeededAdmin_ReturnsMustChangePassword_ThenGateBlocks()
+    {
+        // Covers AC: admin/123qwe → cookie + mustChangePassword:true; while
+        // flagged every operational endpoint → 403 password_change_required.
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+
+        var login = await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest(TestAuth.AdminUsername, TestAuth.AdminInitialPassword));
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var body = await login.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.Equal(TestAuth.AdminUsername, body!.Username);
+        Assert.True(body.MustChangePassword);
+        Assert.True(login.Headers.Contains("Set-Cookie"));
+
+        var gated = await client.GetAsync("/api/sources");
+        Assert.Equal(HttpStatusCode.Forbidden, gated.StatusCode);
+        Assert.Contains("password_change_required", await gated.Content.ReadAsStringAsync());
+
+        // me/logout/change-password stay reachable during the gate.
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/auth/me")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_ClearsGate_EndpointsPass()
+    {
+        await using var factory = new Fixture();
+        using var client = await TestAuth.LoginAsync(factory);
+
+        var me = await client.GetFromJsonAsync<MeResponse>("/api/auth/me");
+        Assert.False(me!.MustChangePassword);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/sources")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_WrongPassword_401_Generic_AndLocksAfterFive()
+    {
+        // Covers AC: 5 failures → 423 lockout; generic 401 (no user leak).
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+
+        var wrong = await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest(TestAuth.AdminUsername, "wrong-pass"));
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        Assert.Contains("credenciais inválidas", await wrong.Content.ReadAsStringAsync());
+
+        // Unknown user gets the same generic 401.
+        var unknown = await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest("nobody", "wrong-pass"));
+        Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
+
+        // 4 more wrong attempts (5 total for admin) → lockout; even the
+        // correct password is rejected while locked.
+        for (var i = 0; i < 4; i++)
+            await client.PostAsJsonAsync("/api/auth/login",
+                new LoginRequest(TestAuth.AdminUsername, "wrong-pass"));
+
+        var locked = await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest(TestAuth.AdminUsername, TestAuth.AdminInitialPassword));
+        Assert.Equal(HttpStatusCode.Locked, locked.StatusCode);
+        Assert.Contains("conta bloqueada", await locked.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task ApiKey_OnMcp_Authenticates_RevokedFails()
+    {
+        // Covers AC: Bearer aft_* on /mcp initialize → 200; revoked → 401;
+        // GET /api/apikeys never returns the secret.
+        await using var factory = new Fixture();
+        using var admin = await TestAuth.LoginAsync(factory);
+        var secret = await TestAuth.CreateApiKeyAsync(admin, "mcp-test");
+        Assert.Matches("^aft_[0-9a-f]{32}$", secret);
+
+        var list = await admin.GetFromJsonAsync<List<ApiKeyDto>>("/api/apikeys");
+        var key = Assert.Single(list!, k => k.Name == "mcp-test");
+        Assert.Equal(secret[..12], key.Prefix);
+        // ApiKeyDto has no Key/KeyHash member — the secret structurally
+        // cannot leak through GET /api/apikeys.
+
+        // Bearer on /mcp — MCP initialize over Streamable HTTP requires the
+        // SSE accept header alongside application/json.
+        using var bearer = factory.CreateClient();
+        bearer.DefaultRequestHeaders.Authorization = new("Bearer", secret);
+        Assert.Equal(HttpStatusCode.OK, (await McpInitializeAsync(bearer)).StatusCode);
+
+        // Anonymous /mcp → 401.
+        using var anon = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await McpInitializeAsync(anon)).StatusCode);
+
+        // Revoke → the same key now fails.
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await admin.DeleteAsync($"/api/apikeys/{key.Id}")).StatusCode);
+        using var revoked = factory.CreateClient();
+        revoked.DefaultRequestHeaders.Authorization = new("Bearer", secret);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await McpInitializeAsync(revoked)).StatusCode);
+    }
+
+    [Fact]
+    public async Task ApiKey_CannotManageApiKeys()
+    {
+        // Covers RF-010: keys cannot manage keys (no bootstrap from a leaked key).
+        await using var factory = new Fixture();
+        using var admin = await TestAuth.LoginAsync(factory);
+        var secret = await TestAuth.CreateApiKeyAsync(admin, "self-manage");
+
+        using var bearer = factory.CreateClient();
+        bearer.DefaultRequestHeaders.Authorization = new("Bearer", secret);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await bearer.GetAsync("/api/apikeys")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await bearer.PostAsJsonAsync("/api/apikeys", new CreateApiKeyRequest("x"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_PolicyViolations_Return400()
+    {
+        await using var factory = new Fixture();
+        using var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest(TestAuth.AdminUsername, TestAuth.AdminInitialPassword));
+
+        var tooShort = await client.PostAsJsonAsync("/api/auth/change-password",
+            new ChangePasswordRequest(TestAuth.AdminInitialPassword, "short"));
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+
+        var wrongCurrent = await client.PostAsJsonAsync("/api/auth/change-password",
+            new ChangePasswordRequest("nope-nope", "valid-new-1"));
+        Assert.Equal(HttpStatusCode.BadRequest, wrongCurrent.StatusCode);
+    }
+
+    private static async Task<HttpResponseMessage> McpInitializeAsync(HttpClient client)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(new
+            {
+                jsonrpc = "2.0",
+                id = 1,
+                method = "initialize",
+                @params = new
+                {
+                    protocolVersion = "2025-03-26",
+                    capabilities = new { },
+                    clientInfo = new { name = "test", version = "1.0" }
+                }
+            })
+        };
+        request.Headers.Accept.Add(new("application/json"));
+        request.Headers.Accept.Add(new("text/event-stream"));
+        return await client.SendAsync(request);
+    }
+}
