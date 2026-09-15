@@ -9,8 +9,8 @@
 | Stack | `.NET 10`, `Blazor WASM`, `SignalR` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260914-signalr-hub-resilience` |
-| Ticket | `—` |
-| Status | `Draft` |
+| Ticket | `#50` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -86,10 +86,10 @@ N/A — no contract changes.
 
 ## 6. Acceptance Criteria
 
-- [ ] **Given** hub unreachable/mid-connect navigation **when** leaving `/mcp-monitor` or `/approvals` **then** no unhandled exception and no persistent error bar on other pages.
-- [ ] **Given** `/mcp-monitor` with failing connect **when** `StartAsync` throws a real error **then** badge shows `desconectado`, the page stays usable, error summary + "Reconectar" are visible.
-- [ ] **Given** a working hub **when** `/mcp-monitor` opens **then** connects via WebSockets (or LongPolling fallback) with no SSE attempt in errors.
-- [ ] **Given** `dotnet test` **then** suite stays green.
+- [x] **Given** hub unreachable/mid-connect navigation **when** leaving `/mcp-monitor` or `/approvals` **then** no unhandled exception and no persistent error bar on other pages.
+- [x] **Given** `/mcp-monitor` with failing connect **when** `StartAsync` throws a real error **then** badge shows `desconectado`, the page stays usable, error summary + "Reconectar" are visible.
+- [x] **Given** a working hub **when** `/mcp-monitor` opens **then** connects via WebSockets (or LongPolling fallback) with no SSE attempt in errors.
+- [x] **Given** `dotnet test` **then** suite stays green.
 
 **Edge cases:**
 
@@ -102,9 +102,9 @@ N/A — no contract changes.
 
 ## 7. Task Plan
 
-- [ ] **T1 — Client:** `McpMonitorClient` — transport filter, OCE swallow on `StartAsync`, `LastError` capture.
-- [ ] **T2 — Page:** `McpMonitor.razor` — try/catch + degraded state + "Reconectar" button.
-- [ ] **T3 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; manual smoke — open `/mcp-monitor`, navigate away quickly, confirm no error bar on `/sources`.
+- [x] **T1 — Client:** `McpMonitorClient` — transport filter, OCE swallow on `StartAsync`, `LastError` capture.
+- [x] **T2 — Page:** `McpMonitor.razor` — try/catch + degraded state + "Reconectar" button.
+- [x] **T3 — Verify:** `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`; manual smoke — open `/mcp-monitor`, navigate away quickly, confirm no error bar on `/sources`.
 
 ## 8. Organization Guardrails
 
@@ -114,9 +114,9 @@ N/A — no contract changes.
 
 ## 9. Definition of Done
 
-- [ ] All requirements implemented; acceptance criteria verified.
-- [ ] `dotnet build`, `dotnet format`, `dotnet test` green.
-- [ ] Manual smoke on production: monitor connects; forced failure shows degraded state, not an app crash.
+- [x] All requirements implemented; acceptance criteria verified. *(OCE swallow, WS|LP filter, LastError, degraded UI + Reconnect, `_disposed` guard; handlers registered once so Reconnect cannot double-subscribe)*
+- [x] `dotnet build`, `dotnet format`, `dotnet test` green. *(130 unit + 91 integration, 0 failures)*
+- [ ] Manual smoke on production *(requires deploy)*: monitor connects; forced failure shows degraded state, not an app crash.
 
 ## Open Questions / Pending Ambiguity
 

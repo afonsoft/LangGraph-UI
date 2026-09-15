@@ -18,6 +18,20 @@
     </span>
 </div>
 
+@* SPEC-20260914-signalr-hub-resilience RF-004: degraded, not fatal — the page
+   stays usable when the hub can't be reached. *@
+@if (Monitor.LastError is { } monitorError)
+{
+    <div class="alert alert-warning py-2 d-flex justify-content-between align-items-center">
+        <span>
+            Falha na conexão em tempo real: @monitorError<br />
+            <small class="text-muted">WebSocket pode estar bloqueado pela rede/proxy — a página continua funcional.</small>
+        </span>
+        <Button Size="Size.ExtraSmall" Color="Color.Warning" Text="Reconectar"
+                IsAsync="true" OnClick="ReconnectAsync" />
+    </div>
+}
+
 <div class="row g-3">
     <div class="col-12 col-lg-4">
         <Card>
@@ -88,6 +102,13 @@
     private readonly List<ActivityEvent> _activity = new();
     private const int MaxActivity = 200;
     private bool? _healthy;
+    private bool _disposed;
+
+    // RF-005: hub events may fire while/after the component is disposed.
+    private void NotifyStateChanged()
+    {
+        if (!_disposed) _ = InvokeAsync(StateHasChanged);
+    }
 
     private string HealthLabel => _healthy switch
     {
@@ -136,23 +157,32 @@
         Monitor.SessionOpened += e =>
         {
             _sessions[e.SessionId] = e.ConnectedAt;
-            InvokeAsync(StateHasChanged);
+            NotifyStateChanged();
         };
         Monitor.SessionClosed += e =>
         {
             _sessions.Remove(e.SessionId);
-            InvokeAsync(StateHasChanged);
+            NotifyStateChanged();
         };
         Monitor.Activity += e =>
         {
             _activity.Add(e);
             if (_activity.Count > MaxActivity) _activity.RemoveAt(0);
-            InvokeAsync(StateHasChanged);
+            NotifyStateChanged();
         };
-        Monitor.StateChanged += () => InvokeAsync(StateHasChanged);
-        await Monitor.StartAsync();
+        Monitor.StateChanged += NotifyStateChanged;
+        try { await Monitor.StartAsync(); } catch { /* degraded state via Monitor.LastError */ }
         await RefreshHealthAsync();
     }
 
-    public async ValueTask DisposeAsync() => await Monitor.DisposeAsync();
+    private async Task ReconnectAsync()
+    {
+        try { await Monitor.StartAsync(); } catch { /* Monitor.LastError surfaces it */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await Monitor.DisposeAsync();
+    }
 }
