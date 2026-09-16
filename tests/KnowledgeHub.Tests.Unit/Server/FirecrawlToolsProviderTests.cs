@@ -37,12 +37,13 @@ public class FirecrawlToolsProviderTests
         return (provider, client);
     }
 
-    private static Tool UpstreamTool(string name, string? description = null, bool? readOnly = null) =>
+    private static Tool UpstreamTool(string name, string? description = null, bool? readOnly = null,
+        string schemaJson = """{"type":"object"}""") =>
         new()
         {
             Name = name,
             Description = description,
-            InputSchema = JsonDocument.Parse("""{"type":"object"}""").RootElement.Clone(),
+            InputSchema = JsonDocument.Parse(schemaJson).RootElement.Clone(),
             Annotations = readOnly is null ? null : new ToolAnnotations { ReadOnlyHint = readOnly }
         };
 
@@ -129,6 +130,68 @@ public class FirecrawlToolsProviderTests
         Assert.Contains("firecrawl_agent", byName.Keys);
         Assert.Equal("upstream-authoritative scrape", byName["firecrawl_scrape"].Description);
         Assert.Equal(7, tools.Count); // 6 static + 1 new dynamic (scrape overridden)
+    }
+
+    [Fact]
+    public async Task DynamicTool_KnownName_GetsCuratedExamples()
+    {
+        var (provider, _) = Build(storedKey: "fc-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("firecrawl_developer_search")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "firecrawl_developer_search");
+
+        var examples = Assert.IsType<System.Text.Json.Nodes.JsonArray>(tool.InputSchema["examples"]);
+        Assert.Equal("blazor websocket reconnect pattern",
+            examples[0]!["query"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DynamicOverride_StaticCoreName_StillHasExamples()
+    {
+        // Dynamic entries are authoritative on collisions — the upstream schema
+        // replaces the static one and would lose its Playground examples
+        // without the curated injection.
+        var (provider, _) = Build(storedKey: "fc-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("firecrawl_scrape")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "firecrawl_scrape");
+
+        Assert.True(
+            tool.InputSchema["examples"] is System.Text.Json.Nodes.JsonArray { Count: > 0 },
+            "dynamic firecrawl_scrape must carry injected examples");
+    }
+
+    [Fact]
+    public async Task DynamicTool_UpstreamExamples_Preserved()
+    {
+        var (provider, _) = Build(storedKey: "fc-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("firecrawl_developer_search",
+                schemaJson: """{"type":"object","examples":[{"query":"upstream wins"}]}""")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "firecrawl_developer_search");
+
+        var examples = Assert.IsType<System.Text.Json.Nodes.JsonArray>(tool.InputSchema["examples"]);
+        Assert.Single(examples);
+        Assert.Equal("upstream wins", examples[0]!["query"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DynamicTool_UnknownName_NoExamplesInjected()
+    {
+        var (provider, _) = Build(storedKey: "fc-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("firecrawl_thing")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "firecrawl_thing");
+
+        Assert.False(tool.InputSchema.ContainsKey("examples"));
     }
 
     [Fact]

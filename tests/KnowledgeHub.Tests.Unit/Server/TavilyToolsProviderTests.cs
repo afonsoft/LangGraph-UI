@@ -37,12 +37,13 @@ public class TavilyToolsProviderTests
         return (provider, client);
     }
 
-    private static Tool UpstreamTool(string name, string? description = null, bool? readOnly = null) =>
+    private static Tool UpstreamTool(string name, string? description = null, bool? readOnly = null,
+        string schemaJson = """{"type":"object"}""") =>
         new()
         {
             Name = name,
             Description = description,
-            InputSchema = JsonDocument.Parse("""{"type":"object"}""").RootElement.Clone(),
+            InputSchema = JsonDocument.Parse(schemaJson).RootElement.Clone(),
             Annotations = readOnly is null ? null : new ToolAnnotations { ReadOnlyHint = readOnly }
         };
 
@@ -130,6 +131,52 @@ public class TavilyToolsProviderTests
         Assert.Contains("tavily_new_thing", byName.Keys);
         Assert.Equal("upstream-authoritative search", byName["tavily_search"].Description);
         Assert.Equal(6, tools.Count); // 5 static + 1 new dynamic (search overridden)
+    }
+
+    [Fact]
+    public async Task DynamicTool_KnownName_GetsCuratedExamples()
+    {
+        // Dynamic entries override the static core on collisions — the upstream
+        // schema would lose the static examples without the curated injection.
+        var (provider, _) = Build(storedKey: "tvly-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("tavily_search")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "tavily_search");
+
+        var examples = Assert.IsType<System.Text.Json.Nodes.JsonArray>(tool.InputSchema["examples"]);
+        Assert.Equal("latest .NET 10 release notes",
+            examples[0]!["query"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DynamicTool_UpstreamExamples_Preserved()
+    {
+        var (provider, _) = Build(storedKey: "tvly-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("tavily_search",
+                schemaJson: """{"type":"object","examples":[{"query":"upstream wins"}]}""")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "tavily_search");
+
+        var examples = Assert.IsType<System.Text.Json.Nodes.JsonArray>(tool.InputSchema["examples"]);
+        Assert.Single(examples);
+        Assert.Equal("upstream wins", examples[0]!["query"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DynamicTool_UnknownName_NoExamplesInjected()
+    {
+        var (provider, _) = Build(storedKey: "tvly-test");
+        provider.DynamicToolsSource = _ => Task.FromResult<IReadOnlyList<Tool>>(
+            [UpstreamTool("tavily_thing")]);
+
+        var tool = (await provider.GetToolsAsync(EmptyServices, CancellationToken.None))
+            .Single(t => t.Name == "tavily_thing");
+
+        Assert.False(tool.InputSchema.ContainsKey("examples"));
     }
 
     [Fact]

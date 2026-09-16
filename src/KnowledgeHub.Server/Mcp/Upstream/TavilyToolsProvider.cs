@@ -9,8 +9,10 @@ namespace KnowledgeHub.Server.Mcp.Upstream;
 /// Tavily proxy tools (SPEC-20260916-tavily-mcp-proxy RF-003) — hybrid
 /// registration: a static core set is always listed while Enabled (so calls
 /// without a key produce a friendly isError), and when an effective API key
-/// exists the upstream <c>tools/list</c> is merged in verbatim — names and
-/// inputSchema byte-identical to Tavily, no aliases. Dynamic entries are
+/// exists the upstream <c>tools/list</c> is merged in — names and inputSchema
+/// byte-identical to Tavily, no aliases, except for a root-level
+/// <c>examples</c> annotation injected from <see cref="DynamicToolExamples"/>
+/// when the upstream omits one (Playground fill). Dynamic entries are
 /// authoritative on name collisions.
 /// </summary>
 public sealed class TavilyToolsProvider(
@@ -36,6 +38,21 @@ public sealed class TavilyToolsProvider(
     /// <summary>Test seam — supplies upstream protocol tools without a live
     /// <see cref="McpClient"/> session.</summary>
     internal Func<CancellationToken, Task<IReadOnlyList<Tool>>>? DynamicToolsSource { get; set; }
+
+    /// <summary>Curated Playground examples (RF-006 root <c>examples</c>) for
+    /// the known upstream tools — upstream schemas carry none, and dynamic
+    /// entries override the static core, so without this every dynamic tool
+    /// would fall back to the generic skeleton and produce invalid calls.
+    /// Values are JSON arrays of complete argument objects.</summary>
+    private static readonly IReadOnlyDictionary<string, string> DynamicToolExamples =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["tavily_search"] = """[{"query":"latest .NET 10 release notes","max_results":5,"search_depth":"basic"}]""",
+            ["tavily_extract"] = """[{"urls":["https://example.com"]}]""",
+            ["tavily_map"] = """[{"url":"https://docs.tavily.com","max_depth":1,"limit":20}]""",
+            ["tavily_crawl"] = """[{"url":"https://docs.tavily.com","max_depth":1,"limit":5}]""",
+            ["tavily_research"] = """[{"input":"Compare .NET 10 minimal APIs vs controllers for a small team"}]"""
+        };
 
     private static readonly JsonObject SearchSchema = JsonNode.Parse("""
         {"type":"object","additionalProperties":true,"properties":{
@@ -160,6 +177,9 @@ public sealed class TavilyToolsProvider(
         var schema = JsonNode.Parse(proto.InputSchema.GetRawText()) as JsonObject
             ?? new JsonObject { ["type"] = "object" };
         var name = proto.Name;
+        if (!schema.ContainsKey("examples") &&
+            DynamicToolExamples.TryGetValue(name, out var examplesJson))
+            schema["examples"] = JsonNode.Parse(examplesJson);
         return new CatalogTool
         {
             Name = name,

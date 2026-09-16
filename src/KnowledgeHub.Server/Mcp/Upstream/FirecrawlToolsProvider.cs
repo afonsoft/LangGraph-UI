@@ -9,8 +9,10 @@ namespace KnowledgeHub.Server.Mcp.Upstream;
 /// Firecrawl proxy tools (SPEC-20260916-firecrawl-mcp-proxy RF-003) — hybrid
 /// registration: a static core set is always listed while Enabled (so calls
 /// without a key produce a friendly isError), and when an effective API key
-/// exists the upstream <c>tools/list</c> is merged in verbatim — names and
-/// inputSchema byte-identical to Firecrawl, no aliases. Dynamic entries are
+/// exists the upstream <c>tools/list</c> is merged in — names and inputSchema
+/// byte-identical to Firecrawl, no aliases, except for a root-level
+/// <c>examples</c> annotation injected from <see cref="DynamicToolExamples"/>
+/// when the upstream omits one (Playground fill). Dynamic entries are
 /// authoritative on name collisions.
 /// </summary>
 public sealed class FirecrawlToolsProvider(
@@ -37,6 +39,42 @@ public sealed class FirecrawlToolsProvider(
     /// <summary>Test seam — supplies upstream protocol tools without a live
     /// <see cref="McpClient"/> session.</summary>
     internal Func<CancellationToken, Task<IReadOnlyList<Tool>>>? DynamicToolsSource { get; set; }
+
+    /// <summary>Curated Playground examples (RF-006 root <c>examples</c>) for
+    /// the known upstream tools — upstream schemas carry none, and dynamic
+    /// entries override the static core, so without this every dynamic tool
+    /// would fall back to the generic skeleton and produce invalid calls.
+    /// Values are JSON arrays of complete argument objects, validated against
+    /// the upstream tools/list schemas.</summary>
+    private static readonly IReadOnlyDictionary<string, string> DynamicToolExamples =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["firecrawl_scrape"] = """[{"url":"https://example.com","formats":["markdown"],"onlyMainContent":true}]""",
+            ["firecrawl_search"] = """[{"query":"latest .NET 10 release notes","limit":5}]""",
+            ["firecrawl_map"] = """[{"url":"https://docs.firecrawl.dev","limit":20}]""",
+            ["firecrawl_crawl"] = """[{"url":"https://docs.firecrawl.dev","limit":5}]""",
+            ["firecrawl_check_crawl_status"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000"}]""",
+            ["firecrawl_parse"] = """[{"filePath":"./report.pdf","parsers":["pdf"]}]""",
+            ["firecrawl_search_feedback"] = """[{"searchId":"550e8400-e29b-41d4-a716-446655440000","rating":"good","valuableSources":[{"url":"https://example.com/article","reason":"answered the query directly"}]}]""",
+            ["firecrawl_feedback"] = """[{"endpoint":"scrape","jobId":"550e8400-e29b-41d4-a716-446655440000","rating":"good","note":"extracted content was complete"}]""",
+            ["firecrawl_agent"] = """[{"prompt":"Extract the pricing tiers from this page","urls":["https://www.firecrawl.dev/pricing"]}]""",
+            ["firecrawl_agent_status"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000"}]""",
+            ["firecrawl_interact"] = """[{"url":"https://example.com","prompt":"Click the sign-in button"}]""",
+            ["firecrawl_interact_stop"] = """[{"scrapeId":"550e8400-e29b-41d4-a716-446655440000"}]""",
+            ["firecrawl_monitor_create"] = """[{"pages":["https://docs.firecrawl.dev"],"name":"docs-watch","scheduleText":"every day"}]""",
+            ["firecrawl_monitor_list"] = """[{"limit":10,"offset":0}]""",
+            ["firecrawl_monitor_get"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000"}]""",
+            ["firecrawl_monitor_update"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000","body":{"name":"renamed-monitor"}}]""",
+            ["firecrawl_monitor_delete"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000"}]""",
+            ["firecrawl_monitor_run"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000"}]""",
+            ["firecrawl_monitor_checks"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000","limit":10}]""",
+            ["firecrawl_monitor_check"] = """[{"id":"550e8400-e29b-41d4-a716-446655440000","checkId":"660e8400-e29b-41d4-a716-446655440001"}]""",
+            ["firecrawl_research_search_papers"] = """[{"query":"retrieval augmented generation","k":5}]""",
+            ["firecrawl_research_inspect_paper"] = """[{"paperId":"2103.00020"}]""",
+            ["firecrawl_research_related_papers"] = """[{"seed_ids":["2103.00020"],"intent":"similar work on retrieval augmented generation","mode":"similar","k":5}]""",
+            ["firecrawl_research_read_paper"] = """[{"paperId":"2103.00020","question":"What is the main contribution?","k":5}]""",
+            ["firecrawl_developer_search"] = """[{"query":"blazor websocket reconnect pattern","k":5}]"""
+        };
 
     private static readonly JsonObject ScrapeSchema = JsonNode.Parse("""
         {"type":"object","additionalProperties":true,"properties":{
@@ -164,6 +202,9 @@ public sealed class FirecrawlToolsProvider(
         var schema = JsonNode.Parse(proto.InputSchema.GetRawText()) as JsonObject
             ?? new JsonObject { ["type"] = "object" };
         var name = proto.Name;
+        if (!schema.ContainsKey("examples") &&
+            DynamicToolExamples.TryGetValue(name, out var examplesJson))
+            schema["examples"] = JsonNode.Parse(examplesJson);
         return new CatalogTool
         {
             Name = name,

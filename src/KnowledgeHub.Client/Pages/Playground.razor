@@ -285,6 +285,12 @@
         => new[] { new SelectedItem("", "—") }
             .Concat(field.EnumValues?.Select(v => new SelectedItem(v, v)) ?? []);
 
+    // Upstream proxies may serialize "isError":null (≈ absent) — only a literal
+    // true counts; GetBoolean() would throw on Null.
+    private static bool IsTrue(JsonElement el, string name) =>
+        el.ValueKind == JsonValueKind.Object &&
+        el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+
     private async Task RunToolAsync()
     {
         if (_selected is null) return;
@@ -335,7 +341,7 @@
         {
             var result = await Tools.CallAsync(_selected.Name, JsonSerializer.Serialize(args));
             _result = result;
-            _isError = result.TryGetProperty("isError", out var e) && e.GetBoolean();
+            _isError = IsTrue(result, "isError");
             _texts = result.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
                 ? content.EnumerateArray()
                     .Where(c => c.TryGetProperty("type", out var t) && t.GetString() == "text")
@@ -391,7 +397,7 @@
                         {
                             _agentSteps[^1] = last with
                             {
-                                IsError = data.TryGetProperty("isError", out var ie) && ie.GetBoolean(),
+                                IsError = IsTrue(data, "isError"),
                                 ElapsedMs = data.TryGetProperty("elapsedMs", out var em) ? em.GetDouble() : 0
                             };
                         }
@@ -456,7 +462,7 @@
                     Iteration = s.TryGetProperty("iteration", out var it) ? it.GetInt32() : 0,
                     Tool = s.TryGetProperty("tool", out var tn) ? tn.GetString() ?? "" : "",
                     ArgsSummary = s.TryGetProperty("argsSummary", out var ag) ? ag.GetString() ?? "" : "",
-                    IsError = s.TryGetProperty("isError", out var ie) && ie.GetBoolean(),
+                    IsError = IsTrue(s, "isError"),
                     ElapsedMs = s.TryGetProperty("elapsedMs", out var em) ? em.GetDouble() : 0
                 });
             }
