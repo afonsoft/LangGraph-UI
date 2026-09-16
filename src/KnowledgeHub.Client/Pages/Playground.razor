@@ -23,7 +23,9 @@
             <BodyTemplate>
                 @if (_tools is null)
                 {
-                    <div class="text-muted">Carregando catálogo…</div>
+                    <div class="text-muted kh-action-loading">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Carregando catálogo…
+                    </div>
                 }
                 else
                 {
@@ -129,6 +131,20 @@
                     }
                 </BodyTemplate>
             </Card>
+
+            @if (_running)
+            {
+                <div class="alert alert-primary kh-action-loading mb-3" role="status">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Executando <code>@_selected.Name</code>…</span>
+                    @if (_selected.Name is "agent_chat" or "ask_knowledge")
+                    {
+                        <small class="text-muted ms-1">
+                            o agente pode levar ~1 min — resposta e etapas aparecem em tempo real abaixo
+                        </small>
+                    }
+                </div>
+            }
 
             @if (_result is not null)
             {

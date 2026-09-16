@@ -72,6 +72,13 @@
                                 <div style="white-space: pre-wrap;">@m.Content</div>
                             </div>
                         }
+                        @if (_sending)
+                        {
+                            <div class="mb-2 p-2 rounded bg-light kh-action-loading">
+                                <i class="fa-solid fa-spinner fa-spin"></i>
+                                <small class="text-muted">aguardando resposta do agente…</small>
+                            </div>
+                        }
                     </div>
                     <div class="d-flex gap-2 mt-3">
                         <BootstrapInput @bind-Value="_draft" PlaceHolder="Mensagem…"

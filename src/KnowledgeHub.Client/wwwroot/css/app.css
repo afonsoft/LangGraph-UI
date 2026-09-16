@@ -105,6 +105,44 @@ code {
     color: #c02d76;
 }
 
+/* Barra de progresso fina no topo durante a transição entre telas. */
+.kh-nav-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 2000;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+    .kh-nav-loader::before {
+        content: "";
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #1b6ec2, #6f42c1);
+        animation: kh-nav-slide 1s ease-in-out infinite;
+    }
+
+@keyframes kh-nav-slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+}
+
+/* Estado de espera de ação (spinner + texto) — usado no Playground/Chat. */
+.kh-action-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+    .kh-action-loading .fa-spinner {
+        color: #1b6ec2;
+    }
+
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
     color: var(--bs-secondary-color);
     text-align: end;
