@@ -64,8 +64,64 @@ public static class SettingsEndpoints
             return Results.NoContent();
         });
 
+        // SPEC-20260916-settings-chat-config RF-004: chat provider (endpoint +
+        // model + API key) editable from /settings; effective immediately via
+        // the service's Invalidate() — no restart.
+        group.MapGet("/chat", async (
+            IChatSettingsService chat,
+            CancellationToken ct) =>
+            Results.Ok(await chat.DescribeAsync(ct)));
+
+        group.MapPut("/chat", async (
+            SaveChatSettingsRequest? body,
+            IChatSettingsService chat,
+            CancellationToken ct) =>
+        {
+            var endpoint = body?.Endpoint?.Trim();
+            var model = body?.Model?.Trim();
+            if (string.IsNullOrWhiteSpace(endpoint) || !IsHttpUri(endpoint))
+                return Results.BadRequest(new { error = "endpoint must be an absolute http(s) URI" });
+            if (string.IsNullOrWhiteSpace(model))
+                return Results.BadRequest(new { error = "model is required" });
+
+            await chat.SaveAsync(endpoint, model, body!.ApiKey, ct);
+            return Results.NoContent();
+        });
+
+        group.MapDelete("/chat/apikey", async (
+            IChatSettingsService chat,
+            CancellationToken ct) =>
+        {
+            await chat.RemoveKeyAsync(ct);
+            return Results.NoContent();
+        });
+
+        group.MapDelete("/chat", async (
+            IChatSettingsService chat,
+            CancellationToken ct) =>
+        {
+            await chat.ClearAsync(ct);
+            return Results.NoContent();
+        });
+
+        group.MapPost("/chat/test", async (
+            TestChatConnectionRequest? body,
+            IChatSettingsService chat,
+            CancellationToken ct) =>
+        {
+            var endpoint = body?.Endpoint?.Trim();
+            if (!string.IsNullOrEmpty(endpoint) && !IsHttpUri(endpoint))
+                return Results.BadRequest(new { error = "endpoint must be an absolute http(s) URI" });
+
+            return Results.Ok(await chat.TestAsync(body ?? new TestChatConnectionRequest(), ct));
+        });
+
         return group;
     }
+
+    private static bool IsHttpUri(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static async Task<IntegrationSettingsDto> DescribeAsync(
         string provider, IIntegrationSecretStore store, IConfiguration cfg, CancellationToken ct)

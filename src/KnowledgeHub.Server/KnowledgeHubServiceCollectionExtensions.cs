@@ -44,21 +44,27 @@ public static class KnowledgeHubServiceCollectionExtensions
                 sp.GetRequiredService<IHttpClientFactory>()));
 
         // SPEC-20260914-llm-answer-synthesis RF-001: optional chat client.
-        // Provider=none → IChatClient is not registered; consumers use GetService.
+        // Provider=none → GetClient() returns null; consumers use GetService.
         services.AddOptions<Chat.ChatProviderOptions>()
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(Chat.ChatProviderOptions.SectionName).Bind(options));
         services.AddHttpClient("chat");
-        if (!configuration.GetValue("Chat:Provider", "none").Equals("none", StringComparison.OrdinalIgnoreCase))
-        {
-            services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
-                Chat.ChatClientFactory.Create(
-                    sp.GetRequiredService<IOptions<Chat.ChatProviderOptions>>().Value,
-                    sp.GetRequiredService<IHttpClientFactory>())!);
-        }
+        // SPEC-20260916-settings-chat-config RF-003: effective config comes from
+        // the Settings store when a ChatSettings row exists, else env — the client
+        // is resolved per scope (nullable) so /settings edits apply without restart.
+        // Func<HttpClient> is an optional test seam for the connection probe.
+        services.AddSingleton<Settings.IChatSettingsService>(sp => new Settings.ChatSettingsService(
+            sp.GetRequiredService<IOptions<Chat.ChatProviderOptions>>(),
+            sp.GetRequiredService<Settings.IIntegrationSecretStore>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<ILogger<Settings.ChatSettingsService>>(),
+            sp.GetService<Func<HttpClient>>()));
+        services.AddScoped<Microsoft.Extensions.AI.IChatClient>(sp =>
+            sp.GetRequiredService<Settings.IChatSettingsService>().GetClient()!);
         services.AddScoped<IAnswerService>(sp => new AnswerService(
             sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
-            sp.GetRequiredService<IOptions<Chat.ChatProviderOptions>>().Value,
+            sp.GetRequiredService<Settings.IChatSettingsService>().GetEffectiveOptions(),
             sp.GetRequiredService<ILogger<AnswerService>>()));
 
         // SPEC-20260914-agent-chat-loop: model→tools→model loop over the live catalog.

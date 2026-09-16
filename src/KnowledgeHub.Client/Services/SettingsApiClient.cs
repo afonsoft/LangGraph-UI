@@ -14,19 +14,53 @@ public sealed class SettingsApiClient(HttpClient http)
         var response = await http.PutAsJsonAsync(
             $"api/settings/integrations/{Uri.EscapeDataString(provider)}",
             new SetIntegrationKeyRequest { ApiKey = apiKey }, ct);
-        return await ReadAsync(response, ct);
+        return await ReadAsync<object>(response, ct);
     }
 
     public async Task<ApiResult<object>> RemoveKeyAsync(string provider, CancellationToken ct = default)
     {
         var response = await http.DeleteAsync($"api/settings/integrations/{Uri.EscapeDataString(provider)}", ct);
-        return await ReadAsync(response, ct);
+        return await ReadAsync<object>(response, ct);
     }
 
-    private static async Task<ApiResult<object>> ReadAsync(HttpResponseMessage response, CancellationToken ct)
+    // SPEC-20260916-settings-chat-config: chat provider card endpoints.
+    public Task<ChatSettingsDto?> GetChatAsync(CancellationToken ct = default) =>
+        http.GetFromJsonAsync<ChatSettingsDto>("api/settings/chat", ct);
+
+    public async Task<ApiResult<object>> SaveChatAsync(string endpoint, string model, string? apiKey, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/settings/chat",
+            new SaveChatSettingsRequest { Endpoint = endpoint, Model = model, ApiKey = apiKey }, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    public async Task<ApiResult<object>> RemoveChatKeyAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("api/settings/chat/apikey", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    public async Task<ApiResult<object>> ClearChatAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("api/settings/chat", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    public async Task<ApiResult<TestChatConnectionResponse>> TestChatAsync(TestChatConnectionRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("api/settings/chat/test", request, ct);
+        return await ReadAsync<TestChatConnectionResponse>(response, ct);
+    }
+
+    private static async Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)
-            return new ApiResult<object>(null, null);
+        {
+            T? value = default;
+            try { value = await response.Content.ReadFromJsonAsync<T>(cancellationToken: ct); }
+            catch { /* 204 or non-JSON body */ }
+            return new ApiResult<T>(value, null);
+        }
 
         string? error = null;
         try
@@ -37,6 +71,6 @@ public sealed class SettingsApiClient(HttpClient http)
         }
         catch { /* non-JSON error body */ }
 
-        return new ApiResult<object>(null, error ?? $"HTTP {(int)response.StatusCode}");
+        return new ApiResult<T>(default, error ?? $"HTTP {(int)response.StatusCode}");
     }
 }
