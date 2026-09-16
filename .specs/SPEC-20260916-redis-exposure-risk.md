@@ -9,7 +9,7 @@
 | Stack | `.NET 10` + Docker Compose + Redis (infra do VPS) |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-redis-exposure-risk` |
-| Ticket | `GAP-security-redis-exposed` |
+| Ticket | `#68` |
 | Status | `Approved` |
 
 ## 1. User Story

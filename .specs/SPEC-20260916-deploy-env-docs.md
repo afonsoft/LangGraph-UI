@@ -9,7 +9,7 @@
 | Stack | `Markdown` + Docker Compose env |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-deploy-env-docs` |
-| Ticket | `GAP-documentation-deploy-env-vars` |
+| Ticket | `#70` |
 | Status | `Approved` |
 
 ## 1. User Story
