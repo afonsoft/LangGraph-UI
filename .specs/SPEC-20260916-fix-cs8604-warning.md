@@ -9,7 +9,7 @@
 | Stack | `.NET 10 / C# 14` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-fix-cs8604-warning` |
-| Ticket | `GAP-implementation-warning-cs8604` |
+| Ticket | `#72` |
 | Status | `Approved` |
 
 ## 1. User Story

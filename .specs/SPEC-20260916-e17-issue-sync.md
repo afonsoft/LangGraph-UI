@@ -9,7 +9,7 @@
 | Stack | `GitHub CLI` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (sem mudança de código; opcional `feature/Devin-20260916-e17-issue-sync` para o memory/report update) |
-| Ticket | `GAP-operation-issue-tracking-e17` |
+| Ticket | `#69` |
 | Status | `Approved` |
 
 ## 1. User Story

@@ -9,7 +9,7 @@
 | Stack | `Markdown` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-claude-md-sync` |
-| Ticket | `GAP-documentation-claude-md-stale` |
+| Ticket | `#73` |
 | Status | `Approved` |
 
 ## 1. User Story
