@@ -22,18 +22,18 @@ public sealed class OllamaChatClient : HttpChatClient
     protected override async Task<ChatResponse> SendAsync(
         IReadOnlyList<ChatMessage> messages, ChatOptions? options, CancellationToken cancellationToken)
     {
-        var sampling = new Dictionary<string, object>();
-        var temperature = (double?)(options?.Temperature) ?? Options.Temperature;
-        var maxTokens = options?.MaxOutputTokens ?? Options.MaxTokens;
-        if (temperature is not null)
-            sampling["temperature"] = temperature.Value;
-        if (maxTokens is not null)
-            sampling["num_predict"] = maxTokens.Value;
+        var temperature = (double?)(options?.Temperature) ?? Options.Temperature ?? ChatJson.DefaultTemperature;
+        var maxTokens = options?.MaxOutputTokens ?? Options.MaxTokens ?? ChatJson.DefaultMaxTokens;
+        var sampling = new Dictionary<string, object>
+        {
+            ["temperature"] = temperature,
+            ["num_predict"] = maxTokens
+        };
 
         var request = new OllamaChatRequest(
             Options.Model!,
             MapMessages(messages).ToArray(),
-            sampling.Count == 0 ? null : sampling,
+            sampling,
             MapTools(options?.Tools).ToArray());
 
         var response = await Http.PostAsJsonAsync("api/chat", request, cancellationToken);
@@ -57,16 +57,18 @@ public sealed class OllamaChatClient : HttpChatClient
             yield return new OllamaChatMessage(
                 m.Role == ChatRole.Tool ? "tool" : m.Role.Value,
                 m.Text ?? "",
-                calls.Count == 0 ? null
+                calls.Count == 0 ? []
                     : calls.Select(c => new OllamaToolCall(new OllamaToolCallFunction(
-                        c.Name, ToJsonObject(c.Arguments)))).ToArray(),
-                results.Count == 0 ? null : results[0].CallId);
+                        c.Name ?? "", ToJsonObject(c.Arguments)))).ToArray(),
+                results.Count == 0 ? "" : results[0].CallId);
         }
     }
 
+    /// <summary>Mapeia as tools para o formato Ollama; schema default quando o
+    /// tool não declara parameters.</summary>
     private static IEnumerable<OllamaTool> MapTools(IList<AITool>? tools) =>
         tools?.OfType<AIFunction>().Select(f => new OllamaTool(new OllamaToolFunction(
-            f.Name, f.Description, f.JsonSchema))) ?? [];
+            f.Name, f.Description ?? "", ChatJson.SchemaOrDefault(f.JsonSchema)))) ?? [];
 
     private static ChatMessage ToChatMessage(OllamaChatMessage message)
     {
@@ -93,8 +95,8 @@ public sealed class OllamaChatClient : HttpChatClient
     private sealed record OllamaChatRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("messages")] OllamaChatMessage[] Messages,
-        [property: JsonPropertyName("options")] Dictionary<string, object>? Sampling,
-        [property: JsonPropertyName("tools")] OllamaTool[]? Tools)
+        [property: JsonPropertyName("options")] Dictionary<string, object> Sampling,
+        [property: JsonPropertyName("tools")] OllamaTool[] Tools)
     {
         [JsonPropertyName("stream")]
         public bool Stream => false;
@@ -103,8 +105,8 @@ public sealed class OllamaChatClient : HttpChatClient
     private sealed record OllamaChatMessage(
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("content")] string Content,
-        [property: JsonPropertyName("tool_calls")] OllamaToolCall[]? ToolCalls = null,
-        [property: JsonPropertyName("tool_call_id")] string? ToolCallId = null);
+        [property: JsonPropertyName("tool_calls")] OllamaToolCall[] ToolCalls,
+        [property: JsonPropertyName("tool_call_id")] string ToolCallId);
 
     private sealed record OllamaTool(
         [property: JsonPropertyName("function")] OllamaToolFunction Function)
