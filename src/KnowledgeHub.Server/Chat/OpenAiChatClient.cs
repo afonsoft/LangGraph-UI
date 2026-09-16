@@ -36,7 +36,7 @@ public sealed class OpenAiChatClient : HttpChatClient
                 MapMessages(messages).ToArray(),
                 temperature,
                 maxTokens,
-                MapTools(options?.Tools).ToArray()))
+                MapTools(options?.Tools)))
         };
         if (!string.IsNullOrEmpty(_apiKey))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
@@ -69,9 +69,11 @@ public sealed class OpenAiChatClient : HttpChatClient
         }
     }
 
-    private static IEnumerable<OpenAiTool> MapTools(IList<AITool>? tools) =>
+    /// <summary>Mapeia as tools para o formato OpenAI; null quando não há tools,
+    /// para o campo ser omitido do request (gateways restritos rejeitam vazio/null).</summary>
+    private static OpenAiTool[]? MapTools(IList<AITool>? tools) =>
         tools?.OfType<AIFunction>().Select(f => new OpenAiTool(new OpenAiToolFunction(
-            f.Name, f.Description, f.JsonSchema))) ?? [];
+            f.Name, f.Description, f.JsonSchema))).ToArray() is { Length: > 0 } mapped ? mapped : null;
 
     private static ChatMessage ToChatMessage(OpenAiChatMessage message)
     {
@@ -94,15 +96,15 @@ public sealed class OpenAiChatClient : HttpChatClient
     private sealed record OpenAiChatRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("messages")] OpenAiChatMessage[] Messages,
-        [property: JsonPropertyName("temperature")] double? Temperature,
-        [property: JsonPropertyName("max_tokens")] int? MaxTokens,
-        [property: JsonPropertyName("tools")] OpenAiTool[]? Tools);
+        [property: JsonPropertyName("temperature"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Temperature,
+        [property: JsonPropertyName("max_tokens"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MaxTokens,
+        [property: JsonPropertyName("tools"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] OpenAiTool[]? Tools);
 
     private sealed record OpenAiChatMessage(
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("content")] string Content,
-        [property: JsonPropertyName("tool_calls")] OpenAiToolCall[]? ToolCalls = null,
-        [property: JsonPropertyName("tool_call_id")] string? ToolCallId = null);
+        [property: JsonPropertyName("tool_calls"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] OpenAiToolCall[]? ToolCalls = null,
+        [property: JsonPropertyName("tool_call_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ToolCallId = null);
 
     private sealed record OpenAiTool(
         [property: JsonPropertyName("function")] OpenAiToolFunction Function)
