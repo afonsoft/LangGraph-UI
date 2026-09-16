@@ -86,6 +86,11 @@ builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, PasswordGat
 
 var app = builder.Build();
 
+// SPEC-20260916-redis-exposure-risk RF-002: non-fatal config warnings (e.g.
+// Redis without auth) — surfaced once at startup, never block the host.
+foreach (var warning in ConfigurationValidator.CollectWarnings(app.Configuration))
+    app.Logger.LogWarning("Configuration warning: {Warning}", warning);
+
 // RF-005: apply pending migrations and log the path.
 // SPEC-06 RF-002: default location is beside the executable; overridable via
 // KnowledgeHub:DatabasePath / Database:Path. Clear error on read-only dirs.

@@ -149,6 +149,76 @@ container freely — data survives). `docker compose up -d` is equivalent to
 `--docker` mode. Port and providers can be overridden via a local `.env`
 (`KNOWLEDGEHUB_PORT=5550`, `EMBEDDINGS_*`, `VECTORSTORE_*`, `DEEPWIKI_*`) —
 both `docker compose` and `install.sh` read it; `--port` still wins.
+`cp .env.example .env` gives a commented template covering every variable
+below.
+
+Host-specific bind mounts (local Obsidian vaults, WebDAV mounts) belong in
+`docker-compose.override.yml`, which Compose applies automatically on top of
+the base file — copy `docker-compose.override.yml.example` and adjust the
+host paths. The override file is gitignored; a clean checkout without it
+deploys fine, just without a vault mounted.
+
+### Environment variables
+
+Every variable referenced by `docker-compose.yml` (via `.env`) plus the most
+common `Section__Key` overrides. Placeholders only — never commit a real
+`.env`.
+
+| Variable | Purpose | Default | Required |
+|---|---|---|---|
+| `KNOWLEDGEHUB_PORT` | Host port published for the container | `5000` | no |
+| `ALLOWED_HOSTS` | Kestrel `AllowedHosts` — pin the public hostname or `*` behind a tunnel | `*` | no |
+| `EMBEDDINGS_PROVIDER` | `deterministic` \| `ollama` \| `openai` | `deterministic` | no |
+| `EMBEDDINGS_ENDPOINT` | Embedding endpoint — required for `ollama`/`openai` | `http://host.docker.internal:11434` | provider-dependent |
+| `EMBEDDINGS_MODEL` | Embedding model name | `nomic-embed-text` | provider-dependent |
+| `EMBEDDINGS_APIKEY` | Embedding API key (env only — never committed) | empty | no |
+| `VECTORSTORE_PROVIDER` | `sqlite` \| `postgres` (pgvector) | `sqlite` | no |
+| `VECTORSTORE_CONNECTIONSTRING` | Postgres connection string | empty | provider-dependent |
+| `DEEPWIKI_ENABLED` | DeepWiki upstream MCP proxy | `true` | no |
+| `DEEPWIKI_ENDPOINT` | Public DeepWiki endpoint | `https://mcp.deepwiki.com/mcp` | no |
+| `DEEPWIKI_PRIVATE_ENDPOINT` | Private DeepWiki endpoint (authenticated orgs) | `https://mcp.devin.ai/mcp` | no |
+| `DEEPWIKI_APIKEY` | DeepWiki API key | empty | no |
+| `FIRECRAWL_ENABLED` | Firecrawl upstream MCP proxy | `true` | no |
+| `FIRECRAWL_ENDPOINT` | Firecrawl MCP endpoint | `https://mcp.firecrawl.dev/v2/mcp` | no |
+| `FIRECRAWL_APIKEY` | Firecrawl API key | empty | no |
+| `FIRECRAWL_TIMEOUT_SECONDS` | Upstream call timeout | `300` | no |
+| `TAVILY_ENABLED` | Tavily upstream MCP proxy | `true` | no |
+| `TAVILY_ENDPOINT` | Tavily MCP endpoint | `https://mcp.tavily.com/mcp` | no |
+| `TAVILY_APIKEY` | Tavily API key | empty | no |
+| `TAVILY_TIMEOUT_SECONDS` | Upstream call timeout | `120` | no |
+| `CACHE_PROVIDER` | `IDistributedCache` backend: `memory` \| `redis` | `memory` | no |
+| `REDIS_CONNECTIONSTRING` | StackExchange.Redis conn string — required when `CACHE_PROVIDER=redis`; use `defaultDatabase=N` | empty | provider-dependent |
+| `AUTH_ADMIN_INITIAL_PASSWORD` | Seed password for `admin` (forced change on first login) | `123qwe` | no |
+| `CHAT__PROVIDER` | `none` \| `ollama` \| `openai` — server-side answer synthesis / agent loop | `none` | no |
+| `CHAT__ENDPOINT` / `CHAT__MODEL` / `CHAT__APIKEY` | Chat provider endpoint, model and key | `http://localhost:11434` / `llama3.1` / empty | provider-dependent |
+| `KnowledgeHub__DatabasePath` | SQLite file path — Dockerfile pins `/data/knowledgehub.db` (the bind-mounted volume) | `/data/knowledgehub.db` | no |
+
+Any other `appsettings.json` key can be injected the same way —
+`Section__Subsection__Key` (double underscore) per ASP.NET Core conventions.
+
+### Redis security
+
+When `CACHE_PROVIDER=redis`, search results and query embeddings are written
+to the configured Redis. A deployment observed in the wild ran the host Redis
+on `0.0.0.0:6379` with `protected-mode no` and no `requirepass`: **any process
+or host that can reach the port can read — or poison — the cache.** The app
+works fine without auth, but it logs a startup warning in that case.
+
+Hardening options, ordered by effort:
+
+1. **Firewall / security group** — deny inbound `6379` from outside the host
+   (or the Docker network). Cheapest fix; the container reaches the host via
+   `host.docker.internal` → `host-gateway`, unaffected.
+2. **`bind 127.0.0.1`** in the host `redis.conf` — same reachability for the
+   container (`host-gateway` resolves to the host gateway interface; if the
+   bind is strictly loopback, point `REDIS_CONNECTIONSTRING` at a Docker-side
+   address or run Redis as a compose service instead).
+3. **`requirepass <secret>`** in `redis.conf` + `,password=<secret>` appended
+   to `REDIS_CONNECTIONSTRING` — defense in depth; also protects against
+   other containers on the same host.
+
+TLS (`rediss://`) is supported by the connection string but out of scope for
+this doc.
 
 ## Obsidian via WebDAV
 
@@ -172,9 +242,10 @@ Persist across reboots via `/etc/fstab` (note `_netdev` — waits for the networ
 https://<webdav-host>/remote.php/dav/files/<user>/  /srv/webdav/obsidian  davfs  _netdev,rw,uid=<user>,gid=<user>  0  0
 ```
 
-Then bind the mount into the container (see the commented volume in
-`docker-compose.yml`) and create the source with `configuration.path` set to
-the **container** path — e.g. `/vaults/obsidian`, not the host path.
+Then bind the mount into the container via `docker-compose.override.yml`
+(see `docker-compose.override.yml.example`) and create the source with
+`configuration.path` set to the **container** path — e.g. `/vaults/obsidian`,
+not the host path.
 
 Operational notes:
 
