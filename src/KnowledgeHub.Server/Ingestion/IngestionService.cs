@@ -393,6 +393,9 @@ public sealed class IngestionService(
                 await db.SaveChangesAsync(cancellationToken);
             }
 
+            if (root is null)
+                return;
+
             var full = Path.GetFullPath(Path.Combine(root, relativePath));
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                 return; // path traversal — ignore

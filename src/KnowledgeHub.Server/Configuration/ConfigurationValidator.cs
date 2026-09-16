@@ -40,6 +40,26 @@ public static class ConfigurationValidator
                 "Invalid KnowledgeHub configuration:\n - " + string.Join("\n - ", problems));
     }
 
+    /// <summary>
+    /// SPEC-20260916-redis-exposure-risk RF-002: non-fatal configuration
+    /// warnings — collected before the host exists, logged at startup.
+    /// </summary>
+    public static IReadOnlyList<string> CollectWarnings(IConfiguration configuration)
+    {
+        var warnings = new List<string>();
+        var section = configuration.GetSection(CacheOptions.SectionName);
+        if (section["Provider"]?.Equals("redis", StringComparison.OrdinalIgnoreCase) == true
+            && section["Redis:ConnectionString"]?.Contains("password=", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            warnings.Add(
+                "Cache:Provider=redis with no password= in Cache:Redis:ConnectionString — " +
+                "an unauthenticated Redis exposes cached search results and embeddings to anyone " +
+                "reaching the port. See README 'Redis security' for hardening options.");
+        }
+
+        return warnings;
+    }
+
     private static void ValidateEmbeddings(IConfiguration cfg, List<string> problems)
     {
         var section = cfg.GetSection(EmbeddingOptions.SectionName);

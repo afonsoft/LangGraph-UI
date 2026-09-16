@@ -226,4 +226,38 @@ public class ConfigurationValidatorTests
         Assert.Contains("Embeddings:Provider", ex.Message);
         Assert.Contains("VectorStore:Provider", ex.Message);
     }
+
+    // SPEC-20260916-redis-exposure-risk RF-002: redis provider without
+    // password= in the connection string → startup warning, never a failure.
+    [Fact]
+    public void Redis_WithoutPassword_Warns()
+    {
+        var cfg = Config(new()
+        {
+            ["Cache:Provider"] = "redis",
+            ["Cache:Redis:ConnectionString"] = "host.docker.internal:6379,defaultDatabase=3"
+        });
+        var warnings = ConfigurationValidator.CollectWarnings(cfg);
+        var warning = Assert.Single(warnings);
+        Assert.Contains("Redis", warning);
+        ConfigurationValidator.Validate(cfg); // warning only — must not throw
+    }
+
+    [Fact]
+    public void Redis_WithPassword_NoWarning()
+    {
+        var cfg = Config(new()
+        {
+            ["Cache:Provider"] = "redis",
+            ["Cache:Redis:ConnectionString"] = "localhost:6379,password=s3cret"
+        });
+        Assert.Empty(ConfigurationValidator.CollectWarnings(cfg));
+    }
+
+    [Fact]
+    public void MemoryProvider_NoWarning()
+    {
+        var cfg = Config(new() { ["Cache:Provider"] = "memory" });
+        Assert.Empty(ConfigurationValidator.CollectWarnings(cfg));
+    }
 }

@@ -1,0 +1,22 @@
+# docker-compose.override.yml.example — host-specific layer for the base
+# docker-compose.yml (SPEC-20260916-compose-vault-mount).
+#
+# Docker Compose applies `docker-compose.override.yml` automatically on top of
+# the base file. Copy this file to `docker-compose.override.yml` (gitignored)
+# and adjust the host paths for your machine:
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# A clean checkout WITHOUT the override deploys fine — it just won't have any
+# vault mounted, so `obsidian_write`/`read_document` sources whose
+# configuration.path points at /vaults/* will report "mount unavailable".
+services:
+  knowledgehub:
+    volumes:
+      # Local Obsidian vault, mounted rw so the obsidian_write MCP tool can
+      # persist notes. Host path is machine-specific — this one is the
+      # OpenClaw workspace vault on the production VPS.
+      - /home/ubuntu/.openclaw/workspace/vault:/vaults/obsidian
+      # Remote vault via WebDAV: mount it on the HOST first (davfs2/rclone —
+      # see README "Obsidian via WebDAV"), then bind it read-only:
+      #   - /srv/webdav/obsidian:/vaults/webdav:ro
