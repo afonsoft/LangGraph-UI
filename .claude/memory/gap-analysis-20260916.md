@@ -59,6 +59,20 @@
 - Epic: **#67** (E18) — slices #68–#73 linkadas no corpo.
 - SPECs mergeadas em `main` (PRs #66, #74).
 
-## 6. Orchestrator handoff
+## 6. Orchestrator handoff — OUTCOME (2026-09-16)
 
-- Pending — awaiting user decision on executing the 6 approved SPECs.
+All 6 slices delivered on `feature/Devin-20260916-e18-gaps-impl` (PR #76, merge `2a21ea0`) and issues #67–#73 closed with evidence comments:
+
+| Issue | Entrega |
+| --- | --- |
+| #72 fix-cs8604-warning | null guard `IngestionService.cs` — build `0 Warning(s)` |
+| #68 redis-exposure-risk | `ConfigurationValidator.CollectWarnings` + `Program.cs` startup log; README "Redis security" (3 opções). Warning confirmado em produção (`Cache:Provider=redis` sem `password=`). Infra inalterada (decisão do operador). |
+| #70 deploy-env-docs | `.env.example` commitado; tabela README cobre 100% das vars do compose + `Chat__*`/`KnowledgeHub__DatabasePath` |
+| #71 compose-vault-mount | mount movido p/ `docker-compose.override.yml` (gitignored) + `.example` commitado; `docker compose config` confirma `/vaults/obsidian`; `docker exec ls /vaults/obsidian` OK pós-redeploy |
+| #73 claude-md-sync | lista de features cobre 100% das SPECs Done |
+| #69 e17-issue-sync | issues E17 #28, #30–#42 fechadas com comentário de evidência (commit + PR #43) |
+
+Gates: build 0 warnings · unit 201/201 · integration 140/140 · format limpo.
+Redeploy: container `knowledgehub` healthy na `:5550`, `/health/live` 200.
+
+Inconclusivos carregados: `install.sh --systemd` (host real), SSE E2E autenticado via `https://rag.afonsoft.dev`.

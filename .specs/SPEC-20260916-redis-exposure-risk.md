@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-redis-exposure-risk` |
 | Ticket | `#68` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
