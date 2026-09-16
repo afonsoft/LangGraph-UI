@@ -24,6 +24,7 @@ public sealed class IngestionService(
     IEmbeddingProvider embeddings,
     IConfiguration configuration,
     IEnumerable<Connectors.ISourceConnector> connectors,
+    Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
     ILogger<IngestionService> logger) : IIngestionService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
@@ -76,8 +77,10 @@ public sealed class IngestionService(
             }
 
             var files = EnumerateMarkdown(root);
+            // SPEC-20260916-performance-memory-cache RF-004: no Include(Chunks) —
+            // the old code materialized every chunk's text + embedding BLOB for
+            // the whole source. Changed docs purge via ExecuteDeleteAsync below.
             var existing = await db.Documents
-                .Include(d => d.Chunks)
                 .Where(d => d.KnowledgeSourceId == sourceId)
                 .ToDictionaryAsync(d => d.UriReference, cancellationToken);
 
@@ -118,7 +121,10 @@ public sealed class IngestionService(
                 else
                 {
                     doc.Title = note.Title;
-                    db.Chunks.RemoveRange(doc.Chunks);
+                    // Purge old chunks with a direct DELETE — no BLOB/text
+                    // materialization, no tracked-collection pitfalls.
+                    await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                        .ExecuteDeleteAsync(cancellationToken);
                 }
 
                 doc.RawContent = content;
@@ -158,6 +164,7 @@ public sealed class IngestionService(
             // RF-004: keep the FTS index consistent with Chunks after sync.
             await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
                 .ReconcileAsync(cancellationToken);
+            await BumpIndexVersionAsync(cancellationToken);
 
             return new SyncResultDto
             {
@@ -199,7 +206,6 @@ public sealed class IngestionService(
         var fetch = await connector.FetchAsync(source, cancellationToken);
 
         var existing = await db.Documents
-            .Include(d => d.Chunks)
             .Where(d => d.KnowledgeSourceId == source.Id)
             .ToDictionaryAsync(d => d.UriReference, cancellationToken);
 
@@ -231,7 +237,8 @@ public sealed class IngestionService(
             else
             {
                 doc.Title = raw.Title;
-                db.Chunks.RemoveRange(doc.Chunks);
+                await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
             }
 
             doc.RawContent = raw.TextContent;
@@ -273,6 +280,7 @@ public sealed class IngestionService(
         await db.SaveChangesAsync(cancellationToken);
         await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
             .ReconcileAsync(cancellationToken);
+        await BumpIndexVersionAsync(cancellationToken);
 
         return new SyncResultDto
         {
@@ -287,9 +295,45 @@ public sealed class IngestionService(
         };
     }
 
-    /// <summary>Embed + upsert each chunk; embedding failures are logged and tolerated.</summary>
+    /// <summary>Embed + upsert chunks in one batch — a single provider call for
+    /// N texts and a single store batch (SPEC-20260916-performance-memory-cache
+    /// RF-004). Batch failure falls back to per-chunk so one bad text doesn't
+    /// sink the document.</summary>
     private async Task<int> EmbedChunksAsync(
-        IEnumerable<DocumentChunk> chunks, Guid documentId, Guid sourceId,
+        List<DocumentChunk> chunks, Guid documentId, Guid sourceId,
+        IVectorStore vectors, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<float[]> batchVectors;
+        try
+        {
+            batchVectors = await embeddings.EmbedBatchAsync(
+                chunks.Select(c => c.TextContent).ToList(), cancellationToken);
+        }
+        catch (EmbeddingProviderException ex)
+        {
+            logger.LogWarning("Batch embedding failed for document {DocumentId}, falling back to per-chunk: {Message}",
+                documentId, ex.Message);
+            return await EmbedChunksIndividuallyAsync(chunks, documentId, sourceId, vectors, cancellationToken);
+        }
+
+        try
+        {
+            var items = chunks.Zip(batchVectors)
+                .Select(pair => new VectorUpsert(pair.First.Id, documentId, sourceId, pair.Second))
+                .ToList();
+            await vectors.UpsertBatchAsync(items, embeddings.ModelId, cancellationToken);
+            return items.Count;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Batch vector upsert failed for document {DocumentId}, falling back to per-chunk: {Message}",
+                documentId, ex.Message);
+            return await EmbedChunksIndividuallyAsync(chunks, documentId, sourceId, vectors, cancellationToken);
+        }
+    }
+
+    private async Task<int> EmbedChunksIndividuallyAsync(
+        List<DocumentChunk> chunks, Guid documentId, Guid sourceId,
         IVectorStore vectors, CancellationToken cancellationToken)
     {
         var created = 0;
@@ -354,7 +398,6 @@ public sealed class IngestionService(
                 return; // path traversal — ignore
 
             var doc = await db.Documents
-                .Include(d => d.Chunks)
                 .FirstOrDefaultAsync(d => d.KnowledgeSourceId == sourceId && d.UriReference == relativePath, cancellationToken);
 
             if (!File.Exists(full)
@@ -367,6 +410,7 @@ public sealed class IngestionService(
                     await db.SaveChangesAsync(cancellationToken);
                     await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
                         .ReconcileAsync(cancellationToken);
+                    await BumpIndexVersionAsync(cancellationToken);
                 }
                 return;
             }
@@ -409,7 +453,8 @@ public sealed class IngestionService(
             else
             {
                 doc.Title = title;
-                db.Chunks.RemoveRange(doc.Chunks);
+                await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
             }
 
             doc.RawContent = content;
@@ -430,12 +475,20 @@ public sealed class IngestionService(
             await db.SaveChangesAsync(cancellationToken);
             await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
                 .ReconcileAsync(cancellationToken);
+            await BumpIndexVersionAsync(cancellationToken);
         }
         finally
         {
             gate.Release();
         }
     }
+
+    /// <summary>Bump the index-version token so cached search results keyed on
+    /// it miss after this sync (SPEC-20260916-performance-memory-cache §5).
+    /// Best-effort — a down cache must never fail a sync.</summary>
+    private async Task BumpIndexVersionAsync(CancellationToken cancellationToken) =>
+        await Caching.SafeCache.SetStringAsync(cache, Caching.CacheKeys.IndexVersion,
+            Guid.NewGuid().ToString("N"), TimeSpan.FromDays(7), logger, cancellationToken);
 
     /// <summary>Best-effort: record a sync failure on the source in a fresh scope.</summary>
     private async Task TryRecordSyncFailureAsync(Guid sourceId, string message)

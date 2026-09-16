@@ -1,0 +1,162 @@
+@page "/settings"
+@attribute [Authorize]
+@inject SettingsApiClient Api
+@inject ToastService Toast
+
+<PageTitle>Settings — Knowledge</PageTitle>
+
+<h3 class="mb-3">Settings</h3>
+
+<h5 class="mb-2 text-muted">Integrações</h5>
+<p class="text-muted">
+    API keys de serviços upstream consumidos pelo MCP interno. As chaves são
+    criptografadas em repouso e nunca retornam à interface — só os 4 últimos
+    caracteres são exibidos.
+</p>
+
+@if (_integrations is null)
+{
+    <div class="text-muted">Carregando integrações…</div>
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var item in _integrations)
+        {
+            var state = _forms[item.Provider];
+            <div class="col-12 col-lg-6">
+                <Card>
+                    <HeaderTemplate>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>@item.DisplayName</span>
+                            @if (item.HasKey)
+                            {
+                                <Badge Color="Color.Success">configurada</Badge>
+                            }
+                            else
+                            {
+                                <Badge Color="Color.Secondary">sem key</Badge>
+                            }
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (item.Note is not null)
+                        {
+                            <p class="text-muted mb-2">@item.Note</p>
+                        }
+
+                        @if (item.HasKey)
+                        {
+                            <div class="mb-2">
+                                <small class="text-muted">Key ativa (@item.Source):</small>
+                                <code class="ms-1">@item.KeyHint</code>
+                            </div>
+                        }
+
+                        <label class="form-label">
+                            @(item.HasKey ? "Substituir API key" : "API key")
+                        </label>
+                        <div class="input-group">
+                            <input type="password" class="form-control font-monospace"
+                                   @bind="state.Input"
+                                   placeholder="@(item.Provider == "firecrawl" ? "fc-…" : item.Provider == "tavily" ? "tvly-…" : "API key")"
+                                   autocomplete="off" />
+                            <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
+                                    IsAsync="true" IsDisabled="state.Saving"
+                                    OnClick="() => SaveAsync(item)" />
+                            @if (item.Source == "store")
+                            {
+                                <PopConfirmButton Color="Color.Danger" Icon="fa-solid fa-trash"
+                                                  Text="Remover" Title="Remover key"
+                                                  Content="A key salva será removida; a env var (se houver) volta a valer."
+                                                  OnConfirm="() => RemoveAsync(item)" />
+                            }
+                        </div>
+                        @if (item.Provider == "deepwiki")
+                        {
+                            <small class="text-muted d-block mt-2">
+                                Sem key o DeepWiki usa o endpoint público (<code>mcp.deepwiki.com/mcp</code>);
+                                com key passa a usar o privado (<code>mcp.devin.ai/mcp</code>).
+                            </small>
+                        }
+                        @if (item.Provider == "firecrawl" && !item.HasKey)
+                        {
+                            <small class="text-muted d-block mt-2">
+                                Sem key, as tools <code>firecrawl_*</code> aparecem no catálogo mas
+                                retornam erro orientando a configuração aqui.
+                            </small>
+                        }
+                    </BodyTemplate>
+                </Card>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<IntegrationSettingsDto>? _integrations;
+    private readonly Dictionary<string, FormState> _forms = new();
+
+    private sealed class FormState
+    {
+        public string Input { get; set; } = "";
+        public bool Saving { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _integrations = (await Api.ListIntegrationsAsync())?.Integrations ?? [];
+            foreach (var i in _integrations)
+                _forms.TryAdd(i.Provider, new FormState());
+        }
+        catch (Exception ex)
+        {
+            _integrations = [];
+            await Toast.Error("Erro", $"Falha ao carregar integrações: {ex.Message}");
+        }
+    }
+
+    private async Task SaveAsync(IntegrationSettingsDto item)
+    {
+        var state = _forms[item.Provider];
+        if (string.IsNullOrWhiteSpace(state.Input))
+        {
+            await Toast.Error("Key vazia", "Informe a API key antes de salvar.");
+            return;
+        }
+
+        state.Saving = true;
+        try
+        {
+            var result = await Api.SetKeyAsync(item.Provider, state.Input.Trim());
+            if (!result.IsSuccess)
+            {
+                await Toast.Error("Erro", result.Error ?? "Falha ao salvar a key");
+                return;
+            }
+            state.Input = "";
+            await Toast.Success("Salva", $"Key do {item.DisplayName} configurada.");
+            await ReloadAsync();
+        }
+        finally
+        {
+            state.Saving = false;
+        }
+    }
+
+    private async Task RemoveAsync(IntegrationSettingsDto item)
+    {
+        var result = await Api.RemoveKeyAsync(item.Provider);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao remover a key");
+            return;
+        }
+        await Toast.Success("Removida", $"Key do {item.DisplayName} removida.");
+        await ReloadAsync();
+    }
+}

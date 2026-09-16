@@ -81,6 +81,15 @@ mkdir -p "$(dirname "$DB_PATH")"
 echo "==> Restoring $BACKUP_DIR/knowledgehub.db -> $DB_PATH"
 cp "$BACKUP_DIR/knowledgehub.db" "$DB_PATH"
 
+# SPEC-20260916-firecrawl-mcp-proxy: restore the Data Protection key ring so
+# IntegrationSecrets (upstream API keys) remain decryptable.
+if [[ -f "$BACKUP_DIR/dataprotection-keys.tar.gz" ]]; then
+    echo "==> Restoring Data Protection keys -> $(dirname "$DB_PATH")/dataprotection-keys"
+    tar -xzf "$BACKUP_DIR/dataprotection-keys.tar.gz" -C "$(dirname "$DB_PATH")"
+else
+    echo "warn: backup has no dataprotection-keys — stored integration secrets won't decrypt" >&2
+fi
+
 if [[ $NO_RESTART -eq 0 && $STOPPED -eq 1 ]]; then
     start_service || true
 fi

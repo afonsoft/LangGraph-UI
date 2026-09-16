@@ -1,5 +1,6 @@
 using System.Text.Json;
 using KnowledgeHub.McpEngine.Activity;
+using Microsoft.AspNetCore.DataProtection;
 using KnowledgeHub.Server.BackgroundServices;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
@@ -22,7 +23,9 @@ public static class KnowledgeHubServiceCollectionExtensions
     {
         // Resolve Database:Path lazily so test hosts can override it via ConfigureWebHost
         // (Program.cs runs before the factory's ConfigureAppConfiguration callbacks).
-        services.AddDbContext<KnowledgeHubDbContext>((sp, o) =>
+        // SPEC-20260916-performance-memory-cache RF-006: pooled contexts — one
+        // DbContext allocation per request instead of a fresh graph each time.
+        services.AddDbContextPool<KnowledgeHubDbContext>((sp, o) =>
             o.UseSqlite($"Data Source={DatabasePath.Resolve(sp.GetRequiredService<IConfiguration>())}"));
 
         services.AddOptions<EmbeddingOptions>()
@@ -104,12 +107,66 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<IDynamicToolCatalog, DynamicToolCatalog>();
         services.AddSingleton<IToolCatalogChangeNotifier, ToolCatalogChangeNotifier>();
 
+        // SPEC-20260916-firecrawl-mcp-proxy RF-004: encrypted-at-rest upstream
+        // credentials. DP key ring lives next to the DB so backup.sh can ship it.
+        services.AddDataProtection()
+            // Pinned app name: the default discriminator is the content root,
+            // which differs between container (/app) and local runs — pinning
+            // keeps stored secrets decryptable across deployments.
+            .SetApplicationName("KnowledgeHub")
+            .PersistKeysToFileSystem(new DirectoryInfo(
+                Path.Combine(
+                    Path.GetDirectoryName(DatabasePath.Resolve(configuration))!,
+                    "dataprotection-keys")));
+        services.AddSingleton<Settings.IIntegrationSecretStore, Settings.IntegrationSecretStore>();
+
         // SPEC-07: DeepWiki proxy tools (ask_question / read_wiki_structure / read_wiki_contents).
         services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.DeepWikiOptions>()
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.DeepWikiOptions.SectionName).Bind(options));
         services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.DeepWikiUpstreamClient>();
         services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.Upstream.DeepWikiToolsProvider>();
+
+        // SPEC-20260916-firecrawl-mcp-proxy: Firecrawl proxy tools (firecrawl_*).
+        // Concrete-type registration lets SettingsEndpoints reset the client and
+        // invalidate the provider's tools cache on key save/remove.
+        services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.FirecrawlOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.FirecrawlOptions.SectionName).Bind(options));
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.FirecrawlUpstreamClient>();
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.FirecrawlToolsProvider>();
+        services.AddSingleton<IToolProvider>(sp =>
+            sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.FirecrawlToolsProvider>());
+
+        // SPEC-20260916-performance-memory-cache RF-005: IDistributedCache —
+        // memory by default (zero-infra), Redis opt-in for shared/persistent
+        // entries. Secrets never go through this store.
+        services.AddOptions<Configuration.CacheOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(Configuration.CacheOptions.SectionName).Bind(options));
+        services.AddMemoryCache();
+        if (configuration.GetValue($"{Configuration.CacheOptions.SectionName}:Provider", "memory")
+                .Equals("redis", StringComparison.OrdinalIgnoreCase))
+        {
+            var redisConnection = configuration
+                .GetValue<string>($"{Configuration.CacheOptions.SectionName}:Redis:ConnectionString")
+                ?? throw new InvalidOperationException(
+                    "Cache:Redis:ConnectionString is required when Cache:Provider=redis");
+            services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
+        }
+        else
+        {
+            services.AddDistributedMemoryCache();
+        }
+
+        // SPEC-20260916-tavily-mcp-proxy: Tavily proxy tools (tavily_*).
+        services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.TavilyOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.TavilyOptions.SectionName).Bind(options));
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.TavilyUpstreamClient>();
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>();
+        services.AddSingleton<IToolProvider>(sp =>
+            sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>());
 
         services.AddOptions<McpServerOptions>().Configure(options =>
         {

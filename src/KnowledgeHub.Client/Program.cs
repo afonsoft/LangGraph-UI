@@ -18,7 +18,13 @@ builder.Services.AddScoped(sp =>
 {
     var handler = sp.GetRequiredService<AuthRedirectHandler>();
     handler.InnerHandler = new HttpClientHandler();
-    return new HttpClient(handler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+    // SPEC-20260916-firecrawl-mcp-proxy: upstream tools like firecrawl_crawl
+    // poll to a terminal state and can exceed the 100s default timeout.
+    return new HttpClient(handler)
+    {
+        BaseAddress = new Uri(builder.HostEnvironment.BaseAddress),
+        Timeout = TimeSpan.FromMinutes(6)
+    };
 });
 builder.Services.AddScoped<AuthApiClient>();
 builder.Services.AddScoped<KhAuthenticationStateProvider>();
@@ -31,6 +37,7 @@ builder.Services.AddScoped<ToolsApiClient>();
 builder.Services.AddScoped<ApprovalsApiClient>();
 builder.Services.AddScoped<ThreadsApiClient>();
 builder.Services.AddScoped<StreamingApiClient>();
+builder.Services.AddScoped<SettingsApiClient>();
 builder.Services.AddTransient<McpMonitorClient>();
 
 await builder.Build().RunAsync();

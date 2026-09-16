@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using KnowledgeHub.Server.Data;
@@ -127,9 +128,21 @@ public sealed class LexicalSearchService(
             """, cancellationToken);
     }
 
+    // SPEC-20260916-performance-memory-cache H5/RF-006: the FTS table is created
+    // by the AddChunksFts migration and never dropped at runtime — cache the
+    // probe per data source so every search doesn't re-query sqlite_master.
+    // Only `true` is cached: a `false` may be a pre-migration DB that migrates
+    // later in the same process (tests create fresh files per case).
+    private static readonly ConcurrentDictionary<string, bool> FtsAvailableByDataSource = new();
+
     private async Task<bool> IsAvailableAsync(CancellationToken cancellationToken)
     {
         var connection = db.Database.GetDbConnection();
+        if (connection is SqliteConnection sqlite
+            && FtsAvailableByDataSource.TryGetValue(sqlite.DataSource, out var known)
+            && known)
+            return true;
+
         var wasOpen = connection.State == ConnectionState.Open;
         if (!wasOpen)
             await connection.OpenAsync(cancellationToken);
@@ -139,7 +152,10 @@ public sealed class LexicalSearchService(
             command.CommandText =
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $name LIMIT 1";
             AddParameter(command, "$name", TableName);
-            return await command.ExecuteScalarAsync(cancellationToken) is not null;
+            var available = await command.ExecuteScalarAsync(cancellationToken) is not null;
+            if (available && connection is SqliteConnection sqliteConn)
+                FtsAvailableByDataSource[sqliteConn.DataSource] = true;
+            return available;
         }
         finally
         {

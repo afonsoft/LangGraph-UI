@@ -35,4 +35,26 @@ public static class EmbeddingVectorCodec
             return 0;
         return dot / (Math.Sqrt(na) * Math.Sqrt(nb));
     }
+
+    /// <summary>
+    /// Cosine against a serialized BLOB without decoding it into a float[]
+    /// (SPEC-20260916-performance-memory-cache RF-002) — the vector-search hot
+    /// path scores one row at a time, so decoding straight off the bytes keeps
+    /// per-row allocation at zero.
+    /// </summary>
+    public static double CosineSimilarity(float[] a, ReadOnlySpan<byte> blob)
+    {
+        var length = Math.Min(a.Length, blob.Length / sizeof(float));
+        double dot = 0, na = 0, nb = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var b = BinaryPrimitives.ReadSingleLittleEndian(blob.Slice(i * 4, 4));
+            dot += a[i] * b;
+            na += a[i] * a[i];
+            nb += b * b;
+        }
+        if (na <= 0 || nb <= 0)
+            return 0;
+        return dot / (Math.Sqrt(na) * Math.Sqrt(nb));
+    }
 }

@@ -14,6 +14,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsageEvent> ApiKeyUsageEvents => Set<ApiKeyUsageEvent>();
+    public DbSet<IntegrationSecret> IntegrationSecrets => Set<IntegrationSecret>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -107,6 +108,15 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.Property(u => u.Path).IsRequired().HasMaxLength(256);
             e.Property(u => u.UserAgent).HasMaxLength(200);
             e.HasIndex(u => new { u.ApiKeyId, u.Timestamp });
+        });
+
+        modelBuilder.Entity<IntegrationSecret>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Provider).IsRequired().HasMaxLength(64);
+            e.HasIndex(s => s.Provider).IsUnique();
+            e.Property(s => s.ProtectedValue).IsRequired();
+            e.Property(s => s.KeyHint).IsRequired().HasMaxLength(8);
         });
     }
 }
