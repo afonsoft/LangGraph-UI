@@ -33,6 +33,10 @@ services:
       Firecrawl__Endpoint: ${FIRECRAWL_ENDPOINT:-https://mcp.firecrawl.dev/v2/mcp}
       Firecrawl__ApiKey: ${FIRECRAWL_APIKEY:-}
       Firecrawl__TimeoutSeconds: ${FIRECRAWL_TIMEOUT_SECONDS:-300}
+      Tavily__Enabled: ${TAVILY_ENABLED:-true}
+      Tavily__Endpoint: ${TAVILY_ENDPOINT:-https://mcp.tavily.com/mcp}
+      Tavily__ApiKey: ${TAVILY_APIKEY:-}
+      Tavily__TimeoutSeconds: ${TAVILY_TIMEOUT_SECONDS:-120}
       # SPEC-20260914-auth-login: seeds `admin` on an empty Users table; the
       # forced password change applies on first login regardless of this value.
       # Defaults to the documented seed password — an empty value would trip

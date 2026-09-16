@@ -120,6 +120,36 @@ public class ConfigurationValidatorTests
     }
 
     [Fact]
+    public void Invalid_TavilyEndpoint_Fails()
+    {
+        var cfg = Config(new() { ["Tavily:Endpoint"] = "not-a-url" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("Tavily:Endpoint", ex.Message);
+    }
+
+    [Fact]
+    public void Tavily_Disabled_SkipsValidation()
+    {
+        var cfg = Config(new()
+        {
+            ["Tavily:Enabled"] = "false",
+            ["Tavily:Endpoint"] = "not-a-url",
+            ["Tavily:TimeoutSeconds"] = "-1"
+        });
+        ConfigurationValidator.Validate(cfg);
+    }
+
+    [Theory]
+    [InlineData("Tavily:TimeoutSeconds")]
+    [InlineData("Tavily:ToolsCacheSeconds")]
+    public void Tavily_InvalidPositiveInt_Fails(string key)
+    {
+        var cfg = Config(new() { [key] = "0" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains(key, ex.Message);
+    }
+
+    [Fact]
     public void DeepWiki_Disabled_SkipsEndpointValidation()
     {
         var cfg = Config(new()

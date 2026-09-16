@@ -99,7 +99,7 @@ public static class SettingsEndpoints
                 IntegrationProviders.DeepWiki =>
                     "Com key, o DeepWiki usa o endpoint privado (mcp.devin.ai) — acesso a repos privados.",
                 IntegrationProviders.Tavily =>
-                    "Reservado para a integração Tavily (SPEC pendente) — a key já fica salva criptografada.",
+                    "Expõe as tools oficiais do Tavily (search, extract, map, crawl, research) no MCP interno.",
                 _ => null
             }
         };
@@ -130,6 +130,10 @@ public static class SettingsEndpoints
                 break;
             case IntegrationProviders.DeepWiki:
                 await services.GetRequiredService<DeepWikiUpstreamClient>().ResetAsync();
+                break;
+            case IntegrationProviders.Tavily:
+                await services.GetRequiredService<TavilyUpstreamClient>().ResetAsync();
+                services.GetRequiredService<TavilyToolsProvider>().InvalidateToolsCache();
                 break;
         }
     }

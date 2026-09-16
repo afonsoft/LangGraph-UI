@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-tavily-mcp-proxy` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Done` |
 | Depends on | `SPEC-20260916-firecrawl-mcp-proxy` (Done) — secret store, Settings UI, upstream-client pattern |
 
 ## 1. User Story
@@ -139,8 +139,24 @@ public sealed class TavilyOptions
 - [ ] tools/list capture showing `tavily_*`; one live `tavily_search` execution.
 - [ ] SPEC updated with implementation result → `Status = Done` → PR opened.
 
+## 10. Implementation Result
+
+Implementado na branch `feature/Devin-20260916-tavily-mcp-proxy`:
+
+- `TavilyOptions` / `TavilyUpstreamClient` / `TavilyToolsProvider` em `src/KnowledgeHub.Server/Mcp/Upstream/` — mesma forma do Firecrawl (lazy `McpClient`, AutoDetect, Bearer, reconnect-once, cache de `tools/list` com last-known-good).
+- `ValidateTavily` no `ConfigurationValidator`; bloco `Tavily` em `appsettings.json`; env `Tavily__*` no `docker-compose.yml`.
+- `ResetProviderAsync` com `case tavily` (reset client + invalida cache); nota do card atualizada — a key `tvly-…XUsO` já estava persistida e passou a alimentar o proxy sem nenhuma mudança no store.
+- `McpContractTests`: 5 schemas estáticos pinados; `tavily_crawl`/`tavily_research` no conjunto de write-tools.
+- Testes novos: `TavilyToolsProviderTests` (9) + casos Tavily em `UpstreamCredentialTests` (3) e `ConfigurationValidatorTests` (4).
+
+**Gates:** `dotnet build` ✓ · unit **192/192** ✓ · integration **140/140** ✓ · `dotnet format --verify-no-changes` ✓
+
+**Evidência live (instância local, key persistida via `PUT /api/settings/integrations/tavily` → `tvly-••••XUsO`):**
+- `tools/list` interno expôs `tavily_search`, `tavily_extract`, `tavily_map`, `tavily_crawl`, `tavily_research` (18 tools no total).
+- `tools/call tavily_search` alcançou o upstream com a key: resposta `isError:false` contendo payload upstream `status:432` ("exceeds your plan's set usage limit") — a dev key está no teto do plano; o passthrough repassou o erro intacto (confirmando auth Bearer aceita — 401 teria indicado rejeição).
+
 ## Open Questions / Pending Ambiguity
 
 - `[A DEFINIR]` Ticket/issue number.
-- `tavily_research` may be plan-gated upstream — the proxy passes the upstream `isError` through unchanged.
+- `tavily_research` may be plan-gated upstream — the proxy passes the upstream `isError` through unchanged (observado com `tavily_search` + status 432).
 - `DEFAULT_PARAMETERS` header support deferred — adds a config knob users haven't asked for.
