@@ -31,6 +31,7 @@ public static class ConfigurationValidator
         ValidateDeepWiki(configuration, problems);
         ValidateFirecrawl(configuration, problems);
         ValidateTavily(configuration, problems);
+        ValidateCache(configuration, problems);
         ValidateChat(configuration, problems);
         ValidateAuth(configuration, problems);
 
@@ -117,6 +118,20 @@ public static class ConfigurationValidator
 
         if (section["ToolsCacheSeconds"] is { } tc && (!int.TryParse(tc, out var tcs) || tcs <= 0))
             problems.Add($"Tavily:ToolsCacheSeconds '{tc}' must be a positive integer");
+    }
+
+    private static void ValidateCache(IConfiguration cfg, List<string> problems)
+    {
+        var section = cfg.GetSection(CacheOptions.SectionName);
+        var provider = section["Provider"];
+        if (!string.IsNullOrWhiteSpace(provider)
+            && !provider.Equals("memory", StringComparison.OrdinalIgnoreCase)
+            && !provider.Equals("redis", StringComparison.OrdinalIgnoreCase))
+            problems.Add($"Cache:Provider '{provider}' is invalid (expected: memory | redis)");
+
+        if (provider?.Equals("redis", StringComparison.OrdinalIgnoreCase) == true
+            && string.IsNullOrWhiteSpace(section["Redis:ConnectionString"]))
+            problems.Add("Cache:Redis:ConnectionString is required when Cache:Provider=redis");
     }
 
     private static void ValidateChat(IConfiguration cfg, List<string> problems)

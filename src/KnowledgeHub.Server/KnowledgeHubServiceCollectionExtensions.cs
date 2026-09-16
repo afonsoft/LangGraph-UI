@@ -136,6 +136,26 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.FirecrawlToolsProvider>());
 
+        // SPEC-20260916-performance-memory-cache RF-005: IDistributedCache —
+        // memory by default (zero-infra), Redis opt-in for shared/persistent
+        // entries. Secrets never go through this store.
+        services.AddOptions<Configuration.CacheOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(Configuration.CacheOptions.SectionName).Bind(options));
+        if (configuration.GetValue($"{Configuration.CacheOptions.SectionName}:Provider", "memory")
+                .Equals("redis", StringComparison.OrdinalIgnoreCase))
+        {
+            var redisConnection = configuration
+                .GetValue<string>($"{Configuration.CacheOptions.SectionName}:Redis:ConnectionString")
+                ?? throw new InvalidOperationException(
+                    "Cache:Redis:ConnectionString is required when Cache:Provider=redis");
+            services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
+        }
+        else
+        {
+            services.AddDistributedMemoryCache();
+        }
+
         // SPEC-20260916-tavily-mcp-proxy: Tavily proxy tools (tavily_*).
         services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.TavilyOptions>()
             .Configure<IConfiguration>((options, cfg) =>

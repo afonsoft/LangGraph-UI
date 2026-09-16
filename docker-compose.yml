@@ -37,6 +37,10 @@ services:
       Tavily__Endpoint: ${TAVILY_ENDPOINT:-https://mcp.tavily.com/mcp}
       Tavily__ApiKey: ${TAVILY_APIKEY:-}
       Tavily__TimeoutSeconds: ${TAVILY_TIMEOUT_SECONDS:-120}
+      # SPEC-20260916-performance-memory-cache RF-005: IDistributedCache —
+      # memory (default, zero-infra) | redis (host Redis via host-gateway).
+      Cache__Provider: ${CACHE_PROVIDER:-memory}
+      Cache__Redis__ConnectionString: ${REDIS_CONNECTIONSTRING:-}
       # SPEC-20260914-auth-login: seeds `admin` on an empty Users table; the
       # forced password change applies on first login regardless of this value.
       # Defaults to the documented seed password — an empty value would trip

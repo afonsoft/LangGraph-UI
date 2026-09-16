@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-performance-cache` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Approved` — infra Redis (RF-005 parcial: `CacheOptions`, `IDistributedCache` memory|redis, validação, compose/`.env` apontando db3 do VPS) entregue; T1–T4, T6, T7 pendentes |
 | Depends on | n/a (tocar em código existente sem quebrar contratos) |
 
 ## 1. User Story
