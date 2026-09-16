@@ -6,6 +6,10 @@ public static class IntegrationProviders
     public const string Firecrawl = "firecrawl";
     public const string DeepWiki = "deepwiki";
     public const string Tavily = "tavily";
+    /// <summary>Chat API key slug (SPEC-20260916-settings-chat-config) — deliberately
+    /// kept out of <see cref="All"/>: it is managed by the /api/settings/chat
+    /// endpoints, never listed in the integrations grid.</summary>
+    public const string Chat = "chat";
 
     public static readonly IReadOnlyList<string> All = [Firecrawl, DeepWiki, Tavily];
 }

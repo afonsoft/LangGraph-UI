@@ -7,6 +7,126 @@
 
 <h3 class="mb-3">Settings</h3>
 
+<h5 class="mb-2 text-muted">Chat (LLM)</h5>
+<p class="text-muted">
+    Provider OpenAI-compatible usado na síntese de respostas e no loop do agente.
+    O endpoint vai sem <code>/v1</code> — o cliente adiciona
+    <code>/v1/chat/completions</code>. A API key é criptografada em repouso e
+    nunca retorna à interface — só os 4 últimos caracteres são exibidos.
+</p>
+
+@if (_chat is null)
+{
+    <div class="text-muted mb-4">Carregando configuração de chat…</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <Card>
+                <HeaderTemplate>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Provider OpenAI-compatible</span>
+                        @if (_chat.Source == "store")
+                        {
+                            <Badge Color="Color.Success">configurada</Badge>
+                        }
+                        else if (_chat.Source == "env")
+                        {
+                            <Badge Color="Color.Info">ambiente</Badge>
+                        }
+                        else
+                        {
+                            <Badge Color="Color.Secondary">não configurada</Badge>
+                        }
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    @if (_chat.Source == "env")
+                    {
+                        <small class="text-muted d-block mb-2">
+                            Usando a configuração do ambiente — salve para sobrepor via interface.
+                        </small>
+                    }
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-12 col-md-7">
+                            <label class="form-label">Endpoint</label>
+                            <input type="text" class="form-control font-monospace"
+                                   @bind="_chatForm.Endpoint"
+                                   placeholder="https://api.exemplo.com" autocomplete="off" />
+                        </div>
+                        <div class="col-12 col-md-5">
+                            <label class="form-label">Model</label>
+                            <input type="text" class="form-control font-monospace"
+                                   @bind="_chatForm.Model"
+                                   placeholder="nome do modelo" autocomplete="off" />
+                        </div>
+                    </div>
+
+                    @if (_chat.HasApiKey)
+                    {
+                        <div class="mb-2">
+                            <small class="text-muted">Key ativa (@_chat.ApiKeySource):</small>
+                            <code class="ms-1">@_chat.ApiKeyHint</code>
+                        </div>
+                    }
+
+                    <label class="form-label">
+                        @(_chat.HasApiKey ? "Substituir API key" : "API key")
+                    </label>
+                    <input type="password" class="form-control font-monospace mb-2"
+                           @bind="_chatForm.ApiKey"
+                           placeholder="@(_chat.HasApiKey ? "deixe em branco para manter" : "sk-…")"
+                           autocomplete="off" />
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
+                                IsAsync="true" IsDisabled="_chatForm.Saving"
+                                OnClick="SaveChatAsync" />
+                        <Button Color="Color.Secondary" Icon="fa-solid fa-plug" Text="Testar conexão"
+                                IsAsync="true" IsDisabled="_chatForm.Testing"
+                                OnClick="TestChatAsync" />
+                        @if (_chat.ApiKeySource == "store")
+                        {
+                            <PopConfirmButton Color="Color.Danger" Icon="fa-solid fa-trash"
+                                              Text="Remover key" Title="Remover key"
+                                              Content="A key salva será removida; a env var (se houver) volta a valer."
+                                              OnConfirm="RemoveChatKeyAsync" />
+                        }
+                        @if (_chat.Source == "store")
+                        {
+                            <PopConfirmButton Color="Color.Warning" Icon="fa-solid fa-rotate-left"
+                                              Text="Restaurar ambiente" Title="Restaurar ambiente"
+                                              Content="A configuração salva (endpoint, model e key) será removida; as variáveis de ambiente voltam a valer."
+                                              OnConfirm="ClearChatAsync" />
+                        }
+                    </div>
+
+                    @if (_chatForm.TestResult is { } test)
+                    {
+                        <div class="alert @(test.Ok ? "alert-success" : "alert-danger") mt-3 mb-0 py-2">
+                            @if (test.Ok)
+                            {
+                                <span>
+                                    Conexão OK em @($"{test.LatencyMs:F0}") ms.@if (test.ModelListed == true)
+                                    {<text> Modelo encontrado na lista do provider.</text>}
+                                    else if (test.ModelListed == false)
+                                    {<text> O modelo informado <strong>não</strong> consta na lista do provider.</text>}
+                                </span>
+                            }
+                            else
+                            {
+                                <span>Falha na conexão: @test.Detail</span>
+                            }
+                        </div>
+                    }
+                </BodyTemplate>
+            </Card>
+        </div>
+    </div>
+}
+
 <h5 class="mb-2 text-muted">Integrações</h5>
 <p class="text-muted">
     API keys de serviços upstream consumidos pelo MCP interno. As chaves são
@@ -96,6 +216,8 @@ else
 @code {
     private IReadOnlyList<IntegrationSettingsDto>? _integrations;
     private readonly Dictionary<string, FormState> _forms = new();
+    private ChatSettingsDto? _chat;
+    private readonly ChatFormState _chatForm = new();
 
     private sealed class FormState
     {
@@ -103,8 +225,24 @@ else
         public bool Saving { get; set; }
     }
 
-    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    private sealed class ChatFormState
+    {
+        public string Endpoint { get; set; } = "";
+        public string Model { get; set; } = "";
+        public string ApiKey { get; set; } = "";
+        public bool Saving { get; set; }
+        public bool Testing { get; set; }
+        public TestChatConnectionResponse? TestResult { get; set; }
+    }
 
+    /// <summary>Inicializa a página carregando integrações e a configuração de chat.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        await ReloadChatAsync();
+    }
+
+    /// <summary>Recarrega a lista de integrações e garante o estado dos formulários.</summary>
     private async Task ReloadAsync()
     {
         try
@@ -120,6 +258,109 @@ else
         }
     }
 
+    /// <summary>Recarrega a configuração efetiva de chat e preenche o formulário do card.</summary>
+    private async Task ReloadChatAsync()
+    {
+        try
+        {
+            _chat = await Api.GetChatAsync();
+            _chatForm.Endpoint = _chat?.Endpoint ?? "";
+            _chatForm.Model = _chat?.Model ?? "";
+            _chatForm.TestResult = null;
+        }
+        catch (Exception ex)
+        {
+            _chat = null;
+            await Toast.Error("Erro", $"Falha ao carregar configuração de chat: {ex.Message}");
+        }
+    }
+
+    /// <summary>Valida e salva endpoint/model do chat; key em branco mantém a armazenada.</summary>
+    private async Task SaveChatAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_chatForm.Endpoint) || string.IsNullOrWhiteSpace(_chatForm.Model))
+        {
+            await Toast.Error("Campos obrigatórios", "Informe endpoint e model antes de salvar.");
+            return;
+        }
+
+        _chatForm.Saving = true;
+        try
+        {
+            var result = await Api.SaveChatAsync(
+                _chatForm.Endpoint.Trim(), _chatForm.Model.Trim(),
+                string.IsNullOrWhiteSpace(_chatForm.ApiKey) ? null : _chatForm.ApiKey.Trim());
+            if (!result.IsSuccess)
+            {
+                await Toast.Error("Erro", result.Error ?? "Falha ao salvar a configuração");
+                return;
+            }
+            _chatForm.ApiKey = "";
+            await Toast.Success("Salva", "Configuração de chat aplicada — já está em vigor.");
+            await ReloadChatAsync();
+        }
+        finally
+        {
+            _chatForm.Saving = false;
+        }
+    }
+
+    /// <summary>Executa o teste de conexão com os valores do formulário e exibe o resultado no card.</summary>
+    private async Task TestChatAsync()
+    {
+        _chatForm.Testing = true;
+        _chatForm.TestResult = null;
+        try
+        {
+            var result = await Api.TestChatAsync(new TestChatConnectionRequest
+            {
+                Endpoint = _chatForm.Endpoint,
+                Model = _chatForm.Model,
+                ApiKey = _chatForm.ApiKey
+            });
+            if (!result.IsSuccess)
+            {
+                await Toast.Error("Erro", result.Error ?? "Falha ao testar a conexão");
+                return;
+            }
+            _chatForm.TestResult = result.Value;
+            if (result.Value?.Ok == true)
+                await Toast.Success("Conexão OK", $"Provider respondeu em {result.Value.LatencyMs:F0} ms.");
+        }
+        finally
+        {
+            _chatForm.Testing = false;
+        }
+    }
+
+    /// <summary>Remove a key de chat armazenada e recarrega o card.</summary>
+    private async Task RemoveChatKeyAsync()
+    {
+        var result = await Api.RemoveChatKeyAsync();
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao remover a key");
+            return;
+        }
+        await Toast.Success("Removida", "Key do chat removida.");
+        await ReloadChatAsync();
+    }
+
+    /// <summary>Apaga a configuração persistida de chat, restaurando as variáveis de ambiente.</summary>
+    private async Task ClearChatAsync()
+    {
+        var result = await Api.ClearChatAsync();
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao restaurar o ambiente");
+            return;
+        }
+        _chatForm.ApiKey = "";
+        await Toast.Success("Restaurada", "Configuração de chat voltou às variáveis de ambiente.");
+        await ReloadChatAsync();
+    }
+
+    /// <summary>Salva a API key digitada no formulário da integração.</summary>
     private async Task SaveAsync(IntegrationSettingsDto item)
     {
         var state = _forms[item.Provider];
@@ -148,6 +389,7 @@ else
         }
     }
 
+    /// <summary>Remove a key armazenada da integração e recarrega a lista.</summary>
     private async Task RemoveAsync(IntegrationSettingsDto item)
     {
         var result = await Api.RemoveKeyAsync(item.Provider);
