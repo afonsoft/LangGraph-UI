@@ -78,7 +78,11 @@ public sealed class DeepWikiUpstreamClient(
         var client = await GetClientAsync(cancellationToken);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
-        return await client.CallToolAsync(toolName, arguments, cancellationToken: timeout.Token);
+        var result = await client.CallToolAsync(toolName, arguments, cancellationToken: timeout.Token);
+        // Some upstreams serialize "isError":null instead of omitting it — MCP
+        // treats absent as success, so normalize to keep the contract boolean.
+        result.IsError ??= false;
+        return result;
     }
 
     private async Task<McpClient> GetClientAsync(CancellationToken cancellationToken)
