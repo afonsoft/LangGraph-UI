@@ -1,14 +1,16 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using KnowledgeHub.Server.Chat;
 using Microsoft.Extensions.AI;
 using Xunit;
 
 namespace KnowledgeHub.Tests.Unit.Server;
 
-// Regression: gateways OpenAI-compatible restritos (ex.: OmniRoute) rejeitam
-// campos opcionais serializados como null — "temperature: must be a number"
-// (HTTP 400). O request deve omitir temperature/max_tokens/tools quando null.
+// Gateways OpenAI-compatible restritos (ex.: OmniRoute) rejeitam campos nulos
+// ("temperature: must be a number" → HTTP 400). O request sempre sai com
+// valores default: temperature 1.0, max_tokens 4096, tools [] e, por mensagem,
+// tool_calls [] / tool_call_id "". Tool sem schema recebe parameters objeto vazio.
 public sealed class OpenAiChatClientTests
 {
     /// <summary>Handler fake que captura o corpo da requisição e responde um completion mínimo.</summary>
@@ -31,6 +33,18 @@ public sealed class OpenAiChatClientTests
         }
     }
 
+    /// <summary>Tool fake sem schema de parameters (JsonSchema indefinido).</summary>
+    private sealed class SchemaLessTool : AIFunction
+    {
+        public override string Name => "schema_less";
+        public override string Description => "tool sem parameters";
+        public override JsonElement JsonSchema => default;
+
+        protected override ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments, CancellationToken cancellationToken) =>
+            new((object?)null);
+    }
+
     /// <summary>Monta um OpenAiChatClient apontando para o handler de captura.</summary>
     private static (OpenAiChatClient Client, CaptureHandler Handler) Sut(ChatProviderOptions? options = null)
     {
@@ -45,21 +59,22 @@ public sealed class OpenAiChatClientTests
         return (client, handler);
     }
 
-    /// <summary>Sem temperature/max_tokens configurados, os campos não aparecem no JSON.</summary>
+    /// <summary>Sem temperature/max_tokens configurados, o JSON sai com os defaults.</summary>
     [Fact]
-    public async Task Request_OmitsNullOptionalFields()
+    public async Task Request_SendsDefaults_WhenNotConfigured()
     {
         var (client, handler) = Sut();
 
         await client.GetResponseAsync([new ChatMessage(ChatRole.User, "oi")]);
 
         Assert.NotNull(handler.LastBody);
-        Assert.DoesNotContain("\"temperature\"", handler.LastBody!);
-        Assert.DoesNotContain("\"max_tokens\"", handler.LastBody!);
-        Assert.DoesNotContain("\"tools\"", handler.LastBody!);
+        Assert.Contains("\"temperature\":1", handler.LastBody!);
+        Assert.Contains("\"max_tokens\":4096", handler.LastBody!);
+        Assert.Contains("\"tools\":[]", handler.LastBody!);
+        Assert.DoesNotContain("null", handler.LastBody!);
     }
 
-    /// <summary>Com temperature/max_tokens configurados, os campos aparecem com valores numéricos.</summary>
+    /// <summary>Com temperature/max_tokens configurados, o JSON sai com os valores informados.</summary>
     [Fact]
     public async Task Request_IncludesConfiguredFields()
     {
@@ -78,15 +93,59 @@ public sealed class OpenAiChatClientTests
         Assert.Contains("\"max_tokens\":128", handler.LastBody);
     }
 
-    /// <summary>Mensagens comuns não carregam tool_calls/tool_call_id nulos.</summary>
+    /// <summary>Valores por chamada (ChatOptions) sobrepõem os defaults das options.</summary>
     [Fact]
-    public async Task Request_OmitsNullMessageToolFields()
+    public async Task Request_ChatOptionsBeatDefaults()
+    {
+        var (client, handler) = Sut();
+
+        await client.GetResponseAsync([new ChatMessage(ChatRole.User, "oi")],
+            new ChatOptions { Temperature = 0.2f, MaxOutputTokens = 64 });
+
+        Assert.Contains("\"temperature\":0.2", handler.LastBody);
+        Assert.Contains("\"max_tokens\":64", handler.LastBody);
+    }
+
+    /// <summary>Mensagens sempre carregam tool_calls [] e tool_call_id "" — nunca null.</summary>
+    [Fact]
+    public async Task Request_MessageToolFields_Defaulted()
     {
         var (client, handler) = Sut();
 
         await client.GetResponseAsync([new ChatMessage(ChatRole.User, "oi")]);
 
-        Assert.DoesNotContain("\"tool_calls\"", handler.LastBody!);
-        Assert.DoesNotContain("\"tool_call_id\"", handler.LastBody!);
+        Assert.Contains("\"tool_calls\":[]", handler.LastBody!);
+        Assert.Contains("\"tool_call_id\":\"\"", handler.LastBody!);
+    }
+
+    /// <summary>Tool call sem arguments serializa "{}" e tool result carrega o callId.</summary>
+    [Fact]
+    public async Task Request_ToolCallWithoutArguments_DefaultsToEmptyObject()
+    {
+        var (client, handler) = Sut();
+        var assistant = new ChatMessage(ChatRole.Assistant,
+            [new FunctionCallContent("call-1", "search_knowledge")]);
+        var toolResult = new ChatMessage(ChatRole.Tool,
+            [new FunctionResultContent("call-1", "resultado")]);
+
+        await client.GetResponseAsync([new ChatMessage(ChatRole.User, "oi"), assistant, toolResult]);
+
+        Assert.Contains("\"id\":\"call-1\"", handler.LastBody!);
+        Assert.Contains("\"arguments\":\"{}\"", handler.LastBody!);
+        Assert.Contains("\"tool_call_id\":\"call-1\"", handler.LastBody!);
+        Assert.DoesNotContain("null", handler.LastBody!);
+    }
+
+    /// <summary>Tool sem schema recebe parameters {"type":"object","properties":{}}.</summary>
+    [Fact]
+    public async Task Request_ToolWithoutSchema_GetsDefaultParameters()
+    {
+        var (client, handler) = Sut();
+
+        await client.GetResponseAsync([new ChatMessage(ChatRole.User, "oi")],
+            new ChatOptions { Tools = [new SchemaLessTool()] });
+
+        Assert.Contains("\"name\":\"schema_less\"", handler.LastBody!);
+        Assert.Contains("\"parameters\":{\"type\":\"object\",\"properties\":{}}", handler.LastBody!);
     }
 }
