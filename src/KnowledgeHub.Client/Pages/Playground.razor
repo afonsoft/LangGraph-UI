@@ -344,8 +344,9 @@
             _isError = IsTrue(result, "isError");
             _texts = result.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
                 ? content.EnumerateArray()
-                    .Where(c => c.TryGetProperty("type", out var t) && t.GetString() == "text")
-                    .Select(c => c.GetProperty("text").GetString() ?? "")
+                    .Where(c => c.ValueKind == JsonValueKind.Object &&
+                        c.TryGetProperty("type", out var t) && t.GetString() == "text")
+                    .Select(c => c.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "")
                     .ToList()
                 : [];
             (_structuredAnswer, _citations, _agentSteps, _agentIterations, _agentLatencyMs) = ParseStructured(result);
@@ -440,8 +441,10 @@
     private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
         ParseStructured(JsonElement result)
     {
+        // Upstreams may serialize "structuredContent":null — TryGetProperty on a
+        // Null element throws JsonElementHasWrongType, so require a real object.
         if (!result.TryGetProperty("structuredContent", out var sc) ||
-            !sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
+            sc.ValueKind != JsonValueKind.Object)
             return (null, [], [], 0, 0);
         return ParseStructuredContent(sc);
     }
@@ -449,7 +452,8 @@
     private static (string? Answer, List<CitationModel> Citations, List<AgentStepModel> Steps, int Iterations, double LatencyMs)
         ParseStructuredContent(JsonElement sc)
     {
-        if (!sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
+        if (sc.ValueKind != JsonValueKind.Object ||
+            !sc.TryGetProperty("answer", out var a) || a.ValueKind != JsonValueKind.String)
             return (null, [], [], 0, 0);
 
         var steps = new List<AgentStepModel>();
@@ -457,6 +461,7 @@
         {
             foreach (var s in st.EnumerateArray())
             {
+                if (s.ValueKind != JsonValueKind.Object) continue;
                 steps.Add(new AgentStepModel
                 {
                     Iteration = s.TryGetProperty("iteration", out var it) ? it.GetInt32() : 0,
@@ -475,6 +480,7 @@
         {
             foreach (var c in cs.EnumerateArray())
             {
+                if (c.ValueKind != JsonValueKind.Object) continue;
                 citations.Add(new CitationModel
                 {
                     Index = c.TryGetProperty("index", out var i) ? i.GetInt32() : 0,
