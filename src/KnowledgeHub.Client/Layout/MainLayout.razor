@@ -1,4 +1,12 @@
 ﻿@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@implements IDisposable
+
+@if (_navigating)
+{
+    <div class="kh-nav-loader"></div>
+}
+
 <div class="page">
     <div class="sidebar">
         <NavMenu />
@@ -14,3 +22,41 @@
         </article>
     </main>
 </div>
+
+@code {
+    private bool _navigating;
+    private IDisposable? _locationChanging;
+
+    /// <summary>Registra os hooks de navegação que acionam a barra de loading entre telas.</summary>
+    protected override void OnInitialized()
+    {
+        _locationChanging = Nav.RegisterLocationChangingHandler(OnLocationChanging);
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    /// <summary>Acende a barra assim que a navegação interna começa.</summary>
+    private ValueTask OnLocationChanging(LocationChangingContext context)
+    {
+        _navigating = true;
+        _ = InvokeAsync(StateHasChanged);
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Apaga a barra após a nova tela renderizar (mínimo visível para não "piscar").</summary>
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await Task.Delay(350);
+            _navigating = false;
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>Remove os hooks de navegação ao destruir o layout.</summary>
+    public void Dispose()
+    {
+        _locationChanging?.Dispose();
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}
