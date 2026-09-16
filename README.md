@@ -145,24 +145,70 @@ self-contained host binary otherwise:
 
 The container listens on `:8080`, published to host port `5000` by default.
 SQLite lives in `./data` on the host, bind-mounted to `/data` (delete the
-container freely — data survives). `docker compose up -d` is equivalent to
-`--docker` mode. Port and providers can be overridden via a local `.env`
-(`KNOWLEDGEHUB_PORT=5550`, `EMBEDDINGS_*`, `VECTORSTORE_*`, `DEEPWIKI_*`) —
-both `docker compose` and `install.sh` read it; `--port` still wins.
-`cp .env.example .env` gives a commented template covering every variable
-below.
+container freely — data survives).
 
-Host-specific bind mounts (local Obsidian vaults, WebDAV mounts) belong in
-`docker-compose.override.yml`, which Compose applies automatically on top of
-the base file — copy `docker-compose.override.yml.example` and adjust the
-host paths. The override file is gitignored; a clean checkout without it
-deploys fine, just without a vault mounted.
+### Docker Compose
+
+`docker-compose.yml` is the declarative equivalent of `./install.sh
+--docker` — same image, same port mapping, same `/data` volume.
+
+```bash
+# 1. Environment — Compose reads .env automatically for ${VAR} substitution
+cp .env.example .env            # then edit values (see the table below)
+
+# 2. Optional — host-specific mounts (local Obsidian vaults, WebDAV mounts)
+cp docker-compose.override.yml.example docker-compose.override.yml
+
+# 3. Build and run → http://localhost:5000
+docker compose up -d --build
+```
+
+Day-to-day:
+
+```bash
+docker compose logs -f   # follow logs
+docker compose ps        # status — the image HEALTHCHECKs GET / every 30 s
+docker compose up -d     # recreate after changing .env or the override file
+docker compose down      # stop + remove the container (./data survives)
+```
+
+`docker compose restart` does **not** re-read `.env` or the override file —
+environment is baked in at container-creation time, so use `up -d` to pick
+up changes.
+
+How configuration reaches the container:
+
+- `.env` feeds `${VAR:-default}` substitution in `docker-compose.yml`.
+  Shell env vars take precedence over `.env`, and `./install.sh` reads the
+  same file (`--port` still wins over `KNOWLEDGEHUB_PORT`).
+- Only variables declared under `environment:` reach the container.
+  Settings not wired in the base file — `Chat__*`, or any other
+  `Section__Key` appsettings override — go under `environment:` in
+  `docker-compose.override.yml`:
+
+  ```yaml
+  services:
+    knowledgehub:
+      environment:
+        Chat__Provider: ollama
+        Chat__Endpoint: http://host.docker.internal:11434
+        Chat__Model: llama3.1
+        Chat__ApiKey: ${CHAT__APIKEY:-}
+  ```
+
+- `docker-compose.override.yml` is gitignored and merged automatically on
+  top of the base file. A clean checkout without it deploys fine — sources
+  whose `configuration.path` points at `/vaults/*` just report "mount
+  unavailable". The example mounts a local vault `rw` (so `write_note` can
+  persist) and shows a commented `ro` WebDAV mount — see
+  "Obsidian via WebDAV" below.
 
 ### Environment variables
 
-Every variable referenced by `docker-compose.yml` (via `.env`) plus the most
-common `Section__Key` overrides. Placeholders only — never commit a real
-`.env`.
+Every `UPPERCASE` variable below maps to a `${VAR:-default}` substitution in
+`docker-compose.yml`, resolved from `.env` or the shell; `Section__Key`
+entries are ASP.NET Core-style overrides injected via `environment:`.
+Placeholders only — never commit a real `.env`.
 
 | Variable | Purpose | Default | Required |
 |---|---|---|---|
@@ -189,8 +235,8 @@ common `Section__Key` overrides. Placeholders only — never commit a real
 | `CACHE_PROVIDER` | `IDistributedCache` backend: `memory` \| `redis` | `memory` | no |
 | `REDIS_CONNECTIONSTRING` | StackExchange.Redis conn string — required when `CACHE_PROVIDER=redis`; use `defaultDatabase=N` | empty | provider-dependent |
 | `AUTH_ADMIN_INITIAL_PASSWORD` | Seed password for `admin` (forced change on first login) | `123qwe` | no |
-| `CHAT__PROVIDER` | `none` \| `ollama` \| `openai` — server-side answer synthesis / agent loop | `none` | no |
-| `CHAT__ENDPOINT` / `CHAT__MODEL` / `CHAT__APIKEY` | Chat provider endpoint, model and key | `http://localhost:11434` / `llama3.1` / empty | provider-dependent |
+| `CHAT__PROVIDER` | `none` \| `ollama` \| `openai` — server-side answer synthesis / agent loop. Not wired in the base compose — set via `environment:` in the override | `none` | no |
+| `CHAT__ENDPOINT` / `CHAT__MODEL` / `CHAT__APIKEY` | Chat provider endpoint, model and key (same override note; use `host.docker.internal` from the container) | `http://localhost:11434` / `llama3.1` / empty | provider-dependent |
 | `KnowledgeHub__DatabasePath` | SQLite file path — Dockerfile pins `/data/knowledgehub.db` (the bind-mounted volume) | `/data/knowledgehub.db` | no |
 
 Any other `appsettings.json` key can be injected the same way —
