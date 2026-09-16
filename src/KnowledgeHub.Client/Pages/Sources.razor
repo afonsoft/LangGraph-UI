@@ -82,10 +82,12 @@
                  Size="Size.Large" ShowSaveButton="true" SaveButtonText="Salvar"
                  CloseButtonText="Cancelar" OnSaveAsync="SaveAsync">
         <BodyTemplate>
-            <SourceEditDialog @ref="_edit" Model="_editModel" Error="_editError" ErrorDetail="_editErrorDetail"
+            @* String params need @ — bare Error="_editError" passes the literal
+               text, not the field value (Blazor string-attribute rule). *@
+            <SourceEditDialog @ref="_edit" Model="_editModel" Error="@_editError" ErrorDetail="@_editErrorDetail"
                               Source="_editSource" Documents="_editDocuments"
                               SummaryLoading="_summaryLoading" SummaryFailed="_summaryFailed"
-                              SyncResult="_syncResult" SyncRunning="_syncRunning" SyncError="_syncError"
+                              SyncResult="_syncResult" SyncRunning="_syncRunning" SyncError="@_syncError"
                               OnSyncRequested="SyncFromDialogAsync" />
         </BodyTemplate>
     </ModalDialog>
