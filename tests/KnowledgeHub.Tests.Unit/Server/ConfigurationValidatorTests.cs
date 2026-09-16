@@ -82,6 +82,44 @@ public class ConfigurationValidatorTests
     }
 
     [Fact]
+    public void Invalid_DeepWikiPrivateEndpoint_Fails()
+    {
+        var cfg = Config(new() { ["DeepWiki:PrivateEndpoint"] = "not-a-url" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("DeepWiki:PrivateEndpoint", ex.Message);
+    }
+
+    [Fact]
+    public void Invalid_FirecrawlEndpoint_Fails()
+    {
+        var cfg = Config(new() { ["Firecrawl:Endpoint"] = "not-a-url" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("Firecrawl:Endpoint", ex.Message);
+    }
+
+    [Fact]
+    public void Firecrawl_Disabled_SkipsValidation()
+    {
+        var cfg = Config(new()
+        {
+            ["Firecrawl:Enabled"] = "false",
+            ["Firecrawl:Endpoint"] = "not-a-url",
+            ["Firecrawl:TimeoutSeconds"] = "-1"
+        });
+        ConfigurationValidator.Validate(cfg);
+    }
+
+    [Theory]
+    [InlineData("Firecrawl:TimeoutSeconds")]
+    [InlineData("Firecrawl:ToolsCacheSeconds")]
+    public void Firecrawl_InvalidPositiveInt_Fails(string key)
+    {
+        var cfg = Config(new() { [key] = "0" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains(key, ex.Message);
+    }
+
+    [Fact]
     public void DeepWiki_Disabled_SkipsEndpointValidation()
     {
         var cfg = Config(new()

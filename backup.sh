@@ -20,6 +20,8 @@ Usage: ./backup.sh [options]
 Produces backups/<timestamp>/ containing:
   knowledgehub.db    consistent SQLite snapshot (VACUUM INTO)
   vaults/            tar.gz per accessible Obsidian vault source
+  dataprotection-keys.tar.gz   ASP.NET Data Protection key ring — required to
+                     decrypt IntegrationSecrets (upstream API keys) after restore
   manifest.txt       backup metadata (timestamp, db, vault paths)
 USAGE
 }
@@ -71,10 +73,22 @@ else
     echo "warn: jq not found — vault paths cannot be read from the DB; DB-only backup" >&2
 fi
 
+# SPEC-20260916-firecrawl-mcp-proxy: the Data Protection key ring decrypts the
+# IntegrationSecrets table (upstream API keys). Without it a restored DB cannot
+# recover stored credentials — ship it alongside the DB.
+DP_KEYS_DIR="$(dirname "$DB_PATH")/dataprotection-keys"
+if [[ -d "$DP_KEYS_DIR" ]]; then
+    echo "==> Archiving Data Protection keys -> dataprotection-keys.tar.gz"
+    tar -czf "$DEST/dataprotection-keys.tar.gz" -C "$(dirname "$DB_PATH")" "dataprotection-keys"
+else
+    echo "warn: no dataprotection-keys dir at $DP_KEYS_DIR — stored secrets won't survive a restore" >&2
+fi
+
 cat > "$DEST/manifest.txt" <<EOF
 created_utc=$STAMP
 db_source=$DB_PATH
 vaults_archived=$VAULT_COUNT
+dataprotection_keys=$( [[ -f "$DEST/dataprotection-keys.tar.gz" ]] && echo "yes" || echo "no" )
 EOF
 
 echo "==> Backup complete: $DEST"

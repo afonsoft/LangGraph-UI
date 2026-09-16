@@ -29,6 +29,7 @@ public static class ConfigurationValidator
         ValidateEmbeddings(configuration, problems);
         ValidateVectorStore(configuration, problems);
         ValidateDeepWiki(configuration, problems);
+        ValidateFirecrawl(configuration, problems);
         ValidateChat(configuration, problems);
         ValidateAuth(configuration, problems);
 
@@ -78,8 +79,27 @@ public static class ConfigurationValidator
         if (section["Endpoint"] is { } endpoint && !IsHttpUri(endpoint))
             problems.Add($"DeepWiki:Endpoint '{endpoint}' must be an absolute http(s) URI");
 
+        if (section["PrivateEndpoint"] is { } privateEndpoint && !IsHttpUri(privateEndpoint))
+            problems.Add($"DeepWiki:PrivateEndpoint '{privateEndpoint}' must be an absolute http(s) URI");
+
         if (section["TimeoutSeconds"] is { } t && (!int.TryParse(t, out var ts) || ts <= 0))
             problems.Add($"DeepWiki:TimeoutSeconds '{t}' must be a positive integer");
+    }
+
+    private static void ValidateFirecrawl(IConfiguration cfg, List<string> problems)
+    {
+        var section = cfg.GetSection(FirecrawlOptions.SectionName);
+        if (section["Enabled"]?.Equals("false", StringComparison.OrdinalIgnoreCase) == true)
+            return;
+
+        if (section["Endpoint"] is { } endpoint && !IsHttpUri(endpoint))
+            problems.Add($"Firecrawl:Endpoint '{endpoint}' must be an absolute http(s) URI");
+
+        if (section["TimeoutSeconds"] is { } t && (!int.TryParse(t, out var ts) || ts <= 0))
+            problems.Add($"Firecrawl:TimeoutSeconds '{t}' must be a positive integer");
+
+        if (section["ToolsCacheSeconds"] is { } tc && (!int.TryParse(tc, out var tcs) || tcs <= 0))
+            problems.Add($"Firecrawl:ToolsCacheSeconds '{tc}' must be a positive integer");
     }
 
     private static void ValidateChat(IConfiguration cfg, List<string> problems)

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <InternalsVisibleTo Include="KnowledgeHub.Tests.Unit" />
     <ProjectReference Include="..\KnowledgeHub.Shared\KnowledgeHub.Shared.csproj" />
     <ProjectReference Include="..\KnowledgeHub.McpEngine\KnowledgeHub.McpEngine.csproj" />
     <ProjectReference Include="..\KnowledgeHub.Client\KnowledgeHub.Client.csproj" />

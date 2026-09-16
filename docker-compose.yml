@@ -27,7 +27,12 @@ services:
       VectorStore__ConnectionString: ${VECTORSTORE_CONNECTIONSTRING:-}
       DeepWiki__Enabled: ${DEEPWIKI_ENABLED:-true}
       DeepWiki__Endpoint: ${DEEPWIKI_ENDPOINT:-https://mcp.deepwiki.com/mcp}
+      DeepWiki__PrivateEndpoint: ${DEEPWIKI_PRIVATE_ENDPOINT:-https://mcp.devin.ai/mcp}
       DeepWiki__ApiKey: ${DEEPWIKI_APIKEY:-}
+      Firecrawl__Enabled: ${FIRECRAWL_ENABLED:-true}
+      Firecrawl__Endpoint: ${FIRECRAWL_ENDPOINT:-https://mcp.firecrawl.dev/v2/mcp}
+      Firecrawl__ApiKey: ${FIRECRAWL_APIKEY:-}
+      Firecrawl__TimeoutSeconds: ${FIRECRAWL_TIMEOUT_SECONDS:-300}
       # SPEC-20260914-auth-login: seeds `admin` on an empty Users table; the
       # forced password change applies on first login regardless of this value.
       # Defaults to the documented seed password — an empty value would trip

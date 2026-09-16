@@ -47,11 +47,20 @@ public class McpContractTests : IClassFixture<McpContractTests.Fixture>
         ["ask_question"] = """{"type":"object","properties":{"repoName":{"anyOf":[{"type":"string"},{"type":"array","items":{"type":"string"},"maxItems":10}],"description":"GitHub repo(s) in owner/repo format (max 10)","examples":["langchain-ai/langgraph"]},"question":{"type":"string","description":"Question about the repository","examples":["How does checkpointing work?"]}},"required":["repoName","question"],"examples":[{"repoName":"langchain-ai/langgraph","question":"How does checkpointing work?"},{"repoName":["langchain-ai/langgraph","afonsoft/skills"],"question":"Compare the architectures"}]}""",
         ["read_wiki_structure"] = """{"type":"object","properties":{"repoName":{"type":"string","description":"GitHub repo in owner/repo format","examples":["langchain-ai/langgraph"]}},"required":["repoName"],"examples":[{"repoName":"langchain-ai/langgraph"}]}""",
         ["read_wiki_contents"] = """{"type":"object","properties":{"repoName":{"type":"string","description":"GitHub repo in owner/repo format","examples":["langchain-ai/langgraph"]}},"required":["repoName"],"examples":[{"repoName":"langchain-ai/langgraph"}]}""",
+        // SPEC-20260916-firecrawl-mcp-proxy: static Firecrawl core. With a real
+        // key, upstream tools/list merges in dynamically — this fixture is
+        // keyless, so only the static surface is pinned here.
+        ["firecrawl_scrape"] = """{"type":"object","additionalProperties":true,"properties":{"url":{"type":"string","description":"URL to scrape","examples":["https://example.com"]},"formats":{"type":"array","items":{"type":"string"},"description":"Output formats (e.g. markdown, html, json)"},"onlyMainContent":{"type":"boolean","description":"Exclude nav/footer boilerplate"}},"required":["url"],"examples":[{"url":"https://example.com"},{"url":"https://docs.firecrawl.dev","formats":["markdown"],"onlyMainContent":true}]}""",
+        ["firecrawl_search"] = """{"type":"object","additionalProperties":true,"properties":{"query":{"type":"string","description":"Search query","examples":["latest .NET 10 release notes"]},"limit":{"type":"integer","description":"Max results"}},"required":["query"],"examples":[{"query":"latest .NET 10 release notes"}]}""",
+        ["firecrawl_map"] = """{"type":"object","additionalProperties":true,"properties":{"url":{"type":"string","description":"Site URL to map","examples":["https://docs.firecrawl.dev"]}},"required":["url"],"examples":[{"url":"https://docs.firecrawl.dev"}]}""",
+        ["firecrawl_crawl"] = """{"type":"object","additionalProperties":true,"properties":{"url":{"type":"string","description":"Starting URL","examples":["https://docs.firecrawl.dev"]},"limit":{"type":"integer","description":"Max pages to crawl"}},"required":["url"],"examples":[{"url":"https://docs.firecrawl.dev","limit":5}]}""",
+        ["firecrawl_check_crawl_status"] = """{"type":"object","additionalProperties":true,"properties":{"id":{"type":"string","description":"Crawl job id","examples":["550e8400-e29b-41d4-a716-446655440000"]}},"required":["id"],"examples":[{"id":"550e8400-e29b-41d4-a716-446655440000"}]}""",
+        ["firecrawl_parse"] = """{"type":"object","additionalProperties":true,"properties":{"url":{"type":"string","description":"Public URL of the document to parse","examples":["https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"]},"filePath":{"type":"string","description":"Local file path (two-phase upload flow)"}},"examples":[{"url":"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"}]}""",
         // query_{slug} tools share this schema (SourceQueryToolsProvider).
         ["__query_source__"] = """{"type":"object","properties":{"query":{"type":"string","description":"Texto ou pergunta a buscar nesta fonte","examples":["termo de busca"]},"topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"}},"required":["query"],"examples":[{"query":"termo de busca","topK":5}]}""",
     };
 
-    private static readonly HashSet<string> WriteTools = ["write_knowledge", "write_note"];
+    private static readonly HashSet<string> WriteTools = ["write_knowledge", "write_note", "firecrawl_crawl"];
 
     [Fact]
     public async Task ToolCatalog_NamesSchemasAndHints_MatchPinnedContract()
