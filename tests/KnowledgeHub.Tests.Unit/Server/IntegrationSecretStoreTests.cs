@@ -3,6 +3,7 @@ using KnowledgeHub.Server.Settings;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -33,6 +34,7 @@ public sealed class IntegrationSecretStoreTests : IDisposable
         _store = new IntegrationSecretStore(
             _services.GetRequiredService<IServiceScopeFactory>(),
             _services.GetRequiredService<IDataProtectionProvider>(),
+            new MemoryCache(new MemoryCacheOptions()),
             NullLogger<IntegrationSecretStore>.Instance);
     }
 

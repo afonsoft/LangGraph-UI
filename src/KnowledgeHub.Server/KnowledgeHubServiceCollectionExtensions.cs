@@ -23,7 +23,9 @@ public static class KnowledgeHubServiceCollectionExtensions
     {
         // Resolve Database:Path lazily so test hosts can override it via ConfigureWebHost
         // (Program.cs runs before the factory's ConfigureAppConfiguration callbacks).
-        services.AddDbContext<KnowledgeHubDbContext>((sp, o) =>
+        // SPEC-20260916-performance-memory-cache RF-006: pooled contexts — one
+        // DbContext allocation per request instead of a fresh graph each time.
+        services.AddDbContextPool<KnowledgeHubDbContext>((sp, o) =>
             o.UseSqlite($"Data Source={DatabasePath.Resolve(sp.GetRequiredService<IConfiguration>())}"));
 
         services.AddOptions<EmbeddingOptions>()
@@ -142,6 +144,7 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddOptions<Configuration.CacheOptions>()
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(Configuration.CacheOptions.SectionName).Bind(options));
+        services.AddMemoryCache();
         if (configuration.GetValue($"{Configuration.CacheOptions.SectionName}:Provider", "memory")
                 .Equals("redis", StringComparison.OrdinalIgnoreCase))
         {

@@ -119,7 +119,8 @@ public static class SettingsEndpoints
             : $"••••{last4}";
 
     /// <summary>Drops the provider's upstream session so the next call picks up
-    /// the new effective credential (and, for DeepWiki, the new endpoint).</summary>
+    /// the new effective credential (and, for DeepWiki, the new endpoint), then
+    /// notifies the catalog — the effective tool list changed.</summary>
     private static async Task ResetProviderAsync(string provider, IServiceProvider services, CancellationToken ct)
     {
         switch (provider)
@@ -136,5 +137,6 @@ public static class SettingsEndpoints
                 services.GetRequiredService<TavilyToolsProvider>().InvalidateToolsCache();
                 break;
         }
+        await services.GetRequiredService<Mcp.IToolCatalogChangeNotifier>().NotifyToolsChangedAsync(ct);
     }
 }

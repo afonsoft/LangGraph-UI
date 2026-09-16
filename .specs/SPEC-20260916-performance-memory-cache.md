@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-performance-cache` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Approved` — infra Redis (RF-005 parcial: `CacheOptions`, `IDistributedCache` memory|redis, validação, compose/`.env` apontando db3 do VPS) entregue; T1–T4, T6, T7 pendentes |
+| Status | `Done` — T1–T7 implementados e verificados (ver §10 Evidências); deploy em produção com `Cache:Provider=redis` → db3 do Redis do VPS |
 | Depends on | n/a (tocar em código existente sem quebrar contratos) |
 
 ## 1. User Story
@@ -103,11 +103,32 @@ A aplicação é **single-process standalone** (SQLite por padrão, pgvector opt
 
 ## 9. Definition of Done
 
-- [ ] Catálogo cacheado com invalidação correta (teste: mudança de source propaga).
-- [ ] Pico de memória da busca SQLite reduzido e medido.
-- [ ] Ingestão em lote implementada.
-- [ ] `Cache:Provider` funcional (memory default; redis opt-in com fallback).
-- [ ] Build + testes + format verdes; evidências de benchmark anexadas à SPEC.
+- [x] Catálogo cacheado com invalidação correta (teste: `Catalog_ServesCachedAggregate_UntilNotifierVersionBumps` — mudança propaga via `IToolCatalogChangeNotifier.Version`, disparada por sources/secrets/upstream-reset).
+- [x] Pico de memória da busca SQLite reduzido e medido (§10: 18.25MB → 10.02MB alocados em 5k×384d; retenção de picos O(topK·dims) em vez de O(N·dims)).
+- [x] Ingestão em lote implementada (`EmbedBatchAsync` + `UpsertBatchAsync` + `ExecuteDeleteAsync`, sem `Include(Chunks)`).
+- [x] `Cache:Provider` funcional (memory default; redis opt-in — fallback fail-soft em `SafeCache`, testado com backend que lança exceção).
+- [x] Build + testes + format verdes; evidências de benchmark anexadas à SPEC (§10).
+
+## 10. Evidências (T7)
+
+**CA-001 — alocação da busca SQLite** (`SearchAllocBenchTests`, xunit; corpus 5.000 chunks × 384 dims, topK=10, `GC.GetAllocatedBytesForCurrentThread`):
+
+| Path | Bytes alocados por busca | Retenção de pico |
+|------|--------------------------|------------------|
+| Antes (`ToListAsync` + decode + sort) | 18.251.352 B (~17,4 MB) | O(N·dims) — todos os BLOBs + vetores + projeções vivos até o sort |
+| Depois (`AsAsyncEnumerable` + min-heap + cosine direto no BLOB) | 10.024.520 B (~9,6 MB) — **−45%** | O(topK·dims) — um row + heap por vez |
+
+Residual: EF ainda aloca o `byte[]` do BLOB por row (transiente). Eliminação total exigiria pgvector — threshold documentado (~50k chunks).
+
+**CA-002 — catálogo:** `PerformanceCacheTests.Catalog_ServesCachedAggregate_UntilNotifierVersionBumps` — 2ª chamada não re-executa providers (`Calls==1`); bump de `Version` reconstrói.
+
+**CA-003 — ingestão:** `EmbedChunksAsync` → 1 `EmbedBatchAsync` por documento + 1 `UpsertBatchAsync` (1 lookup + 1 `SaveChanges`); purge de chunks via `ExecuteDeleteAsync`. Fallback per-chunk em falha de batch.
+
+**CA-004 — fallback:** `SafeCache_DownBackend_TreatsGetAsMiss_AndNeverThrows` + `Search_DownCache_StillReturnsResults` — backend lançando em todo método ⇒ miss/no-throw.
+
+**CA-005:** unit **197/197** · integration **140/140** · `dotnet format --verify-no-changes` limpo.
+
+**T6 notas:** `AddDbContext`→`AddDbContextPool`; flag FTS5 cacheada por `DataSource` (só `true` — DB pré-migration re-probe). `SourceLocks` **deferido**: remoção de semáforo reintroduz corrida clássica (waiter em instância removida × novo semáforo no dict); crescimento limitado ao nº de sources — sem fix seguro trivial.
 
 ## Open Questions / Pending Ambiguity
 

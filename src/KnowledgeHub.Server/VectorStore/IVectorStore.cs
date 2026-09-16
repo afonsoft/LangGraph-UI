@@ -3,6 +3,9 @@ namespace KnowledgeHub.Server.VectorStore;
 /// <summary>One ranked hit from vector search.</summary>
 public sealed record VectorHit(Guid ChunkId, double Score);
 
+/// <summary>One vector to persist in a batch upsert.</summary>
+public sealed record VectorUpsert(Guid ChunkId, Guid DocumentId, Guid SourceId, float[] Vector);
+
 /// <summary>
 /// Abstraction over chunk-embedding storage and similarity search (SPEC-02 RF-006).
 /// <c>sqlite</c> (default): embeddings in DocumentChunks, cosine in-process.
@@ -12,6 +15,17 @@ public interface IVectorStore
 {
     /// <summary>Store or replace the vector for a chunk, stamped with the producing model id.</summary>
     Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Batch upsert (SPEC-20260916-performance-memory-cache RF-004) — default
+    /// loops <see cref="UpsertAsync"/>; stores with cheaper bulk paths override it.
+    /// </summary>
+    async Task UpsertBatchAsync(
+        IReadOnlyList<VectorUpsert> items, string model, CancellationToken cancellationToken = default)
+    {
+        foreach (var item in items)
+            await UpsertAsync(item.ChunkId, item.DocumentId, item.SourceId, item.Vector, model, cancellationToken);
+    }
 
     /// <summary>Purge all vectors owned by a document.</summary>
     Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default);
