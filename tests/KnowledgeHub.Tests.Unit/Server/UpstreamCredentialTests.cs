@@ -30,6 +30,12 @@ public class UpstreamCredentialTests
             NullLoggerFactory.Instance,
             NullLogger<FirecrawlUpstreamClient>.Instance);
 
+    private static TavilyUpstreamClient Tavily(string? storedKey = null, string envKey = "") =>
+        new(Options.Create(new TavilyOptions { ApiKey = envKey }),
+            new FakeSecretStore(tavilyKey: storedKey),
+            NullLoggerFactory.Instance,
+            NullLogger<TavilyUpstreamClient>.Instance);
+
     [Fact]
     public async Task DeepWiki_ResolveKey_StoreBeatsEnv()
     {
@@ -112,12 +118,39 @@ public class UpstreamCredentialTests
         Assert.False(keyless.AdditionalHeaders?.ContainsKey("Authorization") ?? false);
     }
 
-    private sealed class FakeSecretStore(string? firecrawlKey = null, string? deepwikiKey = null)
+    [Fact]
+    public async Task Tavily_ResolveKey_StoreBeatsEnv()
+    {
+        var client = Tavily(storedKey: "tvly-store", envKey: "tvly-env");
+        Assert.Equal("tvly-store", await client.ResolveApiKeyAsync());
+    }
+
+    [Fact]
+    public async Task Tavily_ResolveKey_EnvFallback_And_None()
+    {
+        Assert.Equal("tvly-env", await Tavily(envKey: "tvly-env").ResolveApiKeyAsync());
+        Assert.Null(await Tavily().ResolveApiKeyAsync());
+    }
+
+    [Fact]
+    public void Tavily_TransportOptions_BearerOnlyWhenKeyed_NeverInUrl()
+    {
+        var keyed = Tavily().CreateTransportOptions("tvly-abc");
+        Assert.Equal("Bearer tvly-abc", keyed.AdditionalHeaders?["Authorization"]);
+        Assert.Equal(new Uri("https://mcp.tavily.com/mcp"), keyed.Endpoint);
+        Assert.DoesNotContain("tavilyApiKey", keyed.Endpoint.Query, StringComparison.OrdinalIgnoreCase);
+
+        var keyless = Tavily().CreateTransportOptions(null);
+        Assert.False(keyless.AdditionalHeaders?.ContainsKey("Authorization") ?? false);
+    }
+
+    private sealed class FakeSecretStore(string? firecrawlKey = null, string? deepwikiKey = null, string? tavilyKey = null)
         : IIntegrationSecretStore
     {
         public Task<string?> GetAsync(string provider, CancellationToken cancellationToken = default) =>
             Task.FromResult(provider == IntegrationProviders.Firecrawl ? firecrawlKey
                 : provider == IntegrationProviders.DeepWiki ? deepwikiKey
+                : provider == IntegrationProviders.Tavily ? tavilyKey
                 : (string?)null);
 
         public Task<IntegrationSecretInfo?> GetInfoAsync(string provider, CancellationToken cancellationToken = default) =>

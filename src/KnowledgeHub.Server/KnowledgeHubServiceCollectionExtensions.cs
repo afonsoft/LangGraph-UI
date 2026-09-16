@@ -136,6 +136,15 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.FirecrawlToolsProvider>());
 
+        // SPEC-20260916-tavily-mcp-proxy: Tavily proxy tools (tavily_*).
+        services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.TavilyOptions>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.TavilyOptions.SectionName).Bind(options));
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.TavilyUpstreamClient>();
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>();
+        services.AddSingleton<IToolProvider>(sp =>
+            sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>());
+
         services.AddOptions<McpServerOptions>().Configure(options =>
         {
             options.Handlers.ListToolsHandler = async (ctx, ct) =>
