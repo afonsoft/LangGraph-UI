@@ -45,13 +45,20 @@
 - User approved SPECs + Issues for all confirmed gaps (2026-09-16).
 - Redis: scope = document risk only (no infra change this round).
 
-## 5. Draft SPECs
+## 5. SPECs (Approved) + Issues
 
-| Gap key | SPEC |
-| --- | --- |
-| GAP-security-redis-exposed | `.specs/SPEC-20260916-redis-exposure-risk.md` |
-| GAP-operation-issue-tracking-e17 | `.specs/SPEC-20260916-e17-issue-sync.md` |
-| GAP-documentation-deploy-env-vars | `.specs/SPEC-20260916-deploy-env-docs.md` |
-| GAP-operation-compose-vault-mount-drift | `.specs/SPEC-20260916-compose-vault-mount.md` |
-| GAP-implementation-warning-cs8604 | `.specs/SPEC-20260916-fix-cs8604-warning.md` |
-| GAP-documentation-claude-md-stale | `.specs/SPEC-20260916-claude-md-sync.md` |
+| Gap key | SPEC | Issue |
+| --- | --- | --- |
+| GAP-security-redis-exposed | SPEC-20260916-redis-exposure-risk | #68 |
+| GAP-operation-issue-tracking-e17 | SPEC-20260916-e17-issue-sync | #69 |
+| GAP-documentation-deploy-env-vars | SPEC-20260916-deploy-env-docs | #70 |
+| GAP-operation-compose-vault-mount-drift | SPEC-20260916-compose-vault-mount | #71 |
+| GAP-implementation-warning-cs8604 | SPEC-20260916-fix-cs8604-warning | #72 |
+| GAP-documentation-claude-md-stale | SPEC-20260916-claude-md-sync | #73 |
+
+- Epic: **#67** (E18) — slices #68–#73 linkadas no corpo.
+- SPECs mergeadas em `main` (PRs #66, #74).
+
+## 6. Orchestrator handoff
+
+- Pending — awaiting user decision on executing the 6 approved SPECs.
