@@ -17,6 +17,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<IntegrationSecret> IntegrationSecrets => Set<IntegrationSecret>();
     public DbSet<ChatSettings> ChatSettings => Set<ChatSettings>();
 
+    /// <summary>Configura as entidades do modelo: chaves, índices, tamanhos e relacionamentos.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<KnowledgeSource>(e =>

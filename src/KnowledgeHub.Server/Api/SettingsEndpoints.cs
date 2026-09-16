@@ -12,6 +12,7 @@ namespace KnowledgeHub.Server.Api;
 /// </summary>
 public static class SettingsEndpoints
 {
+    /// <summary>Mapeia o grupo /api/settings: keys de integrações e configuração de chat.</summary>
     public static RouteGroupBuilder MapSettingsApi(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/settings");
@@ -119,10 +120,12 @@ public static class SettingsEndpoints
         return group;
     }
 
+    /// <summary>Retorna true quando o valor é uma URI absoluta http(s).</summary>
     private static bool IsHttpUri(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
+    /// <summary>Monta o DTO mascarado da integração (key do store → env), sem expor o segredo.</summary>
     private static async Task<IntegrationSettingsDto> DescribeAsync(
         string provider, IIntegrationSecretStore store, IConfiguration cfg, CancellationToken ct)
     {
@@ -161,6 +164,7 @@ public static class SettingsEndpoints
         };
     }
 
+    /// <summary>Mapeia o slug da integração para a seção de configuração correspondente.</summary>
     private static string ConfigSection(string provider) => provider switch
     {
         IntegrationProviders.Firecrawl => "Firecrawl",
@@ -169,14 +173,15 @@ public static class SettingsEndpoints
         _ => provider
     };
 
+    /// <summary>Formata o hint mascarado com o prefixo do provider quando aplicável.</summary>
     private static string MaskHint(string provider, string last4) =>
         provider == IntegrationProviders.Firecrawl ? $"fc-••••{last4}"
             : provider == IntegrationProviders.Tavily ? $"tvly-••••{last4}"
             : $"••••{last4}";
 
-    /// <summary>Drops the provider's upstream session so the next call picks up
-    /// the new effective credential (and, for DeepWiki, the new endpoint), then
-    /// notifies the catalog — the effective tool list changed.</summary>
+    /// <summary>Descarta a sessão upstream do provider para a próxima chamada usar a
+    /// nova credencial efetiva (e, no DeepWiki, o novo endpoint), depois notifica o
+    /// catálogo — a lista efetiva de tools mudou.</summary>
     private static async Task ResetProviderAsync(string provider, IServiceProvider services, CancellationToken ct)
     {
         switch (provider)

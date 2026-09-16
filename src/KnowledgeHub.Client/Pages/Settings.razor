@@ -235,12 +235,14 @@ else
         public TestChatConnectionResponse? TestResult { get; set; }
     }
 
+    /// <summary>Inicializa a página carregando integrações e a configuração de chat.</summary>
     protected override async Task OnInitializedAsync()
     {
         await ReloadAsync();
         await ReloadChatAsync();
     }
 
+    /// <summary>Recarrega a lista de integrações e garante o estado dos formulários.</summary>
     private async Task ReloadAsync()
     {
         try
@@ -256,6 +258,7 @@ else
         }
     }
 
+    /// <summary>Recarrega a configuração efetiva de chat e preenche o formulário do card.</summary>
     private async Task ReloadChatAsync()
     {
         try
@@ -272,6 +275,7 @@ else
         }
     }
 
+    /// <summary>Valida e salva endpoint/model do chat; key em branco mantém a armazenada.</summary>
     private async Task SaveChatAsync()
     {
         if (string.IsNullOrWhiteSpace(_chatForm.Endpoint) || string.IsNullOrWhiteSpace(_chatForm.Model))
@@ -301,6 +305,7 @@ else
         }
     }
 
+    /// <summary>Executa o teste de conexão com os valores do formulário e exibe o resultado no card.</summary>
     private async Task TestChatAsync()
     {
         _chatForm.Testing = true;
@@ -328,6 +333,7 @@ else
         }
     }
 
+    /// <summary>Remove a key de chat armazenada e recarrega o card.</summary>
     private async Task RemoveChatKeyAsync()
     {
         var result = await Api.RemoveChatKeyAsync();
@@ -340,6 +346,7 @@ else
         await ReloadChatAsync();
     }
 
+    /// <summary>Apaga a configuração persistida de chat, restaurando as variáveis de ambiente.</summary>
     private async Task ClearChatAsync()
     {
         var result = await Api.ClearChatAsync();
@@ -353,6 +360,7 @@ else
         await ReloadChatAsync();
     }
 
+    /// <summary>Salva a API key digitada no formulário da integração.</summary>
     private async Task SaveAsync(IntegrationSettingsDto item)
     {
         var state = _forms[item.Provider];
@@ -381,6 +389,7 @@ else
         }
     }
 
+    /// <summary>Remove a key armazenada da integração e recarrega a lista.</summary>
     private async Task RemoveAsync(IntegrationSettingsDto item)
     {
         var result = await Api.RemoveKeyAsync(item.Provider);

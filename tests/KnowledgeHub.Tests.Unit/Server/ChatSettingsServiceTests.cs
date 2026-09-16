@@ -22,6 +22,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
     private readonly ServiceProvider _services;
     private readonly FakeSecretStore _secrets = new();
 
+    /// <summary>Sobe um SQLite em memória com o schema criado e o container de DI dos testes.</summary>
     public ChatSettingsServiceTests()
     {
         _conn = new SqliteConnection("Data Source=:memory:");
@@ -36,6 +37,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>().Database.EnsureCreated();
     }
 
+    /// <summary>Instancia o serviço sob teste com o env e o probe informados.</summary>
     private ChatSettingsService Sut(ChatProviderOptions? env = null, Func<HttpClient>? probe = null) =>
         new(Options.Create(env ?? new ChatProviderOptions()),
             _secrets,
@@ -44,12 +46,14 @@ public sealed class ChatSettingsServiceTests : IDisposable
             NullLogger<ChatSettingsService>.Instance,
             probe);
 
+    /// <summary>Monta options de ambiente com provider openai para os cenários de teste.</summary>
     private static ChatProviderOptions EnvOpenAi(
         string endpoint = "https://env.test",
         string model = "env-model",
         string? apiKey = null) =>
         new() { Provider = "openai", Endpoint = endpoint, Model = model, ApiKey = apiKey };
 
+    /// <summary>Sem config nenhuma, o estado efetivo reporta provider/source "none".</summary>
     [Fact]
     public async Task Describe_NoConfig_SourceNone()
     {
@@ -63,6 +67,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Null(dto.UpdatedAt);
     }
 
+    /// <summary>Com provider no env e sem linha salva, o estado efetivo vem do ambiente.</summary>
     [Fact]
     public async Task Describe_EnvProvider_SourceEnv()
     {
@@ -78,6 +83,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.True(dto.EnvConfigured);
     }
 
+    /// <summary>Depois de salvar, endpoint/model do store sobrepõem os do env.</summary>
     [Fact]
     public async Task Save_ThenDescribe_StoreBeatsEnv()
     {
@@ -94,6 +100,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.NotNull(dto.UpdatedAt);
     }
 
+    /// <summary>Options efetivas usam endpoint/model do store e a key do store vence a do env.</summary>
     [Fact]
     public async Task EffectiveOptions_StoreEndpointModel_StoreKeyBeatsEnvKey()
     {
@@ -109,6 +116,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("chat", _secrets.LastSetProvider);
     }
 
+    /// <summary>Salvar com key em branco preserva a key já armazenada.</summary>
     [Fact]
     public async Task Save_BlankApiKey_KeepsStoredKey()
     {
@@ -123,6 +131,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("sk-first-0001", sut.GetEffectiveOptions().ApiKey);
     }
 
+    /// <summary>Remover a key do store faz a key do env voltar a valer.</summary>
     [Fact]
     public async Task RemoveKey_EnvKeyFallsBack()
     {
@@ -137,6 +146,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("env", dto.ApiKeySource);
     }
 
+    /// <summary>Limpar remove a linha e a key do store, voltando a configuração ao env.</summary>
     [Fact]
     public async Task Clear_RemovesRowAndKey_BackToEnv()
     {
@@ -152,10 +162,12 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.True(_secrets.RemovedChat);
     }
 
+    /// <summary>Com provider "none", o client efetivo é null.</summary>
     [Fact]
     public void GetClient_NullWhenProviderNone() =>
         Assert.Null(Sut().GetClient());
 
+    /// <summary>O client é cacheado em snapshot e reconstruído só após Invalidate().</summary>
     [Fact]
     public void GetClient_CachesSnapshot_UntilInvalidate()
     {
@@ -172,6 +184,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.NotSame(first, third);
     }
 
+    /// <summary>Salvar invalida o snapshot — as options efetivas mudam sem restart.</summary>
     [Fact]
     public async Task GetClient_RebuildsAfterSave_WithoutRestart()
     {
@@ -184,6 +197,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("https://store.test", sut.GetEffectiveOptions().Endpoint);
     }
 
+    /// <summary>Sem endpoint no request nem na config efetiva, o teste falha com "endpoint is required".</summary>
     [Fact]
     public async Task Test_BlankEndpoint_RequiresEndpoint()
     {
@@ -193,6 +207,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("endpoint is required", result.Detail);
     }
 
+    /// <summary>O probe envia Bearer da key e sinaliza se o model consta na lista do provider.</summary>
     [Fact]
     public async Task Test_Probe_ModelListed_TrueAndFalse()
     {
@@ -218,6 +233,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.False(absent.ModelListed);
     }
 
+    /// <summary>Resposta não-2xx do provider vira falha com detalhe sanitizado ("HTTP 401").</summary>
     [Fact]
     public async Task Test_Probe_NonSuccess_SanitizedDetail()
     {
@@ -234,6 +250,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("HTTP 401", result.Detail);
     }
 
+    /// <summary>O DTO serializado nunca contém a key — só o hint mascarado dos 4 últimos caracteres.</summary>
     [Fact]
     public async Task Describe_NeverEchoesApiKey()
     {
@@ -248,10 +265,13 @@ public sealed class ChatSettingsServiceTests : IDisposable
         Assert.Equal("••••315f", dto.ApiKeyHint);
     }
 
+    /// <summary>Handler fake que responde o probe com status/corpo fixos e captura o Authorization.</summary>
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {
+        /// <summary>Último header Authorization recebido pelo probe.</summary>
         public string? LastAuth { get; private set; }
 
+        /// <summary>Responde a requisição com o status e o corpo configurados.</summary>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -263,20 +283,28 @@ public sealed class ChatSettingsServiceTests : IDisposable
         }
     }
 
+    /// <summary>Store de segredos em memória para isolar o serviço sob teste.</summary>
     private sealed class FakeSecretStore : IIntegrationSecretStore
     {
         private readonly Dictionary<string, string> _secrets = new();
+
+        /// <summary>Último provider que teve key gravada.</summary>
         public string? LastSetProvider { get; private set; }
+
+        /// <summary>True quando a key do slug "chat" foi removida.</summary>
         public bool RemovedChat { get; private set; }
 
+        /// <summary>Retorna o segredo armazenado do provider, ou null.</summary>
         public Task<string?> GetAsync(string provider, CancellationToken cancellationToken = default) =>
             Task.FromResult(_secrets.TryGetValue(provider, out var s) ? s : (string?)null);
 
+        /// <summary>Retorna os metadados mascarados do segredo armazenado, ou null.</summary>
         public Task<IntegrationSecretInfo?> GetInfoAsync(string provider, CancellationToken cancellationToken = default) =>
             Task.FromResult(_secrets.TryGetValue(provider, out var s)
                 ? new IntegrationSecretInfo(provider, s.Length >= 4 ? s[^4..] : s, DateTimeOffset.UtcNow)
                 : (IntegrationSecretInfo?)null);
 
+        /// <summary>Grava o segredo do provider em memória.</summary>
         public Task SetAsync(string provider, string secret, CancellationToken cancellationToken = default)
         {
             _secrets[provider] = secret;
@@ -284,6 +312,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
             return Task.CompletedTask;
         }
 
+        /// <summary>Remove o segredo do provider, marcando quando for o slug "chat".</summary>
         public Task<bool> RemoveAsync(string provider, CancellationToken cancellationToken = default)
         {
             if (provider == IntegrationProviders.Chat)
@@ -292,6 +321,7 @@ public sealed class ChatSettingsServiceTests : IDisposable
         }
     }
 
+    /// <summary>Libera o container de DI e a conexão SQLite dos testes.</summary>
     public void Dispose()
     {
         _services.Dispose();

@@ -34,16 +34,20 @@ public sealed class ChatSettingsService(
 
     private sealed record Snapshot(ChatProviderOptions Options, IChatClient? Client);
 
+    /// <summary>Retorna as options efetivas do snapshot em cache (store sobre env).</summary>
     public ChatProviderOptions GetEffectiveOptions() => Current().Options;
 
+    /// <summary>Retorna o client do snapshot em cache, ou null quando provider=none.</summary>
     public IChatClient? GetClient() => Current().Client;
 
+    /// <summary>Zera o snapshot em cache; o próximo acesso reconstrói a partir do store.</summary>
     public void Invalidate()
     {
         lock (_gate)
             _snapshot = null;
     }
 
+    /// <summary>Retorna o snapshot atual, carregando do store na primeira vez após invalidação.</summary>
     private Snapshot Current()
     {
         var snap = _snapshot;
@@ -57,6 +61,7 @@ public sealed class ChatSettingsService(
         }
     }
 
+    /// <summary>Carrega a linha persistida e monta options efetivas + client (store → env).</summary>
     private async Task<Snapshot> LoadSnapshotAsync()
     {
         var env = envOptions.Value;
@@ -93,6 +98,8 @@ public sealed class ChatSettingsService(
         return new Snapshot(options, client);
     }
 
+    /// <summary>Monta o DTO do estado efetivo para a UI: provider, endpoint, model,
+    /// origem (store|env|none) e hint mascarado da key — sem expor o segredo.</summary>
     public async Task<ChatSettingsDto> DescribeAsync(CancellationToken cancellationToken = default)
     {
         var env = envOptions.Value;
@@ -145,6 +152,9 @@ public sealed class ChatSettingsService(
         };
     }
 
+    /// <summary>Faz upsert da linha única com endpoint/model e, se a key vier
+    /// preenchida, grava no store criptografado; em branco mantém a atual.
+    /// Invalida o cache ao final para valer sem restart.</summary>
     public async Task SaveAsync(string endpoint, string model, string? apiKey, CancellationToken cancellationToken = default)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -171,6 +181,7 @@ public sealed class ChatSettingsService(
             endpoint, model, string.IsNullOrWhiteSpace(apiKey) ? "kept" : "updated");
     }
 
+    /// <summary>Remove a key "chat" do store e invalida o cache — a key de env volta a valer.</summary>
     public async Task RemoveKeyAsync(CancellationToken cancellationToken = default)
     {
         await secrets.RemoveAsync(IntegrationProviders.Chat, cancellationToken);
@@ -178,6 +189,8 @@ public sealed class ChatSettingsService(
         logger.LogInformation("chat API key removed from store");
     }
 
+    /// <summary>Apaga a linha ChatSettings e a key do store, invalidando o cache —
+    /// a configuração efetiva volta a ser 100% a do ambiente.</summary>
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -188,6 +201,9 @@ public sealed class ChatSettingsService(
         logger.LogInformation("chat settings cleared — falling back to env/config");
     }
 
+    /// <summary>Testa a conexão chamando GET {endpoint}/v1/models com a key resolvível
+    /// (request → store → env), medindo latência e conferindo se o model consta na
+    /// lista retornada. Campos vazios do request usam a config efetiva. Não persiste nada.</summary>
     public async Task<TestChatConnectionResponse> TestAsync(
         TestChatConnectionRequest request, CancellationToken cancellationToken = default)
     {
@@ -239,8 +255,8 @@ public sealed class ChatSettingsService(
         }
     }
 
-    /// <summary>True/false when the probe body is an OpenAI-style model list and a
-    /// model was supplied; null when unparseable or no model to check.</summary>
+    /// <summary>Retorna true/false quando o corpo do probe é uma lista de modelos
+    /// estilo OpenAI e um model foi informado; null quando não dá para avaliar.</summary>
     private static async Task<bool?> CheckModelListedAsync(
         HttpResponseMessage response, string? model, CancellationToken ct)
     {
@@ -261,6 +277,7 @@ public sealed class ChatSettingsService(
         }
     }
 
+    /// <summary>Lê a linha única de ChatSettings em um scope EF próprio (sem tracking).</summary>
     private async Task<Domain.Entities.ChatSettings?> FindRowAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();

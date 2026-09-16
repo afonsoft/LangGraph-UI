@@ -16,8 +16,10 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
 {
     private const string StoredKey = "sk-chat-settings-9e5t";
 
+    /// <summary>Host de teste com banco SQLite temporário e probe /v1/models stubado.</summary>
     public sealed class Fixture : WebApplicationFactory<Program>
     {
+        /// <summary>Configura o host: banco temporário e Func&lt;HttpClient&gt; fake do probe.</summary>
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -31,9 +33,10 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         }
     }
 
-    /// <summary>Answers the /v1/models probe with a fixed catalog.</summary>
+    /// <summary>Responde o probe /v1/models com um catálogo fixo de modelos.</summary>
     private sealed class StubModelsHandler : HttpMessageHandler
     {
+        /// <summary>Retorna a lista fixa de modelos para qualquer requisição do probe.</summary>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -44,9 +47,11 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
     }
 
     private readonly Fixture _factory;
+
+    /// <summary>Guarda a fixture compartilhada do host de teste.</summary>
     public ChatSettingsApiTests(Fixture factory) => _factory = factory;
 
-    /// <summary>Shared fixture DB — resets chat settings so tests are order-independent.</summary>
+    /// <summary>Retorna um client autenticado com a config de chat limpa — testes independentes de ordem.</summary>
     private async Task<HttpClient> AuthedCleanAsync()
     {
         var http = await TestAuth.LoginAsync(_factory);
@@ -54,6 +59,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         return http;
     }
 
+    /// <summary>GET /api/settings/chat sem autenticação retorna 401.</summary>
     [Fact]
     public async Task Anonymous_Get_Returns401()
     {
@@ -62,6 +68,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
             (await anon.GetAsync("/api/settings/chat")).StatusCode);
     }
 
+    /// <summary>Sem config persistida nem env, o GET reporta provider/source "none".</summary>
     [Fact]
     public async Task Get_NoConfig_SourceNone()
     {
@@ -74,6 +81,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.False(doc.RootElement.GetProperty("envConfigured").GetBoolean());
     }
 
+    /// <summary>PUT com endpoint que não é URI http(s) absoluta retorna 400.</summary>
     [Fact]
     public async Task Put_InvalidEndpoint_400()
     {
@@ -83,6 +91,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
     }
 
+    /// <summary>PUT sem model retorna 400.</summary>
     [Fact]
     public async Task Put_MissingModel_400()
     {
@@ -92,6 +101,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
     }
 
+    /// <summary>PUT persiste a config; o GET mostra source "store" e key mascarada, sem ecoar o segredo.</summary>
     [Fact]
     public async Task Put_ThenGet_StoreSource_MaskedKey_NeverEchoed()
     {
@@ -116,6 +126,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.NotEqual(JsonValueKind.Null, root.GetProperty("updatedAt").ValueKind);
     }
 
+    /// <summary>PUT sem apiKey preserva a key já armazenada.</summary>
     [Fact]
     public async Task Put_BlankApiKey_KeepsStoredKey()
     {
@@ -133,6 +144,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.Equal("store", doc.RootElement.GetProperty("apiKeySource").GetString());
     }
 
+    /// <summary>DELETE /chat/apikey remove só a key — endpoint/model persistidos continuam.</summary>
     [Fact]
     public async Task Delete_ApiKey_RemovesKeyOnly()
     {
@@ -149,6 +161,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.Equal("store", doc.RootElement.GetProperty("source").GetString()); // endpoint/model persist
     }
 
+    /// <summary>DELETE /chat limpa a config persistida e volta ao env.</summary>
     [Fact]
     public async Task Delete_Chat_ResetsToEnv()
     {
@@ -164,6 +177,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.False(doc.RootElement.GetProperty("hasApiKey").GetBoolean());
     }
 
+    /// <summary>POST /chat/test sem endpoint configurável responde 200 com ok=false.</summary>
     [Fact]
     public async Task Test_NoEndpoint_OkFalse()
     {
@@ -175,6 +189,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
     }
 
+    /// <summary>POST /chat/test com endpoint inválido retorna 400.</summary>
     [Fact]
     public async Task Test_InvalidEndpoint_400()
     {
@@ -184,6 +199,7 @@ public class ChatSettingsApiTests : IClassFixture<ChatSettingsApiTests.Fixture>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    /// <summary>POST /chat/test com probe stubado: modelListed true quando o model está no catálogo.</summary>
     [Fact]
     public async Task Test_StubbedProbe_ModelListedFlag()
     {

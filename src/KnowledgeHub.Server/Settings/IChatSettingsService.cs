@@ -5,39 +5,39 @@ using Microsoft.Extensions.AI;
 namespace KnowledgeHub.Server.Settings;
 
 /// <summary>
-/// Effective chat-provider configuration and runtime client
-/// (SPEC-20260916-settings-chat-config RF-002/RF-003). A stored
-/// <c>ChatSettings</c> row overrides env <c>Chat:*</c> for endpoint/model and
-/// implies provider <c>openai</c>; the API key resolves store → env. Mutations
-/// call <see cref="Invalidate"/> so the next <see cref="GetClient"/> rebuilds —
-/// no restart required.
+/// Configuração efetiva do provider de chat e resolução do client em runtime
+/// (SPEC-20260916-settings-chat-config RF-002/RF-003). Uma linha em
+/// <c>ChatSettings</c> sobrepõe o env <c>Chat:*</c> para endpoint/model e
+/// implica provider <c>openai</c>; a API key resolve store → env. Mutações
+/// chamam <see cref="Invalidate"/> para o próximo <see cref="GetClient"/>
+/// reconstruir o client — sem restart.
 /// </summary>
 public interface IChatSettingsService
 {
-    /// <summary>Effective options (store-over-env merged). Snapshot-cached.</summary>
+    /// <summary>Retorna as options efetivas (store sobre env). Cacheado por snapshot.</summary>
     ChatProviderOptions GetEffectiveOptions();
 
-    /// <summary>Client for the effective options, or null when provider=none.
-    /// Never throws on missing config — callers keep their null-tolerance.</summary>
+    /// <summary>Retorna o client das options efetivas, ou null quando provider=none.
+    /// Nunca lança por falta de config — consumidores mantêm tolerância a null.</summary>
     IChatClient? GetClient();
 
-    /// <summary>Drops the cached snapshot; next access re-reads the store.</summary>
+    /// <summary>Descarta o snapshot em cache; o próximo acesso relê o store.</summary>
     void Invalidate();
 
-    /// <summary>Masked effective state for GET /api/settings/chat — never the secret.</summary>
+    /// <summary>Retorna o estado efetivo mascarado para GET /api/settings/chat — nunca o segredo.</summary>
     Task<ChatSettingsDto> DescribeAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Upserts the single ChatSettings row; stores the key when
-    /// <paramref name="apiKey"/> is non-blank (blank keeps the stored key).</summary>
+    /// <summary>Faz upsert da linha única de ChatSettings; grava a key quando
+    /// <paramref name="apiKey"/> não é vazia (vazio mantém a key armazenada).</summary>
     Task SaveAsync(string endpoint, string model, string? apiKey, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the stored "chat" key only — env key falls back.</summary>
+    /// <summary>Remove apenas a key "chat" do store — a key de env volta a valer.</summary>
     Task RemoveKeyAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the ChatSettings row AND the stored key — full env fallback.</summary>
+    /// <summary>Remove a linha ChatSettings E a key do store — fallback total para env.</summary>
     Task ClearAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Probes GET {endpoint}/v1/models with the resolvable key;
-    /// blank request fields fall back to the effective config. Persists nothing.</summary>
+    /// <summary>Sonda GET {endpoint}/v1/models com a key resolvível; campos
+    /// vazios do request caem na config efetiva. Não persiste nada.</summary>
     Task<TestChatConnectionResponse> TestAsync(TestChatConnectionRequest request, CancellationToken cancellationToken = default);
 }
