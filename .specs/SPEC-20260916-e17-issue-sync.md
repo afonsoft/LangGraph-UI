@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (sem mudança de código; opcional `feature/Devin-20260916-e17-issue-sync` para o memory/report update) |
 | Ticket | `#69` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 

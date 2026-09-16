@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-fix-cs8604-warning` |
 | Ticket | `#72` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 

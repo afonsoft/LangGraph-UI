@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-compose-vault-mount` |
 | Ticket | `#71` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
