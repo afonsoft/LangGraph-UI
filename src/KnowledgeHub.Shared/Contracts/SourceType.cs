@@ -10,5 +10,8 @@ public enum SourceType
     ObsidianVault = 2,
     DocumentFile = 3,
     RestApi = 4,
-    SqlDatabase = 5
+    SqlDatabase = 5,
+    /// <summary>Upstream MCP server exposed through the tool catalog
+    /// (SPEC-20260917-mcp-proxy-source-type) — proxy only, not ingestible.</summary>
+    McpProxy = 6
 }

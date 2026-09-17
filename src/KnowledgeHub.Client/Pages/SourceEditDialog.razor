@@ -125,6 +125,25 @@
             <Textarea @bind-Value="Model.Query" DisplayText="Query" ShowLabel="true" rows="3" />
         </div>
     }
+    @if (Model.Type is SourceType.McpProxy)
+    {
+        <div class="col-12">
+            <BootstrapInput @bind-Value="Model.Endpoint" DisplayText="Endpoint MCP upstream *" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <Select @bind-Value="Model.Transport" Items="TransportItems" DisplayText="Transport" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.NamePrefix" DisplayText="Prefixo de tools (opcional)" ShowLabel="true" />
+        </div>
+        <div class="col-12">
+            <label class="form-label">
+                API key @(Model.HasStoredKey ? "(armazenada — em branco mantém a atual)" : "(opcional)")
+            </label>
+            <input type="password" class="form-control font-monospace" @bind="Model.ApiKey"
+                   autocomplete="new-password" placeholder="@(Model.HasStoredKey ? "••••••••" : "")" />
+        </div>
+    }
 
     <div class="col-6 col-md-3">
         <Switch @bind-Value="Model.IsActive" DisplayText="Ativa" ShowLabel="true" />
@@ -207,7 +226,7 @@
                 when string.IsNullOrWhiteSpace(Model.Path) => "Caminho é obrigatório",
             SourceType.WebPage
                 when string.IsNullOrWhiteSpace(Model.Url) => "URL é obrigatória",
-            SourceType.RestApi
+            SourceType.RestApi or SourceType.McpProxy
                 when string.IsNullOrWhiteSpace(Model.Endpoint) => "Endpoint é obrigatório",
             SourceType.SqlDatabase
                 when string.IsNullOrWhiteSpace(Model.ConnectionString) => "Connection string é obrigatória",
@@ -217,7 +236,11 @@
 
     /// <summary>Config keys owned by this form — removed before re-adding so stale keys don't survive a type switch.</summary>
     private static readonly string[] ManagedKeys =
-        ["path", "url", "endpoint", "headers", "connectionString", "query", "readOnly"];
+        ["path", "url", "endpoint", "headers", "connectionString", "query", "readOnly",
+         "transport", "namePrefix", "apiKey", "hasKey"];
+
+    private static readonly List<SelectedItem> TransportItems =
+        [new("auto", "auto"), new("http", "http"), new("sse", "sse")];
 
     /// <summary>
     /// Builds the JsonObject configuration payload: starts from the original
@@ -249,6 +272,17 @@
                 if (!string.IsNullOrWhiteSpace(Model.Query))
                     config["query"] = Model.Query;
                 break;
+            case SourceType.McpProxy:
+                config["endpoint"] = Model.Endpoint;
+                if (!string.IsNullOrWhiteSpace(Model.Transport) && Model.Transport != "auto")
+                    config["transport"] = Model.Transport;
+                if (!string.IsNullOrWhiteSpace(Model.NamePrefix))
+                    config["namePrefix"] = Model.NamePrefix;
+                // Empty keeps the stored key; non-empty replaces it (server moves
+                // the value to the encrypted store — never persisted in config).
+                if (!string.IsNullOrEmpty(Model.ApiKey))
+                    config["apiKey"] = Model.ApiKey;
+                break;
         }
 
         if (Model.Type is SourceType.ObsidianVault && Model.ReadOnly)
@@ -273,6 +307,13 @@
         public string? Headers { get; set; }
         public string? ConnectionString { get; set; }
         public string? Query { get; set; }
+        public string? ApiKey { get; set; }
+        public string? NamePrefix { get; set; }
+        public string Transport { get; set; } = "auto";
+
+        /// <summary>True when the source already has an API key in the
+        /// encrypted store (McpProxy) — the value itself is never returned.</summary>
+        public bool HasStoredKey => ReadBool(OriginalConfiguration, "hasKey");
 
         /// <summary>Snapshot of the stored configuration — lets BuildConfiguration preserve unknown keys.</summary>
         public JsonObject? OriginalConfiguration { get; set; }
@@ -293,6 +334,8 @@
             Headers = dto.Configuration?["headers"]?.GetValue<string>(),
             ConnectionString = dto.Configuration?["connectionString"]?.GetValue<string>(),
             Query = dto.Configuration?["query"]?.GetValue<string>(),
+            NamePrefix = dto.Configuration?["namePrefix"]?.GetValue<string>(),
+            Transport = dto.Configuration?["transport"]?.GetValue<string>() ?? "auto",
             OriginalConfiguration = dto.Configuration?.DeepClone() as JsonObject
         };
 

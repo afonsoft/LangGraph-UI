@@ -123,6 +123,48 @@ public class SourcesApiTests : IClassFixture<SourcesApiTests.Fixture>
     }
 
     [Fact]
+    public async Task Post_McpProxy_KeyGoesToSecretStore_NeverEchoed()
+    {
+        // SPEC-20260917-mcp-proxy-source-type RF-001/RF-003: apiKey is lifted
+        // to the encrypted store; GET returns only hasKey.
+        var response = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"mcp-{Guid.NewGuid():N}",
+            type = "McpProxy",
+            configuration = new { endpoint = "https://mcp.example.com/mcp", apiKey = "secret-key-1", namePrefix = "ex_" }
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var created = await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>();
+        Assert.NotNull(created);
+        Assert.False(created!.Configuration!.ContainsKey("apiKey"));
+        Assert.True(created.Configuration["hasKey"]!.GetValue<bool>());
+
+        var raw = await _client.GetStringAsync($"/api/sources/{created.Id}");
+        Assert.DoesNotContain("secret-key-1", raw);
+    }
+
+    [Fact]
+    public async Task Post_McpProxy_InvalidEndpointOrTransport_Returns400()
+    {
+        var badEndpoint = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"mcp-bad-{Guid.NewGuid():N}",
+            type = "McpProxy",
+            configuration = new { endpoint = "ftp://x" }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, badEndpoint.StatusCode);
+
+        var badTransport = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"mcp-bad2-{Guid.NewGuid():N}",
+            type = "McpProxy",
+            configuration = new { endpoint = "https://x.example/mcp", transport = "grpc" }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, badTransport.StatusCode);
+    }
+
+    [Fact]
     public async Task Deactivate_ExcludesSourceFromSearch()
     {
         var name = $"deact-{Guid.NewGuid():N}";

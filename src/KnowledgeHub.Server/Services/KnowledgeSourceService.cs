@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Server.Mcp;
+using KnowledgeHub.Server.Mcp.Upstream;
+using KnowledgeHub.Server.Settings;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +13,8 @@ namespace KnowledgeHub.Server.Services;
 /// <summary>CRUD + validation + secret redaction for knowledge sources (SPEC-02 RF-001/RF-002).</summary>
 public sealed class KnowledgeSourceService(
     KnowledgeHubDbContext db,
-    IToolCatalogChangeNotifier catalogNotifier) : IKnowledgeSourceService
+    IToolCatalogChangeNotifier catalogNotifier,
+    IIntegrationSecretStore secrets) : IKnowledgeSourceService
 {
     /// <summary>Config keys that must never be echoed back to API consumers.</summary>
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -24,7 +27,8 @@ public sealed class KnowledgeSourceService(
         [SourceType.WebPage] = ["url"],
         [SourceType.RestApi] = ["endpoint"],
         [SourceType.SqlDatabase] = ["connectionString", "query"],
-        [SourceType.DocumentFile] = ["path"]
+        [SourceType.DocumentFile] = ["path"],
+        [SourceType.McpProxy] = ["endpoint"]
     };
 
     public async Task<IReadOnlyList<KnowledgeSourceDto>> ListAsync(SourceType? type, bool? active, CancellationToken ct = default)
@@ -61,6 +65,7 @@ public sealed class KnowledgeSourceService(
             SyncIntervalMinutes = request.SyncIntervalMinutes
         };
         db.Sources.Add(source);
+        await PersistProxySecretAsync(source, request.Configuration, ct);
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
@@ -85,6 +90,7 @@ public sealed class KnowledgeSourceService(
         source.IsActive = request.IsActive;
         source.AutoSyncEnabled = request.AutoSyncEnabled;
         source.SyncIntervalMinutes = request.SyncIntervalMinutes;
+        await PersistProxySecretAsync(source, request.Configuration, ct);
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
@@ -96,6 +102,8 @@ public sealed class KnowledgeSourceService(
         if (source is null)
             return ServiceResult<bool>.Fail(404, "Source not found");
         db.Sources.Remove(source); // cascade removes documents + chunks
+        if (source.SourceType == SourceType.McpProxy)
+            await secrets.RemoveAsync(McpProxySession.SecretKey(source.Id), ct);
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
         return ServiceResult<bool>.Ok(true);
@@ -110,6 +118,43 @@ public sealed class KnowledgeSourceService(
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
+    }
+
+    /// <summary>Moves <c>configuration.apiKey</c> to the encrypted store for
+    /// McpProxy sources (SPEC-20260917-mcp-proxy-source-type RF-003): the
+    /// persisted configuration keeps only a non-sensitive <c>hasKey</c> flag.
+    /// An absent <c>apiKey</c> keeps the stored key; <c>"***"</c> (the redaction
+    /// marker echoed by edited forms) also keeps it; empty removes it.</summary>
+    private async Task PersistProxySecretAsync(KnowledgeSource source, JsonObject? configuration, CancellationToken ct)
+    {
+        if (source.SourceType != SourceType.McpProxy || configuration is null)
+            return;
+
+        var config = JsonNode.Parse(source.ConfigurationJson ?? "{}") as JsonObject ?? new JsonObject();
+        config.Remove("apiKey");
+        var secretKey = McpProxySession.SecretKey(source.Id);
+
+        if (configuration.TryGetPropertyValue("apiKey", out var keyNode)
+            && keyNode?.GetValue<string>() is { } key
+            && key != "***")
+        {
+            if (key.Length == 0)
+            {
+                await secrets.RemoveAsync(secretKey, ct);
+                config["hasKey"] = false;
+            }
+            else
+            {
+                await secrets.SetAsync(secretKey, key, ct);
+                config["hasKey"] = true;
+            }
+        }
+        else
+        {
+            config["hasKey"] = await secrets.GetAsync(secretKey, ct) is not null;
+        }
+
+        source.ConfigurationJson = config.ToJsonString();
     }
 
     /// <summary>Catalog mutations must never fail the REST call — notification is best-effort.</summary>
@@ -152,6 +197,17 @@ public sealed class KnowledgeSourceService(
         {
             if (configuration[key] is null || string.IsNullOrWhiteSpace(configuration[key]?.GetValue<string>()))
                 return $"Configuration key '{key}' is required for {type}";
+        }
+
+        if (type == SourceType.McpProxy)
+        {
+            var endpoint = configuration["endpoint"]?.GetValue<string>();
+            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+                || (uri.Scheme != "http" && uri.Scheme != "https"))
+                return "Configuration key 'endpoint' must be an absolute http(s) URI for McpProxy";
+            if (configuration["transport"]?.GetValue<string>()?.ToLowerInvariant()
+                    is not (null or "auto" or "http" or "sse"))
+                return "Configuration key 'transport' must be auto|http|sse for McpProxy";
         }
         return null;
     }
