@@ -7,10 +7,10 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 6` (todos os PRs mergeados, deploy em produção concluído e validado)
+- **current_phase**: `Phase 7` (verificação final executada em 2026-09-17; PR #87 aberta p/ format gate + sync de SPECs)
 - **repository**: `afonsoft/LangGraph-UI`
-- **branch**: `main` (`03e275e`)
-- **last_updated**: `2026-09-15`
+- **branch**: `main` (`0107c70`) + `fix/Devin-20260917-format-gate` (PR #87)
+- **last_updated**: `2026-09-17`
 
 ---
 
@@ -52,7 +52,7 @@
 ### Pending Tasks
 
 ```yaml
-(none — all tasks completed; final QA review pending)
+(none — queue empty; PR #87 awaiting merge)
 ```
 
 ### Completed Tasks
@@ -186,6 +186,17 @@
   status: done
   completed_at: "2026-09-15"
   validation: "PR #52 merged 03e275e; container healthy; https://rag.afonsoft.dev smoke: index/boot.js/framework-assets/health/login 200, api anon 401"
+
+- id: TASK-011
+  desc: "Phase 7 final verification — format gate red on main (trailing whitespace McpContractTests.cs:60 from push 0107c70); 3 SPECs stale 'Approved' though delivered (settings-chat-config PR #82; api-key-settings + mobile-layout-responsive 0107c70). Fixed on fix/Devin-20260917-format-gate"
+  tier: T1
+  skill: inline
+  issue: "—"
+  depends_on: []
+  isolation: inline
+  status: done (PR #87 open, aguardando merge)
+  completed_at: "2026-09-17"
+  validation: "build 0 warnings; 231 unit + 151 integration green; dotnet format --verify-no-changes exit 0"
 ```
 
 ---
@@ -212,6 +223,9 @@
 | 2 | sqlite-vec extension for native vector search | SPEC-02 | T2 | pending_approval |
 | 3 | McpProxy SourceType — catalog-driven upstream MCP servers via /api/sources | SPEC-07 | T2 | pending_approval |
 | 4 | Upstream tools/list passthrough (re-expose devin_* private tools when ApiKey set) | SPEC-07 | T2 | pending_approval |
+| 5 | `install.sh --systemd` nunca verificado em host real (requer mutação de sistema — aprovação) | gap-analysis-20260916 | T3 | pending_approval |
+| 6 | SSE E2E autenticado via https://rag.afonsoft.dev (requer credencial) | gap-analysis-20260916 | T2 | pending_approval |
+| 7 | Cleanup de branches mergeadas: 10 locais + 13 remotas | Phase 7 (2026-09-17) | T1 | pending_approval |
 
 ---
 
@@ -223,9 +237,9 @@
 
 ## Metrics
 
-- **tasks_started**: `10`
-- **tasks_completed**: `10`
+- **tasks_started**: `11`
+- **tasks_completed**: `11`
 - **tasks_blocked**: `0`
 - **human_interventions**: `7`
-- **validation_failures**: `1` (compose empty env → container crash-loop; fixed by TASK-010, PR #52)
+- **validation_failures**: `2` (compose empty env → TASK-010/PR #52; format gate red on main → TASK-011/PR #87)
 - **estimated_remaining_minutes**: `0`
