@@ -67,3 +67,7 @@ knowledgehub.db
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Agent harness local overrides (never versioned)
+.devin/
+.claude/settings.local.json
