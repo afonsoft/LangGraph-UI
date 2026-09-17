@@ -42,3 +42,11 @@ context — see `.agents/skills/orchestrator/SKILL.md` Phase 8.
   gate via API, não via test push.
 - `dotnet format` não aceita `--nologo`.
 - Todo push reinicia CI — batchar mudanças num commit antes do merge.
+
+## 2026-09-17 — Epic #106 feature SPECs
+
+- Executadas 4/6 SPECs aprovadas via execute-specs: #110→PR#113, #109→PR#114, #107→PR#115, #108→PR#116. Todas mergeadas; issues fechadas com evidência.
+- main @ 906a11a — 271 unit + 153 integration verdes, format gate 0.
+- Re-deploy: `install.sh --docker` rebuildou imagem; container recriado via `docker compose up -d` (install.sh não propaga .env/volumes — registrado como limitação conhecida). Healthy em :5550.
+- Bloqueados: #111 (host systemd+sudo), #112 (aft_* prod).
+- Incidente: commit inicial da #108 incluiu models/*.onnx (90MB) porque a branch veio de main sem o .gitignore do ONNX — revertido via amend + force-push antes do merge.
