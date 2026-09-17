@@ -201,6 +201,10 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>();
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>());
+
+        // SPEC-20260917-mcp-proxy-source-type: generic upstream MCP proxies
+        // driven by McpProxy sources (tools re-exposed with slug prefix).
+        services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.Upstream.McpProxyToolsProvider>();
         services.AddSingleton<KnowledgeHub.Server.Mcp.ToolProviders.SettingsToolsProvider>();
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.ToolProviders.SettingsToolsProvider>());
