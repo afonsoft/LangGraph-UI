@@ -22,4 +22,8 @@ public sealed class DeepWikiOptions
 
     /// <summary>Per-call timeout — ask_question is LLM-backed upstream.</summary>
     public int TimeoutSeconds { get; set; } = 60;
+
+    /// <summary>TTL for the cached upstream tools/list used by the dynamic
+    /// merge in private mode (SPEC-20260917-upstream-tools-passthrough).</summary>
+    public int ToolsCacheSeconds { get; set; } = 300;
 }

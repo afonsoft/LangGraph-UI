@@ -85,6 +85,17 @@ public sealed class DeepWikiUpstreamClient(
         return result;
     }
 
+    /// <summary>Upstream tools/list — verbatim names + schemas for the dynamic
+    /// merge in private mode (SPEC-20260917-upstream-tools-passthrough RF-001).
+    /// Throws on transport failure; callers apply cache/fallback.</summary>
+    public async Task<IList<McpClientTool>> ListToolsAsync(CancellationToken cancellationToken)
+    {
+        var client = await GetClientAsync(cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+        return await client.ListToolsAsync(cancellationToken: timeout.Token);
+    }
+
     private async Task<McpClient> GetClientAsync(CancellationToken cancellationToken)
     {
         var apiKey = await ResolveApiKeyAsync(cancellationToken);

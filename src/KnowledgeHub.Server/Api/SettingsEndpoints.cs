@@ -192,6 +192,7 @@ public static class SettingsEndpoints
                 break;
             case IntegrationProviders.DeepWiki:
                 await services.GetRequiredService<DeepWikiUpstreamClient>().ResetAsync();
+                services.GetRequiredService<DeepWikiToolsProvider>().InvalidateToolsCache();
                 break;
             case IntegrationProviders.Tavily:
                 await services.GetRequiredService<TavilyUpstreamClient>().ResetAsync();
