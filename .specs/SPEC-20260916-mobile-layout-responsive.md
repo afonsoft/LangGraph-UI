@@ -9,7 +9,7 @@
 | Stack | `.NET 10 / Blazor WebAssembly + BootstrapBlazor` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-mobile-layout-responsive` |
-| Status | `Approved` |
+| Status | `Done` — entregue em `main` (`0107c70`); `MainLayout`/`NavMenu` responsivos, `app.css` breakpoints e páginas ajustadas |
 
 ## 1. User Story
 
