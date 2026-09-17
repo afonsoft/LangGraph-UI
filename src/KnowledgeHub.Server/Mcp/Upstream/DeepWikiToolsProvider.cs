@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -12,11 +13,31 @@ namespace KnowledgeHub.Server.Mcp.Upstream;
 /// DeepWiki proxy tools (SPEC-07 RF-002/RF-003/RF-004) — names are
 /// byte-identical to upstream (transparent bypass): ask_question,
 /// read_wiki_structure, read_wiki_contents.
+/// SPEC-20260917-upstream-tools-passthrough: in private mode (effective API
+/// key present) the upstream <c>tools/list</c> is merged in verbatim — names
+/// and inputSchema identical to upstream, including the private
+/// <c>devin_*</c> tools — while public mode keeps the static core only.
+/// Dynamic entries are authoritative on name collisions and cached for
+/// <see cref="DeepWikiOptions.ToolsCacheSeconds"/>; last-known-good wins on
+/// discovery failures.
 /// </summary>
 public sealed partial class DeepWikiToolsProvider(
     DeepWikiUpstreamClient upstream,
-    IOptions<DeepWikiOptions> options) : IToolProvider
+    IOptions<DeepWikiOptions> options,
+    ILogger<DeepWikiToolsProvider> logger) : IToolProvider
 {
+    internal const string NoKeyMessage =
+        "DeepWiki API key not configured — open Settings (/settings) or set DeepWiki__ApiKey.";
+
+    private readonly DeepWikiOptions _options = options.Value;
+    private readonly SemaphoreSlim _cacheGate = new(1, 1);
+    private IReadOnlyList<CatalogTool>? _dynamicTools;
+    private DateTimeOffset _cacheExpiresAt = DateTimeOffset.MinValue;
+
+    /// <summary>Test seam — supplies upstream protocol tools without a live
+    /// <see cref="McpClient"/> session.</summary>
+    internal Func<CancellationToken, Task<IReadOnlyList<Tool>>>? DynamicToolsSource { get; set; }
+
     private static readonly JsonObject AskSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "repoName":{"anyOf":[{"type":"string"},{"type":"array","items":{"type":"string"},"maxItems":10}],
@@ -42,12 +63,107 @@ public sealed partial class DeepWikiToolsProvider(
     [GeneratedRegex(@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")]
     private static partial Regex RepoNamePattern();
 
-    public Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
-        if (!options.Value.Enabled)
-            return Task.FromResult<IReadOnlyList<CatalogTool>>([]);
+        if (!_options.Enabled)
+            return [];
 
-        IReadOnlyList<CatalogTool> tools =
+        var tools = new Dictionary<string, CatalogTool>(StringComparer.Ordinal);
+        foreach (var tool in StaticCoreTools())
+            tools[tool.Name] = tool;
+
+        // Dynamic merge only exists in private mode — without a key the public
+        // endpoint exposes the same static set.
+        if (await upstream.HasApiKeyAsync(cancellationToken))
+            foreach (var tool in await GetDynamicToolsAsync(cancellationToken))
+                tools[tool.Name] = tool;
+
+        return [.. tools.Values];
+    }
+
+    /// <summary>Drops the cached upstream tools/list — called when the
+    /// integration secret changes via Settings.</summary>
+    public void InvalidateToolsCache()
+    {
+        _cacheGate.Wait();
+        try
+        {
+            _dynamicTools = null;
+            _cacheExpiresAt = DateTimeOffset.MinValue;
+        }
+        finally
+        {
+            _cacheGate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<CatalogTool>> GetDynamicToolsAsync(CancellationToken cancellationToken)
+    {
+        if (_dynamicTools is not null && DateTimeOffset.UtcNow < _cacheExpiresAt)
+            return _dynamicTools;
+
+        await _cacheGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_dynamicTools is not null && DateTimeOffset.UtcNow < _cacheExpiresAt)
+                return _dynamicTools;
+
+            try
+            {
+                var protocolTools = DynamicToolsSource is { } source
+                    ? await source(cancellationToken)
+                    : (await upstream.ListToolsAsync(cancellationToken))
+                        .Select(t => t.ProtocolTool).ToList();
+                _dynamicTools = protocolTools.Select(MapTool).ToList();
+                _cacheExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.ToolsCacheSeconds);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // last-known-good wins; empty when nothing was ever fetched.
+                logger.LogWarning(ex, "deepwiki tools/list failed — serving cached/static set");
+            }
+            return _dynamicTools ?? [];
+        }
+        finally
+        {
+            _cacheGate.Release();
+        }
+    }
+
+    private CatalogTool MapTool(Tool proto)
+    {
+        var schema = JsonNode.Parse(proto.InputSchema.GetRawText()) as JsonObject
+            ?? new JsonObject { ["type"] = "object" };
+        var name = proto.Name;
+        return new CatalogTool
+        {
+            Name = name,
+            Description = proto.Description ?? $"DeepWiki tool {name} (proxied).",
+            InputSchema = schema,
+            // Absent upstream hint → not read-only: private-mode tools
+            // (devin_session_*, …) mutate remote state, so the Playground
+            // keeps the write-confirm gate unless upstream says otherwise.
+            ReadOnly = proto.Annotations?.ReadOnlyHint ?? false,
+            Handler = (ctx, ct) => DispatchAsync(name, ctx, ct)
+        };
+    }
+
+    /// <summary>Shared dispatch for dynamically discovered tools: friendly
+    /// isError when the key was removed after listing, transparent passthrough
+    /// otherwise.</summary>
+    private async ValueTask<CallToolResult> DispatchAsync(
+        string toolName, ToolCallContext ctx, CancellationToken ct)
+    {
+        if (!await upstream.HasApiKeyAsync(ct))
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = NoKeyMessage }]
+            };
+        return await upstream.CallAsync(toolName, ctx.Arguments, ct);
+    }
+
+    private IReadOnlyList<CatalogTool> StaticCoreTools() =>
         [
             new CatalogTool
             {
@@ -87,8 +203,6 @@ public sealed partial class DeepWikiToolsProvider(
                 }
             }
         ];
-        return Task.FromResult(tools);
-    }
 
     /// <summary>
     /// Client-side validation (SPEC-07 RF-004): repoName is a string or

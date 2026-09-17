@@ -106,6 +106,9 @@ public static class ConfigurationValidator
 
         if (section["TimeoutSeconds"] is { } t && (!int.TryParse(t, out var ts) || ts <= 0))
             problems.Add($"DeepWiki:TimeoutSeconds '{t}' must be a positive integer");
+
+        if (section["ToolsCacheSeconds"] is { } tc && (!int.TryParse(tc, out var tcs) || tcs <= 0))
+            problems.Add($"DeepWiki:ToolsCacheSeconds '{tc}' must be a positive integer");
     }
 
     private static void ValidateFirecrawl(IConfiguration cfg, List<string> problems)

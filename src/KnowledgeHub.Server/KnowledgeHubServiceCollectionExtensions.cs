@@ -157,7 +157,9 @@ public static class KnowledgeHubServiceCollectionExtensions
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.DeepWikiOptions.SectionName).Bind(options));
         services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.DeepWikiUpstreamClient>();
-        services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.Upstream.DeepWikiToolsProvider>();
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.DeepWikiToolsProvider>();
+        services.AddSingleton<IToolProvider>(sp =>
+            sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.DeepWikiToolsProvider>());
 
         // SPEC-20260916-firecrawl-mcp-proxy: Firecrawl proxy tools (firecrawl_*).
         // Concrete-type registration lets SettingsEndpoints reset the client and
