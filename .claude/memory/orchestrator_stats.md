@@ -7,9 +7,9 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 7` (verificação final executada em 2026-09-17; PR #87 aberta p/ format gate + sync de SPECs)
+- **current_phase**: `Phase 8` (Epic #90 gap-analysis-20260917 executado; resta merge da PR #98 + fechamento da Epic)
 - **repository**: `afonsoft/LangGraph-UI`
-- **branch**: `main` (`0107c70`) + `fix/Devin-20260917-format-gate` (PR #87)
+- **branch**: `main` (`00f1c18`) — protegida (PR + 5 status checks obrigatórios)
 - **last_updated**: `2026-09-17`
 
 ---
@@ -52,7 +52,7 @@
 ### Pending Tasks
 
 ```yaml
-(none — queue empty; PR #87 awaiting merge)
+(none — queue empty; Epic #90 slices entregues, PR #98 aguardando checks)
 ```
 
 ### Completed Tasks
@@ -194,9 +194,92 @@
   issue: "—"
   depends_on: []
   isolation: inline
-  status: done (PR #87 open, aguardando merge)
+  status: done
   completed_at: "2026-09-17"
-  validation: "build 0 warnings; 231 unit + 151 integration green; dotnet format --verify-no-changes exit 0"
+  validation: "build 0 warnings; 231 unit + 151 integration green; dotnet format --verify-no-changes exit 0; PR #87 merged 5c1f79b"
+
+- id: TASK-012
+  desc: "Skills catalog sync → skills.sh canonical layout (.agents/skills real + .claude/skills symlinks); execute-spec→execute-specs, +gap-analysis; skills-lock.json regen"
+  tier: T2
+  skill: npx skills CLI
+  issue: "—"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-17"
+  validation: "PR #88 merged cd662d0; 23 skills, hashes pinned"
+
+- id: TASK-013
+  desc: "Gap-analysis 20260917: 13 candidatos → 5 CONFIRMADO, 4 DUPLICADO, 2 INCONCLUSIVO, 2 REJEITADO; 5 SPECs aprovados; Epic #90 + issues #91–#95"
+  tier: T2
+  skill: /gap-analysis
+  spec_ref: ".specs/SPEC-20260917-*.md"
+  issue: "#90 (Epic)"
+  depends_on: [TASK-012]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-17"
+  validation: "report .claude/memory/gap-analysis-20260917.md; PR #89 merged 7f3c261"
+
+- id: TASK-014
+  desc: "S1 merge-pending-prs — #87 + #88 + #89 mergeadas; format gate exit 0 em main"
+  tier: T1
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260917-merge-pending-prs.md"
+  issue: "#91"
+  depends_on: [TASK-013]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-17"
+  validation: "gh pr list vazio; format exit 0 em main 7f3c261"
+
+- id: TASK-015
+  desc: "S3 merged-branch-cleanup — 13 locais + 16 remotas deletadas; 0 merged residuais; 2 unmerged mantidas"
+  tier: T1
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260917-merged-branch-cleanup.md"
+  issue: "#93"
+  depends_on: [TASK-014]
+  isolation: inline
+  status: done
+  completed_at: "2026-09-17"
+  validation: "git branch --merged → 0; -r --merged → 0"
+
+- id: TASK-016
+  desc: "S5 readme-feature-sync — /api/settings/chat*, per-key settings, set_api_key_settings, mobile no README"
+  tier: T1
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260917-readme-feature-sync.md"
+  issue: "#95"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-17"
+  validation: "PR #96 merged 00f1c18; grep confirma cobertura"
+
+- id: TASK-017
+  desc: "S2 branch-protection — main: PR obrigatório + 5 status checks; enforce_admins=false; doc em CLAUDE.md via PR #97 (dogfooding do gate)"
+  tier: T3
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260917-branch-protection.md"
+  issue: "#92"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-17"
+  validation: "gh api .../protection → 200 com contexts; PR #97 merged via o próprio gate"
+
+- id: TASK-018
+  desc: "S4 harness-files — opção (a): .claude/settings.json + rules/ + agents/ + CONTEXT/RULES/MEMORY/TOOLS/WORKFLOWS/README + memory protocol"
+  tier: T2
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260917-harness-files.md"
+  issue: "#94"
+  depends_on: []
+  isolation: inline
+  status: done (PR #98 open, aguardando checks)
+  completed_at: "2026-09-17"
+  validation: "validate-harness.sh PASS; settings.json válido"
 ```
 
 ---
@@ -225,7 +308,7 @@
 | 4 | Upstream tools/list passthrough (re-expose devin_* private tools when ApiKey set) | SPEC-07 | T2 | pending_approval |
 | 5 | `install.sh --systemd` nunca verificado em host real (requer mutação de sistema — aprovação) | gap-analysis-20260916 | T3 | pending_approval |
 | 6 | SSE E2E autenticado via https://rag.afonsoft.dev (requer credencial) | gap-analysis-20260916 | T2 | pending_approval |
-| 7 | Cleanup de branches mergeadas: 10 locais + 13 remotas | Phase 7 (2026-09-17) | T1 | pending_approval |
+| 7 | ~~Cleanup de branches mergeadas~~ — entregue via SPEC-20260917-merged-branch-cleanup (#93) | Phase 7 (2026-09-17) | T1 | done |
 
 ---
 
@@ -237,9 +320,9 @@
 
 ## Metrics
 
-- **tasks_started**: `11`
-- **tasks_completed**: `11`
+- **tasks_started**: `19`
+- **tasks_completed**: `19`
 - **tasks_blocked**: `0`
-- **human_interventions**: `7`
+- **human_interventions**: `9`
 - **validation_failures**: `2` (compose empty env → TASK-010/PR #52; format gate red on main → TASK-011/PR #87)
 - **estimated_remaining_minutes**: `0`
