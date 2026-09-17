@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (deleção de branches) |
 | Ticket | #100 |
-| Status | `Approved` |
+| Status | `Done` — branches superseded deletadas (local+remote) após verificação de conteúdo; só main ativa |
 
 ## 1. User Story
 

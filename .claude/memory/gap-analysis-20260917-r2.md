@@ -1,7 +1,7 @@
 # Gap Analysis — 20260917 r2 (re-run pós-Epic #90)
 
 - Repository: /home/ubuntu/repos/LangGraph-UI | Branch: main | Commit: 524947b
-- Phase reached: gate (aguardando aprovação)
+- Phase reached: done — 2/2 gaps entregues (PRs #102, #103 mergeadas)
 - Mode: delta — re-audit após entrega da Epic #90
 - Build/format: `dotnet format --verify-no-changes` exit 0 em main; última baseline 231 unit + 151 integration green.
 - Prior runs: gap-analysis-20260914.md, gap-analysis-20260916.md, gap-analysis-20260917.md (5/5 ENTREGUE)
@@ -24,8 +24,8 @@
 
 | Key | Category | Verdict | Priority | Spec | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| GAP-operation-stale-branch-cleanup | operation | CONFIRMADO | low | SPEC-20260917-stale-branch-cleanup | 1 remota merged resíduo + 2 branches superseded (conteúdo em main: rename Knowledge, McpMonitorDtos/Mapper/ReplayTests, mobile+per-key via 0107c70) |
-| GAP-operation-gitignore-harness | operation | CONFIRMADO | low | SPEC-20260917-gitignore-harness-hygiene | `grep .gitignore` → 0 match p/ `.devin/` e `.claude/settings.local.json`; create-agent-harness §3.10 declara local não-versionado |
+| GAP-operation-stale-branch-cleanup | operation | CONFIRMADO → ENTREGUE | low | SPEC-20260917-stale-branch-cleanup (#100) | 3 branches deletadas após verificação de conteúdo (deltas = main mais novo); `git branch -a` → só main |
+| GAP-operation-gitignore-harness | operation | CONFIRMADO → ENTREGUE | low | SPEC-20260917-gitignore-harness-hygiene (#101) | `.devin/` + `.claude/settings.local.json` no .gitignore (PR #103); check-ignore confirma |
 | GAP-docs-orchestrator-roadmap | documentation | REJEITADO | — | — | ABSENT mas nenhum doc/CLAUDE.md/skill o referencia — sem TO-BE |
 | GAP-tests-suite-health | tests | REJEITADO | — | — | 231+151 baseline verde; format exit 0 |
 | GAP-automation-branch-protection | automation | REJEITADO | — | — | agora ativa: 5 required contexts (gh api 200) |
@@ -39,7 +39,7 @@
 
 ## 3. Approval gate
 
-- Aguardando aprovação dos 2 SPECs Draft: stale-branch-cleanup, gitignore-harness-hygiene.
+- Aprovado ("sim", 2026-09-17). Epic #99 + slices #100/#101 — todas fechadas com evidência.
 
 ## 4. Pendencies
 
