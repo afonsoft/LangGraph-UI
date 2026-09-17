@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-tools-passthrough` |
 | Ticket | #110 |
-| Status | `Approved` |
+| Status | `Done — PR #113 (ea2276c)` |
 
 ## 1. User Story
 
