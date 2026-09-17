@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": ["Read", "Grep", "Glob"],
+    "ask": [
+      "Edit",
+      "Write",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git branch -d:*)",
+      "Bash(git branch -D:*)",
+      "Bash(git push origin --delete:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh api -X DELETE:*)",
+      "Bash(gh api -X PUT:*)",
+      "Bash(dotnet ef database:*)",
+      "Bash(dotnet ef migrations:*)",
+      "Bash(./install.sh:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker rm:*)",
+      "Bash(rm:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(**/*.key)",
+      "Read(**/*.pem)",
+      "Edit(./.github/workflows/**)",
+      "Write(./.github/workflows/**)",
+      "Edit(./.env)",
+      "Write(./.env)"
+    ]
+  },
+  "hooks": {}
+}
