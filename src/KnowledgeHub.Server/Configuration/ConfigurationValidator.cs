@@ -2,6 +2,7 @@ using KnowledgeHub.Server.Auth;
 using KnowledgeHub.Server.Chat;
 using KnowledgeHub.Server.Embeddings;
 using KnowledgeHub.Server.Mcp.Upstream;
+using Microsoft.Data.Sqlite;
 
 namespace KnowledgeHub.Server.Configuration;
 
@@ -17,7 +18,7 @@ public static class ConfigurationValidator
         { "deterministic", "ollama", "openai", "onnx" };
 
     private static readonly HashSet<string> VectorStoreProviders = new(StringComparer.OrdinalIgnoreCase)
-        { "sqlite", "postgres" };
+        { "sqlite", "sqlite-vec", "postgres" };
 
     private static readonly HashSet<string> ChatProviders = new(StringComparer.OrdinalIgnoreCase)
         { "none", "ollama", "openai" };
@@ -102,11 +103,29 @@ public static class ConfigurationValidator
         var section = cfg.GetSection("VectorStore");
         var provider = section["Provider"];
         if (!string.IsNullOrWhiteSpace(provider) && !VectorStoreProviders.Contains(provider))
-            problems.Add($"VectorStore:Provider '{provider}' is invalid (expected: sqlite | postgres)");
+            problems.Add($"VectorStore:Provider '{provider}' is invalid (expected: sqlite | sqlite-vec | postgres)");
 
         if (provider?.Equals("postgres", StringComparison.OrdinalIgnoreCase) == true
             && string.IsNullOrWhiteSpace(section["ConnectionString"]))
             problems.Add("VectorStore:ConnectionString is required when VectorStore:Provider=postgres");
+
+        // SPEC-20260917-sqlite-vec-search CA-002: the extension is native and
+        // RID-specific — probe it at startup so a missing lib fails loudly.
+        if (provider?.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            try
+            {
+                using var probe = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+                probe.Open();
+                probe.LoadVector();
+            }
+            catch (Exception ex)
+            {
+                problems.Add(
+                    "VectorStore:Provider=sqlite-vec requires the sqlite-vec native extension, " +
+                    $"which could not be loaded on this runtime: {ex.Message}");
+            }
+        }
     }
 
     private static void ValidateDeepWiki(IConfiguration cfg, List<string> problems)
