@@ -19,4 +19,5 @@ public sealed class ApiKey
     public DateTimeOffset? LastUsedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
     public List<ApiKeyUsageEvent> UsageEvents { get; set; } = [];
+    public ApiKeyChatSettings? ChatSettings { get; set; }
 }
