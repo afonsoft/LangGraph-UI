@@ -31,14 +31,14 @@ Features implementadas (todas as SPECs em `.specs/` estão `Done`): catálogo di
 
 ## Skills Registradas
 
-As skills ficam em `.claude/skills/<skill-name>/SKILL.md` e são fixadas via `skills-lock.json` com `computedHash` SHA-256 (origem: `https://github.com/afonsoft/skills`, branch `skills/...`). Para atualizar uma skill, regere o hash e atualize o lockfile mantendo a mesma estrutura.
+As skills são gerenciadas pelo CLI `skills` (skills.sh): o store canônico fica em `.agents/skills/<skill-name>/` (gitignored) e `.claude/skills/<skill-name>` é um symlink para ele. O `skills-lock.json` fixa cada skill com `computedHash` SHA-256 (origem: `https://github.com/afonsoft/skills`, branch `skills/...`). Para atualizar: `npx skills update -p -y` (existentes) e `npx skills add afonsoft/skills -s <nome> -y` (novas); para restaurar após clone: `npx skills experimental_install`.
 
 ## Workflow Recomendado
 
-O fluxo do agent-loop definido em `.claude/skills/write-specs/` → `execute-spec/` → `create-issues/` é o caminho canônico para novas funcionalidades:
+O fluxo do agent-loop definido em `.claude/skills/write-specs/` → `execute-specs/` → `create-issues/` é o caminho canônico para novas funcionalidades:
 
 1. `/write-specs` — estabelecer linguagem compartilhada, domínio e SPEC SDD.
-2. `/execute-spec` — executar tarefas a partir do SPEC aprovado.
+2. `/execute-specs` — executar tarefas a partir do SPEC aprovado.
 3. `/create-issues` — quando o trabalho precisa ser fragmentado em tickets.
 
 Para revisão: `/code-review`, `/simplify` ou invoque `code-review-and-quality` / `quality-test-implementation` / `qa-analyst` diretamente. Para arquitetura: `drawio-architecture` ou `mermaid-architecture`.
