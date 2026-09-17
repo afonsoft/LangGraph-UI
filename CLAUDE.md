@@ -46,6 +46,7 @@ Para revisão: `/code-review`, `/simplify` ou invoque `code-review-and-quality` 
 ## Convenções
 
 - **Branches**: `feature/{AgentLLM}-{YYYYMMDD}-{descricao-curta}` baseada em `main`. Nunca commitar em `main`, `master` ou `develop`.
+- **Branch protection**: `main` tem proteção ativa no GitHub — PR obrigatório + status checks (`Build KnowledgeHub (.NET 10)`, `Unit Tests (xUnit)`, `Integration Tests (SQLite)`, `Blazor WASM Client Validation`, `Docker Image Build`); force-push e delete bloqueados. `enforce_admins=false` (owner mantém bypass de emergência — usar só com justificativa).
 - **Workflows**: `.github/workflows` é protegido — qualquer alteração é bloqueada pela proteção de branch.
 - **Specs**: `.specs/SPEC-*.md` aprovadas são a fonte da verdade; manter `Status`/`Ticket` sincronizados com a implementação.
 - **Secrets**: nunca commitar `.env`, `*.key`, `*.pem`. API keys via variáveis de ambiente (`Chat__ApiKey`, `Embeddings__ApiKey`).
