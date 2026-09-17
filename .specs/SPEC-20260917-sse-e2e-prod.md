@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (verificação read-only em prod) |
 | Ticket | #112 |
-| Status | `Approved` |
+| Status | `Done — verified in prod 2026-09-17; access_token gap fixed in PR #120` |
 
 ## 1. User Story
 
