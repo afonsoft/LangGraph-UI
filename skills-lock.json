@@ -55,11 +55,17 @@
       "skillPath": "skills/drawio-architecture/SKILL.md",
       "computedHash": "c8800d5462285546645e264e234c3f9b869050be67a77eb79e2f47f0c011bbc1"
     },
-    "execute-spec": {
+    "execute-specs": {
       "source": "afonsoft/skills",
       "sourceType": "github",
-      "skillPath": "skills/execute-spec/SKILL.md",
-      "computedHash": "0960366f2cba820923cf5ff4ba8454c631664165448aad593be496d29a305f77"
+      "skillPath": "skills/execute-specs/SKILL.md",
+      "computedHash": "1800fdc16f68db6c4510fca3b590e97b0693fdd5712455836cf712eb185f7c9c"
+    },
+    "gap-analysis": {
+      "source": "afonsoft/skills",
+      "sourceType": "github",
+      "skillPath": "skills/gap-analysis/SKILL.md",
+      "computedHash": "dbf856f497846831a7e017fbd64be62cbd2bb718cbe4933dee3f1c5c3d49a9f9"
     },
     "improve-codebase-architecture": {
       "source": "afonsoft/skills",
@@ -95,7 +101,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/orchestrator/SKILL.md",
-      "computedHash": "46c1bdfc98320094d1bce70430cbdc61cc092c3a309ddf5b3b64abb426759ed0"
+      "computedHash": "c4e23d35cce47a7ebe890e82c6ba17d2f0194a1fd0f01653ec749fd7c3871588"
     },
     "qa-analyst": {
       "source": "afonsoft/skills",

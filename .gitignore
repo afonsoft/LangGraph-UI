@@ -53,7 +53,7 @@ publish/
 data/
 knowledgehub.db
 
-# skills.sh CLI canonical store (real copies live in .claude/skills/)
+# skills.sh CLI canonical store (.claude/skills/ symlinks here; restore via `npx skills experimental_install`)
 .agents/
 
 # MSBuild Binary and Structured Log
