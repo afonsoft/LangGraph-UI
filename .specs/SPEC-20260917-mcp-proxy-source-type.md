@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-mcp-proxy-source` |
 | Ticket | #109 |
-| Status | `Approved` |
+| Status | `Done — PR #114 (5e6a407)` |
 
 ## 1. User Story
 

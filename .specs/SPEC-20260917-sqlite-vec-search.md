@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-sqlite-vec-search` |
 | Ticket | #108 |
-| Status | `Approved` |
+| Status | `Done — PR #116 (0bf4998)` |
 
 ## 1. User Story
 

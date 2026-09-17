@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-onnx-local-embeddings` |
 | Ticket | #107 |
-| Status | `Approved` |
+| Status | `Done — PR #115 (6b0ef8a)` |
 
 ## 1. User Story
 
