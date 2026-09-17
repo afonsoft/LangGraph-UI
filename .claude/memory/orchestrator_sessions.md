@@ -50,3 +50,10 @@ context — see `.agents/skills/orchestrator/SKILL.md` Phase 8.
 - Re-deploy: `install.sh --docker` rebuildou imagem; container recriado via `docker compose up -d` (install.sh não propaga .env/volumes — registrado como limitação conhecida). Healthy em :5550.
 - Bloqueados: #111 (host systemd+sudo), #112 (aft_* prod).
 - Incidente: commit inicial da #108 incluiu models/*.onnx (90MB) porque a branch veio de main sem o .gitignore do ONNX — revertido via amend + force-push antes do merge.
+
+## 2026-09-17 — Epic #106 closure (ops verification)
+
+- #111 systemd verify: ran install.sh --host --systemd on this host (systemd 255, arm64). Found+fixed 2 bugs — missing WorkingDirectory (SPA 404 under systemd) and sudo_if_needed mkdir -p false-positive on root-owned prefix. PR #119.
+- #112 SSE E2E prod: Bearer path fully verified on rag.afonsoft.dev (handshake→initialize→tools/list 42 tools→tools/call). Found ?access_token= 401 gap → fixed handler scope (+/mcp/sse) in PR #120, re-verified 200 post-deploy.
+- Epic #106 closed — 6/6 slices. Prod redeployed via docker compose (image rebuilt from main).
+- Note: install.sh --docker does not propagate .env/compose volumes — deploys on this host should use `docker compose up -d --build`.
