@@ -9,8 +9,8 @@
 | Stack | `git / GitHub CLI` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (deleção de branches) |
-| Ticket | gap-analysis-20260917-r2 |
-| Status | `Draft` |
+| Ticket | #100 |
+| Status | `Approved` |
 
 ## 1. User Story
 
