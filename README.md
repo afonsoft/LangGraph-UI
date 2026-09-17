@@ -9,8 +9,10 @@ a single Kestrel-hosted .NET 10 process.
 
 | Route | Purpose |
 |---|---|
-| `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`) |
+| `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`, `/settings`, `/api-keys`) — mobile-responsive layout |
 | `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API |
+| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/integrations*` | Persisted chat-provider config (endpoint/model/key, test connection) and masked integration keys (firecrawl, tavily) |
+| `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}` | Per-API-key overrides: chat endpoint/model/key and integration keys |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP (modern clients) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
@@ -54,7 +56,10 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that
 cannot send headers may use `?access_token=`). API keys can call everything
 **except** the API-key management endpoints, which require a cookie session.
 Revoking a key (`DELETE /api/apikeys/{id}` or the UI) takes effect
-immediately.
+immediately. Each key can also carry its **own chat endpoint/model/key
+and integration keys** (firecrawl, tavily) — set them in the `/api-keys`
+UI, via `/api/api-keys/{id}/settings/*`, or through the
+`set_api_key_settings` MCP tool.
 
 > **Breaking change for external MCP clients** (Cursor, Claude Desktop, …):
 > they must now send `Authorization: Bearer aft_...`. Generate the key in the
@@ -63,7 +68,8 @@ immediately.
 ## MCP tools
 
 `search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`,
-`read_document`, `write_note`, `query_{source_slug}` per active source,
+`read_document`, `write_note`, `set_api_key_settings` (per-key chat and
+integration settings), `query_{source_slug}` per active source,
 plus DeepWiki bypass:
 `ask_question`, `read_wiki_structure`, `read_wiki_contents`.
 
