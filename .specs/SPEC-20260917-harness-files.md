@@ -9,7 +9,7 @@
 | Stack | `Markdown` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `chore/Devin-20260917-harness-files` |
-| Ticket | `[A DEFINIR]` |
+| Ticket | #94 |
 | Status | `Approved` |
 
 ## 1. User Story

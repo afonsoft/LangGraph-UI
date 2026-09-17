@@ -9,7 +9,7 @@
 | Stack | `Markdown` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `docs/Devin-20260917-readme-feature-sync` |
-| Ticket | `[A DEFINIR]` |
+| Ticket | #95 |
 | Status | `Approved` |
 
 ## 1. User Story

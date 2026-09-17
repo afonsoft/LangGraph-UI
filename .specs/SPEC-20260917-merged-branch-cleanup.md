@@ -9,7 +9,7 @@
 | Stack | `git` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (deleção de branches mergeadas) |
-| Ticket | `[A DEFINIR]` |
+| Ticket | #93 |
 | Status | `Approved` |
 
 ## 1. User Story

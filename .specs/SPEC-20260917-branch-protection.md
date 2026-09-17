@@ -9,7 +9,7 @@
 | Stack | `GitHub CLI / repo settings` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (settings-only; opcional `chore/Devin-20260917-branch-protection` para memory/report update) |
-| Ticket | `[A DEFINIR]` (criar via `/create-issues` após aprovação) |
+| Ticket | #92 |
 | Status | `Approved` |
 
 ## 1. User Story

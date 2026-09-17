@@ -9,7 +9,7 @@
 | Stack | `GitHub CLI` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (merges em `main`) |
-| Ticket | `[A DEFINIR]` |
+| Ticket | #91 |
 | Status | `Approved` |
 
 ## 1. User Story
