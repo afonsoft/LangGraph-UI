@@ -9,7 +9,7 @@
 | Stack | `.NET 10 / Blazor WebAssembly + BootstrapBlazor / EF Core SQLite` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-api-key-settings` |
-| Status | `Approved` |
+| Status | `Done` — entregue em `main` (`0107c70`); `ApiKeyChatSettings` entity + migration `20260917012226_AddApiKeyChatSettings`, `ApiKeyChatSettingsService`, `/api/apikeys` settings endpoints e `set_api_key_settings` MCP tool |
 
 ## 1. User Story
 

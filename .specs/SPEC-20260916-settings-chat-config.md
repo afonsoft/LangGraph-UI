@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / C# 14` + Blazor WASM (BootstrapBlazor) + EF Core SQLite |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-settings-chat-config` |
-| Ticket | `[A DEFINIR]` |
-| Status | `Approved` |
+| Ticket | PR #82 |
+| Status | `Done` — mergeado em `main` via PR #82 (`c036bc2`); migration `20260916192029_AddChatSettings`, `ChatSettingsService`, endpoints `/api/settings/chat` e card UI entregues |
 
 ## 1. User Story
 
