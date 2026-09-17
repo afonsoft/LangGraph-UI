@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `chore/Devin-20260917-gitignore-harness` |
 | Ticket | #101 |
-| Status | `Approved` |
+| Status | `Done` — .gitignore cobre .devin/ e .claude/settings.local.json (PR #103) |
 
 ## 1. User Story
 
