@@ -9,7 +9,7 @@
 | Stack | `.NET 10 / Blazor WebAssembly + BootstrapBlazor / EF Core SQLite` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260916-api-key-settings` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

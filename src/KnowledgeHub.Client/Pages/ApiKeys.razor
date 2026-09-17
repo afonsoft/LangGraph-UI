@@ -13,9 +13,10 @@
     <code>Authorization: Bearer aft_…</code>.
 </p>
 
-<Table TItem="ApiKeyDto" Items="_keys" ShowLoading="true" ShowLoadingInFirstRender="true"
-       IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
-       EmptyText="Nenhuma chave criada." CreateItemCallback="CreatePlaceholder">
+<div class="table-responsive-wrapper">
+    <Table TItem="ApiKeyDto" Items="_keys" ShowLoading="true" ShowLoadingInFirstRender="true"
+           IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
+           EmptyText="Nenhuma chave criada." CreateItemCallback="CreatePlaceholder">
     <TableToolbarTemplate>
         <TableToolbarButton TItem="ApiKeyDto" Text="Nova chave" Icon="fa-solid fa-plus"
                             Color="Color.Primary" OnClick="ShowCreate" />
@@ -57,7 +58,8 @@
             </Template>
         </TableColumn>
     </TableColumns>
-</Table>
+    </Table>
+</div>
 
 <Modal @ref="_createModal">
     <ModalDialog Title="Nova API key" ShowSaveButton="true" SaveButtonText="Criar"
@@ -122,7 +124,8 @@
                     <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@((_usage.ErrorRate * 100).ToString("F1"))%</div><small class="text-muted">erros</small></BodyTemplate></Card></div>
                 </div>
                 <div style="max-height: 320px; overflow-y: auto;">
-                    <table class="table table-sm table-striped mb-0">
+                    <div class="table-responsive-wrapper">
+                        <table class="table table-sm table-striped mb-0">
                         <thead>
                             <tr><th>Hora</th><th>Método</th><th>Path</th><th>Status</th><th>ms</th><th>Client</th></tr>
                         </thead>
@@ -148,7 +151,8 @@
                                 </tr>
                             }
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                     @if (_usage.RecentEvents.Count == 0)
                     {
                         <div class="text-muted p-2">Nenhuma chamada registrada para esta chave.</div>

@@ -63,7 +63,8 @@
             <HeaderTemplate>Atividade (@_activity.Count)</HeaderTemplate>
             <BodyTemplate>
                 <div style="max-height: 480px; overflow-y: auto;">
-                    <table class="table table-sm table-striped mb-0">
+                    <div class="table-responsive-wrapper">
+                        <table class="table table-sm table-striped mb-0">
                         <thead>
                             <tr><th>Hora</th><th>Método</th><th>Detalhe</th><th>ms</th><th></th></tr>
                         </thead>
@@ -88,7 +89,8 @@
                                 </tr>
                             }
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                     @if (_activity.Count == 0)
                     {
                         <div class="text-muted p-2">Aguardando chamadas MCP…</div>
