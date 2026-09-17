@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `docs/Devin-20260917-readme-feature-sync` |
 | Ticket | #95 |
-| Status | `Approved` |
+| Status | `Done` — PR #96 (`00f1c18`): README cobre settings/chat, per-key settings, set_api_key_settings e layout mobile |
 
 ## 1. User Story
 

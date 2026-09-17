@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `chore/Devin-20260917-harness-files` |
 | Ticket | #94 |
-| Status | `Approved` |
+| Status | `Done` — opção (a) escolhida; harness completo provisionado, validate-harness.sh PASS |
 
 ## 1. User Story
 
