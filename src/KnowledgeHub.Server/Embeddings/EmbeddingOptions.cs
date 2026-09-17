@@ -5,7 +5,7 @@ public sealed class EmbeddingOptions
 {
     public const string SectionName = "Embeddings";
 
-    /// <summary>deterministic | ollama | openai</summary>
+    /// <summary>deterministic | ollama | openai | onnx</summary>
     public string Provider { get; set; } = "deterministic";
 
     /// <summary>Base URL — e.g. http://localhost:11434 (Ollama) or https://api.openai.com.</summary>
@@ -19,4 +19,9 @@ public sealed class EmbeddingOptions
 
     /// <summary>Expected vector length; provider output is validated/sliced to this.</summary>
     public int Dimensions { get; set; } = 384;
+
+    /// <summary>Directory holding model.onnx + vocab.txt for <c>Provider=onnx</c>
+    /// (SPEC-20260917-onnx-local-embeddings RF-002). Relative paths resolve
+    /// against the working directory; default <c>models/all-MiniLM-L6-v2</c>.</summary>
+    public string? ModelPath { get; set; }
 }

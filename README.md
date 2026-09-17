@@ -79,11 +79,12 @@ plus DeepWiki bypass:
 {
   "Database": { "Path": "knowledgehub.db" },   // or KnowledgeHub:DatabasePath
   "Embeddings": {
-    "Provider": "deterministic",               // deterministic | ollama | openai
+    "Provider": "deterministic",               // deterministic | ollama | openai | onnx
     "Endpoint": "http://localhost:11434",
     "ApiKey": "",
     "Model": "nomic-embed-text",
-    "Dimensions": 384
+    "Dimensions": 384,
+    "ModelPath": "models/all-MiniLM-L6-v2"     // Provider=onnx — model.onnx + vocab.txt dir
   },
   "VectorStore": {
     "Provider": "sqlite",                      // sqlite | postgres (pgvector)
@@ -116,6 +117,24 @@ plus DeepWiki bypass:
 ```
 
 All settings are overridable via environment variables (`Embeddings__ApiKey`, …).
+
+### Local embeddings (ONNX)
+
+`Embeddings:Provider=onnx` runs sentence-transformers/all-MiniLM-L6-v2 locally
+on CPU (384-d, L2-normalized) — real semantic search with no external service.
+The model artifacts are **not** committed (~90 MB); download them once into
+`Embeddings:ModelPath` (default `models/all-MiniLM-L6-v2`):
+
+```bash
+mkdir -p models/all-MiniLM-L6-v2
+curl -L -o models/all-MiniLM-L6-v2/vocab.txt \
+  https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt
+curl -L -o models/all-MiniLM-L6-v2/model.onnx \
+  https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx
+```
+
+Note: the `Microsoft.ML.OnnxRuntime` package adds ~90 MB of native binaries to
+single-file publishes — use the `deterministic` provider for minimal builds.
 
 ## Run from source
 
@@ -220,9 +239,10 @@ Placeholders only — never commit a real `.env`.
 |---|---|---|---|
 | `KNOWLEDGEHUB_PORT` | Host port published for the container | `5000` | no |
 | `ALLOWED_HOSTS` | Kestrel `AllowedHosts` — pin the public hostname or `*` behind a tunnel | `*` | no |
-| `EMBEDDINGS_PROVIDER` | `deterministic` \| `ollama` \| `openai` | `deterministic` | no |
+| `EMBEDDINGS_PROVIDER` | `deterministic` \| `ollama` \| `openai` \| `onnx` (local all-MiniLM-L6-v2, CPU) | `deterministic` | no |
 | `EMBEDDINGS_ENDPOINT` | Embedding endpoint — required for `ollama`/`openai` | `http://host.docker.internal:11434` | provider-dependent |
 | `EMBEDDINGS_MODEL` | Embedding model name | `nomic-embed-text` | provider-dependent |
+| `EMBEDDINGS_MODELPATH` | ONNX model directory (`model.onnx` + `vocab.txt`) — required for `onnx` | `models/all-MiniLM-L6-v2` | provider-dependent |
 | `EMBEDDINGS_APIKEY` | Embedding API key (env only — never committed) | empty | no |
 | `VECTORSTORE_PROVIDER` | `sqlite` \| `postgres` (pgvector) | `sqlite` | no |
 | `VECTORSTORE_CONNECTIONSTRING` | Postgres connection string | empty | provider-dependent |
