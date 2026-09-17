@@ -158,7 +158,15 @@ detect_rid() {
 }
 
 sudo_if_needed() {
-  if [[ -w "$PREFIX" ]] || mkdir -p "$PREFIX" 2>/dev/null; then echo ""; else echo "sudo"; fi
+  if [[ -d "$PREFIX" ]]; then
+    # Exists — sudo only when we can't write into it. (mkdir -p on an
+    # existing dir exits 0 regardless of writability, so test -w directly.)
+    [[ -w "$PREFIX" ]] && echo "" || echo "sudo"
+  elif mkdir -p "$PREFIX" 2>/dev/null; then
+    echo ""
+  else
+    echo "sudo"
+  fi
 }
 
 install_systemd() {
@@ -174,6 +182,7 @@ After=network.target
 [Service]
 Type=simple
 User=$user
+WorkingDirectory=$PREFIX
 ExecStart=$PREFIX/KnowledgeHub
 Environment=ASPNETCORE_URLS=http://+:$PORT
 Environment=KnowledgeHub__DatabasePath=$abs_data/knowledgehub.db
