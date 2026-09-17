@@ -172,6 +172,40 @@ public class AuthFlowTests
     }
 
     [Fact]
+    public async Task ApiKey_AccessToken_OnMcpSse_Authenticates()
+    {
+        // Covers SPEC-20260917-sse-e2e-prod RF-003: legacy SSE clients
+        // (EventSource) cannot send Authorization headers — the key must be
+        // accepted via ?access_token= on /mcp/sse, and stay rejected elsewhere.
+        await using var factory = new Fixture();
+        using var admin = await TestAuth.LoginAsync(factory);
+        var secret = await TestAuth.CreateApiKeyAsync(admin, "sse-test");
+
+        // Without credentials → 401.
+        using var anon = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anon.GetAsync("/mcp/sse")).StatusCode);
+
+        // ?access_token= on /mcp/sse → stream opens (endpoint event).
+        using var sse = factory.CreateClient();
+        sse.Timeout = TimeSpan.FromSeconds(15);
+        using var response = await sse.GetAsync(
+            $"/mcp/sse?access_token={secret}", HttpCompletionOption.ResponseHeadersRead);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var stream = await response.Content.ReadAsStreamAsync();
+        var buffer = new byte[4096];
+        var read = await stream.ReadAsync(buffer);
+        var firstChunk = System.Text.Encoding.UTF8.GetString(buffer, 0, read);
+        Assert.Contains("event:", firstChunk);
+
+        // Same query param on a normal endpoint stays rejected — the fallback
+        // is scoped to header-less transports only.
+        using var scoped = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await scoped.GetAsync($"/api/sources?access_token={secret}")).StatusCode);
+    }
+
+    [Fact]
     public async Task ChangePassword_PolicyViolations_Return400()
     {
         await using var factory = new Fixture();

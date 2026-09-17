@@ -10,7 +10,8 @@ namespace KnowledgeHub.Server.Auth;
 /// <summary>
 /// `Authorization: Bearer aft_*` scheme for non-browser clients
 /// (SPEC-20260914-auth-login RF-005). Also honors `?access_token=` under
-/// /hubs/* so non-browser SignalR clients can authenticate (standard pattern).
+/// /hubs/* (SignalR) and GET /mcp/sse (legacy MCP SSE) — both are consumed
+/// by EventSource/WebSocket-style clients that cannot set request headers.
 /// Non-`aft_` tokens → NoResult so other schemes still apply.
 /// </summary>
 public sealed class ApiKeyAuthenticationHandler(
@@ -65,7 +66,13 @@ public sealed class ApiKeyAuthenticationHandler(
         if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             return header["Bearer ".Length..].Trim();
 
-        if (Request.Path.StartsWithSegments("/hubs")
+        // SPEC-20260917-sse-e2e-prod RF-003: header-less transports may carry
+        // the key as ?access_token=. Scoped to the two paths that need it —
+        // /hubs (SignalR) and /mcp/sse (EventSource has no header support).
+        var headerlessPath =
+            Request.Path.StartsWithSegments("/hubs")
+            || Request.Path.Equals("/mcp/sse", StringComparison.OrdinalIgnoreCase);
+        if (headerlessPath
             && Request.Query.TryGetValue("access_token", out var accessToken))
             return accessToken.ToString();
 
