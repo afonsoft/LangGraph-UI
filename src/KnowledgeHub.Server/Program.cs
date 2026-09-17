@@ -187,6 +187,7 @@ app.MapThreadsApi().RequireAuthorization(AuthPolicies.Operational);
 app.MapStreamingApi(); // RequireAuthorization applied per-endpoint inside (returns void)
 app.MapToolsApi().RequireAuthorization(AuthPolicies.Operational);
 app.MapSettingsApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapApiKeySettingsApi().RequireAuthorization(AuthPolicies.Operational);
 app.MapKnowledgeHubMcp().RequireAuthorization(AuthPolicies.Operational);
 app.MapHub<McpMonitorHub>("/hubs/mcp").RequireAuthorization(AuthPolicies.Operational);
 app.MapFallbackToFile("index.html");

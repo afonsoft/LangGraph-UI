@@ -8,9 +8,10 @@
 
 <h3 class="mb-3">Fontes de conhecimento</h3>
 
-<Table TItem="KnowledgeSourceDto" Items="_sources" ShowLoading="true" ShowLoadingInFirstRender="true"
-       IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
-       EmptyText="Nenhuma fonte cadastrada.">
+<div class="table-responsive-wrapper">
+    <Table TItem="KnowledgeSourceDto" Items="_sources" ShowLoading="true" ShowLoadingInFirstRender="true"
+           IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
+           EmptyText="Nenhuma fonte cadastrada.">
     <TableToolbarTemplate>
         <TableToolbarButton TItem="KnowledgeSourceDto" Text="Nova fonte" Icon="fa-solid fa-plus"
                             Color="Color.Primary" OnClick="ShowCreate" />
@@ -75,7 +76,8 @@
             </Template>
         </TableColumn>
     </TableColumns>
-</Table>
+    </Table>
+</div>
 
 <Modal @ref="_modal">
     <ModalDialog Title="@(_editModel.Id is null ? "Nova fonte" : $"Editar — {_editModel.Name}")"

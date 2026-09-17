@@ -1,0 +1,90 @@
+using System.Text.Json.Nodes;
+using KnowledgeHub.Server.Auth;
+using KnowledgeHub.Server.Settings;
+using Microsoft.AspNetCore.Http;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+
+namespace KnowledgeHub.Server.Mcp.ToolProviders;
+
+/// <summary>
+/// Settings tools (SPEC-20260916-api-key-settings RF-004 expanded):
+/// set_api_key_settings — allows an API key to configure chat, firecrawl and tavily.
+/// </summary>
+public sealed class SettingsToolsProvider : IToolProvider
+{
+    private static readonly JsonObject SetApiKeySettingsSchema = JsonNode.Parse("""
+        {"type":"object","properties":{
+          "provider":{"type":"string","enum":["chat","firecrawl","tavily"],"description":"Which provider to configure"},
+          "endpoint":{"type":["string","null"],"description":"OpenAI-compatible base URL (chat only, null = inherit)"},
+          "model":{"type":["string","null"],"description":"Model name (chat only, null = inherit)"},
+          "apiKey":{"type":["string","null"],"description":"API key override (null = inherit from global)"}
+        },"required":["provider"],
+        "examples":[{"provider":"chat","endpoint":"http://localhost:11434","model":"llama3","apiKey":null}]}
+        """)!.AsObject();
+
+    public Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<CatalogTool> tools =
+        [
+            new CatalogTool
+            {
+                Name = "set_api_key_settings",
+                Description = "Override settings (chat endpoint/model, or integration API keys for firecrawl/tavily) for the current API key. Null fields inherit from global defaults. Only available to API-key-authenticated sessions.",
+                InputSchema = SetApiKeySettingsSchema,
+                ReadOnly = false,
+                Handler = async (ctx, ct) =>
+                {
+                    var http = ctx.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext;
+                    if (http is null)
+                        throw new McpProtocolException("HTTP context not available", McpErrorCode.InternalError);
+
+                    var authMethod = http.User.FindFirst(ApiKeyAuthenticationHandler.AuthMethodClaim)?.Value;
+                    var keyIdValue = http.User.FindFirst(ApiKeyAuthenticationHandler.KeyIdClaim)?.Value;
+                    if (authMethod != "apikey" || !Guid.TryParse(keyIdValue, out var keyId))
+                        throw new McpProtocolException("This tool is only available to API-key-authenticated sessions", McpErrorCode.InvalidParams);
+
+                    var provider = ToolArgs.RequiredString(ctx, "provider");
+                    var service = ctx.Services!.GetRequiredService<IApiKeyChatSettingsService>();
+
+                    if (provider == "chat")
+                    {
+                        var endpoint = ToolArgs.OptionalString(ctx, "endpoint");
+                        var model = ToolArgs.OptionalString(ctx, "model");
+                        var apiKey = ToolArgs.OptionalString(ctx, "apiKey");
+
+                        await service.SaveAsync(keyId, endpoint, model, apiKey, ct);
+                        var result = await service.DescribeAsync(keyId, ct);
+
+                        var msg = $"Chat settings updated for API key '{keyId}'.\n" +
+                                  $"Provider: {result.Provider}\n" +
+                                  $"Endpoint: {result.Endpoint ?? "(inherited)"}\n" +
+                                  $"Model: {result.Model ?? "(inherited)"}\n" +
+                                  $"Has override: {result.HasOverride}\n" +
+                                  $"Override fields: {string.Join(", ", result.OverrideFields)}";
+                        return await ToolResults.Text(msg);
+                    }
+                    else if (provider == "firecrawl" || provider == "tavily")
+                    {
+                        var apiKey = ToolArgs.OptionalString(ctx, "apiKey");
+                        if (apiKey is not null && !string.IsNullOrWhiteSpace(apiKey))
+                        {
+                            await service.SaveIntegrationKeyAsync(keyId, provider, apiKey, ct);
+                            return await ToolResults.Text($"{provider} API key saved for API key '{keyId}'.");
+                        }
+                        else
+                        {
+                            await service.RemoveIntegrationKeyAsync(keyId, provider, ct);
+                            return await ToolResults.Text($"{provider} API key removed for API key '{keyId}' — falls back to global.");
+                        }
+                    }
+                    else
+                    {
+                        throw new McpProtocolException($"Unknown provider '{provider}'", McpErrorCode.InvalidParams);
+                    }
+                }
+            }
+        ];
+        return Task.FromResult(tools);
+    }
+}

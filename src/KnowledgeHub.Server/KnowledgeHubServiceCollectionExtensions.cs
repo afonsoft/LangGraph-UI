@@ -60,12 +60,38 @@ public static class KnowledgeHubServiceCollectionExtensions
             sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<ILogger<Settings.ChatSettingsService>>(),
             sp.GetService<Func<HttpClient>>()));
+        services.AddSingleton<Settings.IApiKeyChatSettingsService>(sp => new Settings.ApiKeyChatSettingsService(
+            sp.GetRequiredService<Settings.IChatSettingsService>(),
+            sp.GetRequiredService<Settings.IIntegrationSecretStore>(),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<ILogger<Settings.ApiKeyChatSettingsService>>()));
         services.AddScoped<Microsoft.Extensions.AI.IChatClient>(sp =>
-            sp.GetRequiredService<Settings.IChatSettingsService>().GetClient()!);
-        services.AddScoped<IAnswerService>(sp => new AnswerService(
-            sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
-            sp.GetRequiredService<Settings.IChatSettingsService>().GetEffectiveOptions(),
-            sp.GetRequiredService<ILogger<AnswerService>>()));
+        {
+            var http = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()?.HttpContext;
+            var keyIdValue = http?.User.FindFirst(Auth.ApiKeyAuthenticationHandler.KeyIdClaim)?.Value;
+            if (keyIdValue is not null && Guid.TryParse(keyIdValue, out var keyId))
+            {
+                return sp.GetRequiredService<Settings.IApiKeyChatSettingsService>().GetClient(keyId)!;
+            }
+            return sp.GetRequiredService<Settings.IChatSettingsService>().GetClient()!;
+        });
+        services.AddScoped<IAnswerService>(sp =>
+        {
+            var http = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()?.HttpContext;
+            var keyIdValue = http?.User.FindFirst(Auth.ApiKeyAuthenticationHandler.KeyIdClaim)?.Value;
+            if (keyIdValue is not null && Guid.TryParse(keyIdValue, out var keyId))
+            {
+                return new AnswerService(
+                    sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
+                    sp.GetRequiredService<Settings.IApiKeyChatSettingsService>().GetEffectiveOptions(keyId),
+                    sp.GetRequiredService<ILogger<AnswerService>>());
+            }
+            return new AnswerService(
+                sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
+                sp.GetRequiredService<Settings.IChatSettingsService>().GetEffectiveOptions(),
+                sp.GetRequiredService<ILogger<AnswerService>>());
+        });
 
         // SPEC-20260914-agent-chat-loop: model→tools→model loop over the live catalog.
         services.AddOptions<Agent.AgentOptions>()
@@ -173,6 +199,9 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>();
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>());
+        services.AddSingleton<KnowledgeHub.Server.Mcp.ToolProviders.SettingsToolsProvider>();
+        services.AddSingleton<IToolProvider>(sp =>
+            sp.GetRequiredService<KnowledgeHub.Server.Mcp.ToolProviders.SettingsToolsProvider>());
 
         services.AddOptions<McpServerOptions>().Configure(options =>
         {

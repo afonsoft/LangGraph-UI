@@ -61,6 +61,27 @@ public sealed class SettingsApiClient(HttpClient http)
         return await ReadAsync<TestChatConnectionResponse>(response, ct);
     }
 
+    // SPEC-20260916-api-key-settings: per-API-key chat provider settings.
+
+    /// <summary>Obtém a configuração efetiva de chat para uma API key específica.</summary>
+    public Task<ApiKeyChatSettingsDto?> GetApiKeyChatAsync(Guid apiKeyId, CancellationToken ct = default) =>
+        http.GetFromJsonAsync<ApiKeyChatSettingsDto>($"api/api-keys/{apiKeyId}/settings/chat", ct);
+
+    /// <summary>Salva endpoint/model/chat key para uma API key específica.</summary>
+    public async Task<ApiResult<object>> SaveApiKeyChatAsync(Guid apiKeyId, string? endpoint, string? model, string? apiKey, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/api-keys/{apiKeyId}/settings/chat",
+            new SaveApiKeyChatSettingsRequest { Endpoint = endpoint, Model = model, ApiKey = apiKey }, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    /// <summary>Remove o override de chat de uma API key.</summary>
+    public async Task<ApiResult<object>> RemoveApiKeyChatAsync(Guid apiKeyId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/api-keys/{apiKeyId}/settings/chat", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     /// <summary>Lê a resposta HTTP num ApiResult: desserializa o corpo em sucesso
     /// e extrai o campo "error" (ou o status HTTP) em falha.</summary>
     private static async Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)

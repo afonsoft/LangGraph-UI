@@ -1,6 +1,7 @@
 @page "/api-keys"
 @attribute [Authorize]
 @inject AuthApiClient Api
+@inject SettingsApiClient SettingsApi
 @inject ToastService Toast
 @inject IJSRuntime JS
 
@@ -13,9 +14,10 @@
     <code>Authorization: Bearer aft_…</code>.
 </p>
 
-<Table TItem="ApiKeyDto" Items="_keys" ShowLoading="true" ShowLoadingInFirstRender="true"
-       IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
-       EmptyText="Nenhuma chave criada." CreateItemCallback="CreatePlaceholder">
+<div class="table-responsive-wrapper">
+    <Table TItem="ApiKeyDto" Items="_keys" ShowLoading="true" ShowLoadingInFirstRender="true"
+           IsStriped="true" ShowToolbar="true" ShowDefaultButtons="false" ShowEmpty="true"
+           EmptyText="Nenhuma chave criada." CreateItemCallback="CreatePlaceholder">
     <TableToolbarTemplate>
         <TableToolbarButton TItem="ApiKeyDto" Text="Nova chave" Icon="fa-solid fa-plus"
                             Color="Color.Primary" OnClick="ShowCreate" />
@@ -47,6 +49,8 @@
             <Template Context="v">
                 <Button Size="Size.ExtraSmall" Color="Color.Info" Icon="fa-solid fa-chart-line"
                         Text="Uso" OnClick="() => ShowUsage(v.Row)" />
+                <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-gear"
+                        Text="Config" OnClick="() => ShowSettings(v.Row)" />
                 @if (v.Row.RevokedAt is null)
                 {
                     <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-ban"
@@ -57,7 +61,8 @@
             </Template>
         </TableColumn>
     </TableColumns>
-</Table>
+    </Table>
+</div>
 
 <Modal @ref="_createModal">
     <ModalDialog Title="Nova API key" ShowSaveButton="true" SaveButtonText="Criar"
@@ -122,7 +127,8 @@
                     <div class="col"><Card><BodyTemplate><div class="fs-5 fw-bold">@((_usage.ErrorRate * 100).ToString("F1"))%</div><small class="text-muted">erros</small></BodyTemplate></Card></div>
                 </div>
                 <div style="max-height: 320px; overflow-y: auto;">
-                    <table class="table table-sm table-striped mb-0">
+                    <div class="table-responsive-wrapper">
+                        <table class="table table-sm table-striped mb-0">
                         <thead>
                             <tr><th>Hora</th><th>Método</th><th>Path</th><th>Status</th><th>ms</th><th>Client</th></tr>
                         </thead>
@@ -148,7 +154,8 @@
                                 </tr>
                             }
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                     @if (_usage.RecentEvents.Count == 0)
                     {
                         <div class="text-muted p-2">Nenhuma chamada registrada para esta chave.</div>
@@ -156,6 +163,82 @@
                 </div>
             }
         </BodyTemplate>
+    </ModalDialog>
+</Modal>
+
+<Modal @ref="_settingsModal">
+    <ModalDialog Title="@(_settingsKey is not null ? $"Configurar chat — {_settingsKey.Name}" : "Configurar chat")"
+                 Size="Size.Large" ShowSaveButton="true" SaveButtonText="Salvar"
+                 CloseButtonText="Cancelar" OnSaveAsync="SaveSettingsAsync">
+        <BodyTemplate>
+            @if (_settings is null)
+            {
+                <div class="text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Carregando…</div>
+            }
+            else
+            {
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="useGlobal"
+                           @bind="_useGlobal" @bind:after="OnUseGlobalChanged" />
+                    <label class="form-check-label" for="useGlobal">
+                        Usar configuração global
+                    </label>
+                </div>
+
+                @if (_useGlobal)
+                {
+                    <div class="alert alert-info">
+                        <div><strong>Endpoint (global):</strong> <code>@_settings.Endpoint</code></div>
+                        <div><strong>Model (global):</strong> <code>@_settings.Model</code></div>
+                        <div><strong>Key:</strong> @(_settings.HasApiKey ? _settings.ApiKeyHint : "não configurada")</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="row g-2 mb-2">
+                        <div class="col-12 col-md-7">
+                            <label class="form-label">Endpoint</label>
+                            <input type="text" class="form-control font-monospace"
+                                   @bind="_settingsForm.Endpoint"
+                                   placeholder="https://api.exemplo.com" autocomplete="off" />
+                        </div>
+                        <div class="col-12 col-md-5">
+                            <label class="form-label">Model</label>
+                            <input type="text" class="form-control font-monospace"
+                                   @bind="_settingsForm.Model"
+                                   placeholder="nome do modelo" autocomplete="off" />
+                        </div>
+                    </div>
+
+                    @if (_settings.HasOverride && _settings.OverrideFields.Contains("apiKey"))
+                    {
+                        <div class="mb-2">
+                            <small class="text-muted">Key sobreposta:</small>
+                            <code class="ms-1">@_settings.ApiKeyHint</code>
+                        </div>
+                    }
+
+                    <label class="form-label">
+                        @(_settings.HasOverride && _settings.OverrideFields.Contains("apiKey") ? "Substituir API key" : "API key")
+                    </label>
+                    <input type="password" class="form-control font-monospace mb-2"
+                           @bind="_settingsForm.ApiKey"
+                           placeholder="deixe em branco para manter" autocomplete="off" />
+                }
+
+                @if (_settingsError is not null)
+                {
+                    <div class="alert alert-danger py-2 mt-2 mb-0">@_settingsError</div>
+                }
+            }
+        </BodyTemplate>
+        <FooterTemplate>
+            @if (_settings is not null && _settings.HasOverride)
+            {
+                <Button Color="Color.Warning" Text="Remover override" Icon="fa-solid fa-trash"
+                        OnClick="RemoveSettingsAsync" />
+            }
+        </FooterTemplate>
     </ModalDialog>
 </Modal>
 
@@ -170,6 +253,14 @@
     private string _newName = "";
     private string? _createError;
     private string? _createdKey;
+
+    // SPEC-20260916-api-key-settings RF-006: settings modal state
+    private Modal? _settingsModal;
+    private ApiKeyDto? _settingsKey;
+    private ApiKeyChatSettingsDto? _settings;
+    private bool _useGlobal = true;
+    private string? _settingsError;
+    private readonly SaveApiKeyChatSettingsRequest _settingsForm = new();
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -263,5 +354,109 @@
         }
         await Toast.Success("Revogada", $"Chave '{key.Name}' revogada.");
         await ReloadAsync();
+    }
+
+    // SPEC-20260916-api-key-settings RF-006: settings modal handlers
+
+    private async Task ShowSettings(ApiKeyDto key)
+    {
+        _settingsKey = key;
+        _settings = null;
+        _settingsError = null;
+        _useGlobal = true;
+        _settingsForm.Endpoint = null;
+        _settingsForm.Model = null;
+        _settingsForm.ApiKey = null;
+
+        await _settingsModal!.Toggle();
+
+        try
+        {
+            _settings = await SettingsApi.GetApiKeyChatAsync(key.Id);
+            _useGlobal = !_settings!.HasOverride;
+            if (!_useGlobal)
+            {
+                _settingsForm.Endpoint = _settings.Endpoint;
+                _settingsForm.Model = _settings.Model;
+            }
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Falha ao carregar configuração: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnUseGlobalChanged()
+    {
+        if (_useGlobal)
+        {
+            _settingsForm.Endpoint = null;
+            _settingsForm.Model = null;
+            _settingsForm.ApiKey = null;
+        }
+        else if (_settings is not null)
+        {
+            _settingsForm.Endpoint = _settings.Endpoint;
+            _settingsForm.Model = _settings.Model;
+        }
+    }
+
+    private async Task<bool> SaveSettingsAsync()
+    {
+        if (_settingsKey is null) return false;
+
+        _settingsError = null;
+        try
+        {
+            var result = await SettingsApi.SaveApiKeyChatAsync(
+                _settingsKey.Id,
+                _useGlobal ? null : _settingsForm.Endpoint,
+                _useGlobal ? null : _settingsForm.Model,
+                _useGlobal ? null : _settingsForm.ApiKey);
+
+            if (!result.IsSuccess)
+            {
+                _settingsError = result.Error;
+                return false;
+            }
+
+            await Toast.Success("Salvo", "Configuração de chat atualizada.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Falha ao salvar: {ex.Message}";
+            return false;
+        }
+    }
+
+    private async Task RemoveSettingsAsync()
+    {
+        if (_settingsKey is null) return;
+
+        _settingsError = null;
+        try
+        {
+            var result = await SettingsApi.RemoveApiKeyChatAsync(_settingsKey.Id);
+            if (!result.IsSuccess)
+            {
+                _settingsError = result.Error;
+                return;
+            }
+
+            await Toast.Success("Removido", "Override removido — configuração global volta a valer.");
+            _settings = await SettingsApi.GetApiKeyChatAsync(_settingsKey.Id);
+            _useGlobal = true;
+            _settingsForm.Endpoint = null;
+            _settingsForm.Model = null;
+            _settingsForm.ApiKey = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Falha ao remover: {ex.Message}";
+        }
     }
 }

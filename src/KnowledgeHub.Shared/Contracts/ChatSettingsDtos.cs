@@ -2,7 +2,7 @@ namespace KnowledgeHub.Shared.Contracts;
 
 /// <summary>Effective chat-provider state for the Settings UI — never carries
 /// the API key itself (SPEC-20260916-settings-chat-config RF-004).</summary>
-public sealed record ChatSettingsDto
+public record ChatSettingsDto
 {
     /// <summary>Effective provider: "openai" | "ollama" | "none".</summary>
     public required string Provider { get; init; }
@@ -51,4 +51,27 @@ public sealed record TestChatConnectionResponse
     public bool? ModelListed { get; init; }
     /// <summary>Sanitized failure reason ("HTTP 401", "timeout", "connection failed").</summary>
     public string? Detail { get; init; }
+}
+
+/// <summary>Per-API-key effective chat-provider state — never carries the API key itself
+/// (SPEC-20260916-api-key-settings RF-003).</summary>
+public sealed record ApiKeyIntegrationKeyDto(string? Hint, bool HasKey);
+
+public sealed record ApiKeyChatSettingsDto : ChatSettingsDto
+{
+    /// <summary>True when this API key has its own endpoint/model override.</summary>
+    public required bool HasOverride { get; init; }
+    /// <summary>Which fields are overridden: endpoint, model, apiKey, or none.</summary>
+    public required string[] OverrideFields { get; init; }
+    /// <summary>Per-integration API key status (firecrawl, tavily).</summary>
+    public Dictionary<string, ApiKeyIntegrationKeyDto>? IntegrationKeys { get; init; }
+}
+
+/// <summary>PUT /api/api-keys/{id}/settings/chat body. Null fields inherit from global.
+/// Blank apiKey keeps the stored key; null apiKey removes the override.</summary>
+public sealed record SaveApiKeyChatSettingsRequest
+{
+    public string? Endpoint { get; set; }
+    public string? Model { get; set; }
+    public string? ApiKey { get; set; }
 }

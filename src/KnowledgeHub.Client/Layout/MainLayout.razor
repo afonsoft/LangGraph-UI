@@ -1,5 +1,6 @@
 ﻿@inherits LayoutComponentBase
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @implements IDisposable
 
 @if (_navigating)
@@ -8,12 +9,22 @@
 }
 
 <div class="page">
-    <div class="sidebar">
-        <NavMenu />
+    <div class="sidebar @(_mobileNavOpen ? "show" : "")">
+        <NavMenu OnNavItemClicked="CloseMobileNav" />
     </div>
+
+    @if (_mobileNavOpen)
+    {
+        <div class="sidebar-backdrop show" @onclick="CloseMobileNav"></div>
+    }
 
     <main>
         <div class="top-row px-4">
+            <button class="navbar-toggler d-md-none me-2" type="button"
+                    aria-label="Toggle navigation" aria-expanded="@_mobileNavOpen"
+                    @onclick="ToggleMobileNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
             <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
         </div>
 
@@ -25,6 +36,7 @@
 
 @code {
     private bool _navigating;
+    private bool _mobileNavOpen;
     private IDisposable? _locationChanging;
 
     /// <summary>Registra os hooks de navegação que acionam a barra de loading entre telas.</summary>
@@ -49,8 +61,21 @@
         {
             await Task.Delay(350);
             _navigating = false;
+            _mobileNavOpen = false; // RF-001: close sidebar on navigation
             StateHasChanged();
         });
+    }
+
+    /// <summary>Alterna a visibilidade do menu mobile.</summary>
+    private void ToggleMobileNav()
+    {
+        _mobileNavOpen = !_mobileNavOpen;
+    }
+
+    /// <summary>Fecha o menu mobile (usado pelo backdrop e pelo NavMenu).</summary>
+    private void CloseMobileNav()
+    {
+        _mobileNavOpen = false;
     }
 
     /// <summary>Remove os hooks de navegação ao destruir o layout.</summary>
