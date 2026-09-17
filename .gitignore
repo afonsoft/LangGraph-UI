@@ -71,3 +71,8 @@ nunit-*.xml
 # Agent harness local overrides (never versioned)
 .devin/
 .claude/settings.local.json
+
+# ONNX model artifacts (SPEC-20260917-onnx-local-embeddings) — downloaded
+# externally, never committed (~90 MB).
+models/
+*.onnx

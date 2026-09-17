@@ -14,7 +14,7 @@ namespace KnowledgeHub.Server.Configuration;
 public static class ConfigurationValidator
 {
     private static readonly HashSet<string> EmbeddingProviders = new(StringComparer.OrdinalIgnoreCase)
-        { "deterministic", "ollama", "openai" };
+        { "deterministic", "ollama", "openai", "onnx" };
 
     private static readonly HashSet<string> VectorStoreProviders = new(StringComparer.OrdinalIgnoreCase)
         { "sqlite", "postgres" };
@@ -65,15 +65,32 @@ public static class ConfigurationValidator
         var section = cfg.GetSection(EmbeddingOptions.SectionName);
         var provider = section["Provider"];
         if (!string.IsNullOrWhiteSpace(provider) && !EmbeddingProviders.Contains(provider))
-            problems.Add($"Embeddings:Provider '{provider}' is invalid (expected: deterministic | ollama | openai)");
+            problems.Add($"Embeddings:Provider '{provider}' is invalid (expected: deterministic | ollama | openai | onnx)");
 
-        if (provider is not null && !provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase))
+        if (provider is not null && !provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase)
+            && !provider.Equals("onnx", StringComparison.OrdinalIgnoreCase))
         {
             var endpoint = section["Endpoint"];
             if (!IsHttpUri(endpoint))
                 problems.Add($"Embeddings:Endpoint '{endpoint}' is required and must be an absolute http(s) URI when Provider={provider}");
             if (string.IsNullOrWhiteSpace(section["Model"]))
                 problems.Add($"Embeddings:Model is required when Provider={provider}");
+        }
+
+        // SPEC-20260917-onnx-local-embeddings RF-002: Provider=onnx needs the
+        // model artifacts at startup — fail with a clear message, not a crash.
+        if (provider?.Equals("onnx", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var dir = section["ModelPath"] is { Length: > 0 } p ? p : OnnxEmbeddingProvider.DefaultModelDirectory;
+            if (!File.Exists(Path.Combine(dir, OnnxEmbeddingProvider.ModelFileName))
+                || !File.Exists(Path.Combine(dir, OnnxEmbeddingProvider.VocabFileName)))
+                problems.Add(
+                    $"Embeddings:Provider=onnx requires {OnnxEmbeddingProvider.ModelFileName} and " +
+                    $"{OnnxEmbeddingProvider.VocabFileName} under '{Path.GetFullPath(dir)}' " +
+                    "(set Embeddings:ModelPath or download all-MiniLM-L6-v2 from Hugging Face)");
+            if (section["Dimensions"] is { } onnxDims
+                && (!int.TryParse(onnxDims, out var od) || od != OnnxEmbeddingProvider.EmbeddingDimensions))
+                problems.Add($"Embeddings:Dimensions '{onnxDims}' must be {OnnxEmbeddingProvider.EmbeddingDimensions} when Provider=onnx");
         }
 
         if (section["Dimensions"] is { } dims && (!int.TryParse(dims, out var d) || d <= 0))

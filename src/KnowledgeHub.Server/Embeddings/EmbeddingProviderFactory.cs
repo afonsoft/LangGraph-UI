@@ -12,6 +12,9 @@ public static class EmbeddingProviderFactory
         {
             "ollama" => new OllamaEmbeddingProvider(http, options),
             "openai" => new OpenAiEmbeddingProvider(http, options),
+            // SPEC-20260917-onnx-local-embeddings: local all-MiniLM-L6-v2 —
+            // missing artifacts fail fast with download instructions.
+            "onnx" => OnnxEmbeddingProvider.Load(options.ModelPath),
             _ => new DeterministicEmbeddingProvider(options.Dimensions)
         };
     }
