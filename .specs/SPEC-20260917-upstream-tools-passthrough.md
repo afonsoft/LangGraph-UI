@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / MCP` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-tools-passthrough` |
-| Ticket | — |
-| Status | `Draft` |
+| Ticket | #110 |
+| Status | `Approved` |
 
 ## 1. User Story
 

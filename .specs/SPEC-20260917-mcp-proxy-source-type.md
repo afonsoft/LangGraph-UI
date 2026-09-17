@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / MCP` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-mcp-proxy-source` |
-| Ticket | — |
-| Status | `Draft` |
+| Ticket | #109 |
+| Status | `Approved` |
 
 ## 1. User Story
 

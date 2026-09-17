@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / EF Core SQLite` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-sqlite-vec-search` |
-| Ticket | — |
-| Status | `Draft` |
+| Ticket | #108 |
+| Status | `Approved` |
 
 ## 1. User Story
 

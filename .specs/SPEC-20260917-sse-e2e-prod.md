@@ -9,8 +9,8 @@
 | Stack | `curl / MCP SSE` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (verificação read-only em prod) |
-| Ticket | — |
-| Status | `Draft` |
+| Ticket | #112 |
+| Status | `Approved` |
 
 ## 1. User Story
 

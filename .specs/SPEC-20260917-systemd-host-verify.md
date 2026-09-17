@@ -9,8 +9,8 @@
 | Stack | `bash / systemd` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (verificação; possível `chore/` para evidências) |
-| Ticket | — |
-| Status | `Draft` |
+| Ticket | #111 |
+| Status | `Approved` |
 
 ## 1. User Story
 

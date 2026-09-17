@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / C# 14` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260917-onnx-local-embeddings` |
-| Ticket | — |
-| Status | `Draft` |
+| Ticket | #107 |
+| Status | `Approved` |
 
 ## 1. User Story
 
