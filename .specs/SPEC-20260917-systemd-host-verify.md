@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (verificação; possível `chore/` para evidências) |
 | Ticket | #111 |
-| Status | `Approved` |
+| Status | `Done — verified on Oracle Cloud arm64 host (systemd 255); 2 install.sh bugs found+fixed` |
 
 ## 1. User Story
 
