@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (settings-only; opcional `chore/Devin-20260917-branch-protection` para memory/report update) |
 | Ticket | #92 |
-| Status | `Approved` |
+| Status | `Done` — protection ativa em main (PR + 5 checks, enforce_admins=false); documentado via PR #97 |
 
 ## 1. User Story
 

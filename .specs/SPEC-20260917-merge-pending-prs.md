@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (merges em `main`) |
 | Ticket | #91 |
-| Status | `Approved` |
+| Status | `Done` — PRs #87 (`5c1f79b`), #88 (`cd662d0`), #89 (`7f3c261`) mergeadas em main; format gate exit 0 verificado |
 
 ## 1. User Story
 

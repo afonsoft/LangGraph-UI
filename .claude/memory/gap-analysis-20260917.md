@@ -1,7 +1,7 @@
 # Gap Analysis — 20260917
 
 - Repository: /home/ubuntu/repos/LangGraph-UI | Branch: feature/Devin-20260917-skills-update | Commit: a1d2c7d (main = 0107c70)
-- Phase reached: gate (aguardando aprovação)
+- Phase reached: done — todos os gaps confirmados entregues (2026-09-17)
 - Mode: full
 - Build: green 0 warnings. Tests: 231 unit + 151 integration green. Format: vermelho em `main`, verde na PR #87.
 - Prior runs: gap-analysis-20260914.md, gap-analysis-20260916.md (6/6 CONFIRMADO entregues via PR #76)
@@ -42,11 +42,11 @@
 
 | Key | Category | Verdict | Priority | Spec | Issue | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| GAP-automation-branch-protection | automation | CONFIRMADO | high | SPEC-20260917-branch-protection | — | gh api 404; 0107c70 push direto; CLAUDE.md hard rule sem enforcement |
-| GAP-operation-pending-merges | operation | CONFIRMADO | medium | SPEC-20260917-merge-pending-prs | — | gh pr list → #87, #88 abertas; #87 corrige gate vermelho |
-| GAP-operation-merged-branch-cleanup | operation | CONFIRMADO | low | SPEC-20260917-merged-branch-cleanup | — | `git branch --merged main` = 10; `-r --merged` = 13 |
-| GAP-documentation-harness-files | documentation | CONFIRMADO | low | SPEC-20260917-harness-files | — | collect-sources: CONTEXT/MEMORY/rules/agents/settings ABSENT |
-| GAP-documentation-readme-feature-sync | documentation | CONFIRMADO | low | SPEC-20260917-readme-feature-sync | — | grep README: 0 matches p/ settings/chat, set_api_key_settings, mobile |
+| GAP-automation-branch-protection | automation | CONFIRMADO → ENTREGUE | high | SPEC-20260917-branch-protection | #92 | protection ativa (PR + 5 checks, enforce_admins=false); doc via PR #97 |
+| GAP-operation-pending-merges | operation | CONFIRMADO → ENTREGUE | medium | SPEC-20260917-merge-pending-prs | #91 | #87 `5c1f79b`, #88 `cd662d0`, #89 `7f3c261` mergeadas; format gate exit 0 em main |
+| GAP-operation-merged-branch-cleanup | operation | CONFIRMADO → ENTREGUE | low | SPEC-20260917-merged-branch-cleanup | #93 | 13 local + 16 remote deletadas; 2 unmerged mantidas |
+| GAP-documentation-harness-files | documentation | CONFIRMADO → ENTREGUE | low | SPEC-20260917-harness-files | #94 | opção (a); harness completo em .claude/; validate-harness.sh PASS; PR #98 |
+| GAP-documentation-readme-feature-sync | documentation | CONFIRMADO → ENTREGUE | low | SPEC-20260917-readme-feature-sync | #95 | PR #96 `00f1c18` mergeada |
 | GAP-implementation-format-gate | implementation | DUPLICADO | — | — | PR #87 | fix já aberto, checks verdes |
 | GAP-documentation-spec-status-stale | documentation | DUPLICADO | — | — | PR #87 | sync Approved→Done já no PR |
 | GAP-automation-skills-catalog | automation | DUPLICADO | — | — | PR #88 | update já aberto |
@@ -58,19 +58,20 @@
 
 ## 4. Approval gate
 
-- Aguardando decisão do usuário sobre os 5 SPECs Draft.
+- Usuário aprovou os 5 SPECs ("aprovadas", 2026-09-17). Harness-files: usuário escolheu opção (a) "Provisionar tudo". Branch protection aplicada após aprovação do SPEC + instrução de continuação.
 
 ## 5. Issues
 
-- (nenhuma — gate pendente)
+- Epic #90 (gap-analysis-20260917) com slices #91–#95 — todas fechadas com evidência.
 
 ## 6. Orchestrator handoff
 
-- Pre-conditions: tree tem 5 SPECs Draft não-commitados + report; branch feature/Devin-20260917-skills-update.
-- Resultado: pendente.
+- SPECs commitados na PR #89 (`docs/Devin-20260917-gap-specs`), mergeada `7f3c261`.
+- Execução: merges #87/#88/#89 → cleanup de branches → README sync (PR #96) → branch protection + doc (PR #97) → harness provisionado (PR #98).
+- Resultado: 5/5 gaps confirmados entregues; SPECs marcados `Done` com evidência.
 
 ## 7. Pendencies
 
-- Decisão do usuário: aprovar SPECs → issues + execução; ou registrar apenas.
-- INCONCLUSIVO: systemd verify (host mutation), SSE E2E autenticado (credencial).
-- Branch protection é Tier 3 — mesmo aprovando o SPEC, a aplicação do gate exige confirmação no ato.
+- INCONCLUSIVO (carried): systemd verify em host real (mutação — precisa aprovação), SSE E2E autenticado em prod (precisa credencial).
+- Backlog pending_approval: ONNX embeddings, sqlite-vec, McpProxy SourceType, tools passthrough.
+- Nota: `enforce_admins=false` — o owner (afonsoft) ainda pode bypassar a protection de main; é o escape hatch documentado, não enforced.

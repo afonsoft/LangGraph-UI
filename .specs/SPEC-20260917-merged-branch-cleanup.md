@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | n/a (deleção de branches mergeadas) |
 | Ticket | #93 |
-| Status | `Approved` |
+| Status | `Done` — 13 branches locais + 16 remotas mergeadas removidas; residuais unmerged mantidas (rename-mcp-monitor, specs-mobile-apikey-settings) |
 
 ## 1. User Story
 
