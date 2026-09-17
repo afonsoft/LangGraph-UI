@@ -74,6 +74,16 @@ public class ConfigurationValidatorTests
     }
 
     [Fact]
+    public void SqliteVec_Provider_Passes_WhenExtensionLoads()
+    {
+        // Covers SPEC-20260917-sqlite-vec-search CA-002 probe path — the
+        // bundled native extension is present for this RID, so validation
+        // must succeed; a missing lib would surface as InvalidOperationException.
+        var cfg = Config(new() { ["VectorStore:Provider"] = "sqlite-vec" });
+        ConfigurationValidator.Validate(cfg);
+    }
+
+    [Fact]
     public void Invalid_DeepWikiEndpoint_Fails()
     {
         var cfg = Config(new() { ["DeepWiki:Endpoint"] = "not-a-url" });

@@ -11,6 +11,12 @@
           "DocumentFormat.OpenXml.Framework": "3.3.0"
         }
       },
+      "HiraokaHyperTools.sqlite-vec": {
+        "type": "Direct",
+        "requested": "[0.1.9, )",
+        "resolved": "0.1.9",
+        "contentHash": "bY6mmjiQlqDLG+Jf6fvYcq2YA4Q/lJhisYK4zxP6mlzC4274yZGdysNvg/jtuY6Ge3ksD9lpDeB5Nnyi+g0Omg=="
+      },
       "HtmlAgilityPack": {
         "type": "Direct",
         "requested": "[1.12.2, )",
@@ -511,6 +517,12 @@
       }
     },
     "net10.0/linux-arm64": {
+      "HiraokaHyperTools.sqlite-vec": {
+        "type": "Direct",
+        "requested": "[0.1.9, )",
+        "resolved": "0.1.9",
+        "contentHash": "bY6mmjiQlqDLG+Jf6fvYcq2YA4Q/lJhisYK4zxP6mlzC4274yZGdysNvg/jtuY6Ge3ksD9lpDeB5Nnyi+g0Omg=="
+      },
       "Microsoft.ML.OnnxRuntime": {
         "type": "Direct",
         "requested": "[1.29.0, )",

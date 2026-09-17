@@ -87,7 +87,7 @@ plus DeepWiki bypass:
     "ModelPath": "models/all-MiniLM-L6-v2"     // Provider=onnx — model.onnx + vocab.txt dir
   },
   "VectorStore": {
-    "Provider": "sqlite",                      // sqlite | postgres (pgvector)
+    "Provider": "sqlite",                      // sqlite | sqlite-vec | postgres (pgvector)
     "ConnectionString": ""
   },
   "Chat": {
@@ -135,6 +135,21 @@ curl -L -o models/all-MiniLM-L6-v2/model.onnx \
 
 Note: the `Microsoft.ML.OnnxRuntime` package adds ~90 MB of native binaries to
 single-file publishes — use the `deterministic` provider for minimal builds.
+### Vector store providers
+
+| Provider | Engine | When to use |
+|---|---|---|
+| `sqlite` (default) | BLOBs on `DocumentChunks`, cosine in-process | zero infra, small/medium bases |
+| `sqlite-vec` | `vec0` virtual table (sqlite-vec extension), native KNN | opt-in: same SQLite file, O(log) ranking as the base grows |
+| `postgres` | pgvector `kh_embeddings`, server-side `<=>` | existing Postgres |
+
+`sqlite-vec` notes: the extension is bundled per RID by
+`HiraokaHyperTools.sqlite-vec` (linux-x64/arm64, osx-x64/arm64, win-x64) —
+startup validation probes `vec_version()` and fails loudly on an unsupported
+RID. The `vec_chunks` index is fixed to `Embeddings:Dimensions`; on first use
+it backfills vectors already stored as BLOBs by the `sqlite` provider, so
+switching providers does not require re-ingest. Going back to `sqlite` is
+also safe — the BLOBs are left untouched.
 
 ## Run from source
 
@@ -244,7 +259,7 @@ Placeholders only — never commit a real `.env`.
 | `EMBEDDINGS_MODEL` | Embedding model name | `nomic-embed-text` | provider-dependent |
 | `EMBEDDINGS_MODELPATH` | ONNX model directory (`model.onnx` + `vocab.txt`) — required for `onnx` | `models/all-MiniLM-L6-v2` | provider-dependent |
 | `EMBEDDINGS_APIKEY` | Embedding API key (env only — never committed) | empty | no |
-| `VECTORSTORE_PROVIDER` | `sqlite` \| `postgres` (pgvector) | `sqlite` | no |
+| `VECTORSTORE_PROVIDER` | `sqlite` \| `sqlite-vec` \| `postgres` (pgvector) | `sqlite` | no |
 | `VECTORSTORE_CONNECTIONSTRING` | Postgres connection string | empty | provider-dependent |
 | `DEEPWIKI_ENABLED` | DeepWiki upstream MCP proxy | `true` | no |
 | `DEEPWIKI_ENDPOINT` | Public DeepWiki endpoint | `https://mcp.deepwiki.com/mcp` | no |

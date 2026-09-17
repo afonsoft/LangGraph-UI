@@ -116,12 +116,18 @@ public static class KnowledgeHubServiceCollectionExtensions
         {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var provider = cfg.GetValue("VectorStore:Provider", "sqlite");
-            return provider.Equals("postgres", StringComparison.OrdinalIgnoreCase)
-                ? new PostgresVectorStore(
+            if (provider.Equals("postgres", StringComparison.OrdinalIgnoreCase))
+                return new PostgresVectorStore(
                     cfg.GetValue<string>("VectorStore:ConnectionString")
                         ?? throw new InvalidOperationException("VectorStore:ConnectionString is required when VectorStore:Provider=postgres"),
-                    cfg.GetValue("Embeddings:Dimensions", 384))
-                : new SqliteVectorStore(sp.GetRequiredService<KnowledgeHubDbContext>());
+                    cfg.GetValue("Embeddings:Dimensions", 384));
+            // SPEC-20260917-sqlite-vec-search: opt-in native KNN via the
+            // sqlite-vec vec0 extension; "sqlite" stays the default.
+            if (provider.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase))
+                return new SqliteVecVectorStore(
+                    sp.GetRequiredService<KnowledgeHubDbContext>(),
+                    cfg.GetValue("Embeddings:Dimensions", 384));
+            return new SqliteVectorStore(sp.GetRequiredService<KnowledgeHubDbContext>());
         });
 
         services.AddScoped<IKnowledgeSourceService, KnowledgeSourceService>();

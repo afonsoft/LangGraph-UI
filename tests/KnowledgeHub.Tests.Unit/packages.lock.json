@@ -84,6 +84,11 @@
         "resolved": "3.30.2",
         "contentHash": "Y2aOVLIt75yeeEWigg9V9YnjsEm53sADtLGq0gLhwaXpk3iu8tYSoauolyhenagA2sWno2TQ2WujI0HQd6s1Vw=="
       },
+      "HiraokaHyperTools.sqlite-vec": {
+        "type": "Transitive",
+        "resolved": "0.1.9",
+        "contentHash": "bY6mmjiQlqDLG+Jf6fvYcq2YA4Q/lJhisYK4zxP6mlzC4274yZGdysNvg/jtuY6Ge3ksD9lpDeB5Nnyi+g0Omg=="
+      },
       "HtmlAgilityPack": {
         "type": "Transitive",
         "resolved": "1.12.2",
@@ -782,6 +787,7 @@
         "type": "Project",
         "dependencies": {
           "DocumentFormat.OpenXml": "[3.3.0, )",
+          "HiraokaHyperTools.sqlite-vec": "[0.1.9, )",
           "HtmlAgilityPack": "[1.12.2, )",
           "KnowledgeHub.Client": "[1.0.0, )",
           "KnowledgeHub.McpEngine": "[1.0.0, )",
