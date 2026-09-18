@@ -47,17 +47,19 @@
         </TableColumn>
         <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="160">
             <Template Context="v">
-                <Button Size="Size.ExtraSmall" Color="Color.Info" Icon="fa-solid fa-chart-line"
-                        Text="Uso" OnClick="() => ShowUsage(v.Row)" />
-                <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-gear"
-                        Text="Config" OnClick="() => ShowSettings(v.Row)" />
-                @if (v.Row.RevokedAt is null)
-                {
-                    <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-ban"
-                                      Text="Revogar" Title="Confirmar revogação"
-                                      Content="Clients usando esta chave perdem acesso imediatamente."
-                                      OnConfirm="() => Revoke(v.Row)" />
-                }
+                <div class="kh-actions">
+                    <Button Size="Size.ExtraSmall" Color="Color.Info" Icon="fa-solid fa-chart-line"
+                            Text="Uso" OnClick="() => ShowUsage(v.Row)" />
+                    <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-gear"
+                            Text="Config" OnClick="() => ShowSettings(v.Row)" />
+                    @if (v.Row.RevokedAt is null)
+                    {
+                        <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-ban"
+                                          Text="Revogar" Title="Confirmar revogação"
+                                          Content="Clients usando esta chave perdem acesso imediatamente."
+                                          OnConfirm="() => Revoke(v.Row)" />
+                    }
+                </div>
             </Template>
         </TableColumn>
     </TableColumns>

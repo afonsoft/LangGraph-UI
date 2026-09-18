@@ -6,68 +6,59 @@
 
 main {
     flex: 1;
+    min-width: 0; /* lets the flex child shrink below content width — prevents page overflow */
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    background: var(--kh-sidebar-bg, #0f172a);
+    transition: width 250ms ease-in-out;
 }
 
 .top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
+    background-color: var(--kh-surface, #f8fafc);
+    border-bottom: 1px solid var(--kh-border, #e2e8f0);
+    justify-content: flex-start;
+    gap: 0.75rem;
     height: 3.5rem;
     display: flex;
     align-items: center;
 }
 
-    .top-row ::deep a, .top-row ::deep .btn-link {
+    .top-row .top-row-title {
+        font-weight: 600;
+        color: var(--kh-text, #1e293b);
         white-space: nowrap;
-        margin-left: 1.5rem;
-        text-decoration: none;
-    }
-
-    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
-        text-decoration: underline;
-    }
-
-    .top-row ::deep a:first-child {
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
-@media (max-width: 640.98px) {
-    .top-row {
-        justify-content: space-between;
-    }
-
+@media (max-width: 767.98px) {
     .top-row ::deep a, .top-row ::deep .btn-link {
         margin-left: 0;
     }
 }
 
-@media (min-width: 641px) {
+@media (min-width: 768px) {
     .page {
         flex-direction: row;
     }
 
     .sidebar {
-        width: 250px;
+        width: var(--kh-sidebar-width, 250px);
         height: 100vh;
         position: sticky;
         top: 0;
+        flex-shrink: 0;
     }
+
+        .sidebar.collapsed {
+            width: var(--kh-sidebar-rail-width, 72px);
+        }
 
     .top-row {
         position: sticky;
         top: 0;
         z-index: 1;
-    }
-
-    .top-row.auth ::deep a:first-child {
-        flex: 1;
-        text-align: right;
-        width: 0;
     }
 
     .top-row, article {
