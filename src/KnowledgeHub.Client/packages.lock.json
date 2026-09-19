@@ -16,6 +16,15 @@
           "Microsoft.Extensions.Localization": "10.0.0"
         }
       },
+      "BootstrapBlazor.FontAwesome": {
+        "type": "Direct",
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "d3llBdiO7YvjVycMT9c9zAW4pUCy6FxgZRfkx0q2lGtBcEkPxYLlBSocQhxXDA8TfvVWRcE1lQXEa/I954bzsQ==",
+        "dependencies": {
+          "BootstrapBlazor": "10.0.0"
+        }
+      },
       "Microsoft.AspNetCore.App.Internal.Assets": {
         "type": "Direct",
         "requested": "[10.0.12, )",
