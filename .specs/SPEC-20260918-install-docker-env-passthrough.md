@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-install-docker-env` |
 | Ticket | `GAP-implementation-install-docker-env` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 
