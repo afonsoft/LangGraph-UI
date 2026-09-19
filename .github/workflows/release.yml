@@ -82,11 +82,21 @@ jobs:
             -p:Version=${{ needs.validate-tag.outputs.version }} \
             --output ./publish/win-x64
 
+      # Upload archives, not the raw publish dirs — hundreds of loose files
+      # per RID both exceed the asset list a user wants AND burn through the
+      # GitHub secondary rate limit during upload.
+      - name: 🗜️ Package Archives
+        run: |
+          tar -C ./publish/linux-x64 -czf ./publish/knowledgehub-linux-x64.tar.gz .
+          cd ./publish/win-x64 && zip -qr ../knowledgehub-win-x64.zip .
+
       - name: 📤 Upload Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a   # v7
         with:
           name: knowledgehub-${{ needs.validate-tag.outputs.version }}
-          path: ./publish/**
+          path: |
+            ./publish/knowledgehub-linux-x64.tar.gz
+            ./publish/knowledgehub-win-x64.zip
           retention-days: 30
 
   publish-docker:
@@ -146,7 +156,7 @@ jobs:
             ### Changes
             Automated release from tag v${{ needs.validate-tag.outputs.version }}
           files: |
-            ./publish/linux-x64/**
-            ./publish/win-x64/**
+            ./publish/knowledgehub-linux-x64.tar.gz
+            ./publish/knowledgehub-win-x64.zip
           draft: false
           prerelease: false
