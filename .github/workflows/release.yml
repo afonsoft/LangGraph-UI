@@ -116,8 +116,6 @@ jobs:
           tags: |
             ghcr.io/afonsoft/langgraph-ui:${{ needs.validate-tag.outputs.version }}
             ghcr.io/afonsoft/langgraph-ui:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   create-release:
     name: 📝 Create GitHub Release
