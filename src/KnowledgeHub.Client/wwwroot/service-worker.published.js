@@ -67,7 +67,7 @@ async function onFetch(event) {
 
     // Deep links (/sources, /chat, ...) resolve to the cached app shell.
     const shouldServeIndexHtml = event.request.mode === 'navigate'
-        && !event.request.url.pathname.substring(event.request.url.pathname.lastIndexOf('/')).includes('.');
+        && !url.pathname.substring(url.pathname.lastIndexOf('/')).includes('.');
     const request = shouldServeIndexHtml ? 'index.html' : event.request;
 
     const cache = await caches.open(cacheName);
