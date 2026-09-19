@@ -60,14 +60,16 @@ jobs:
           dotnet restore KnowledgeHub.slnx
           dotnet build KnowledgeHub.slnx --configuration Release --no-restore
 
+      # Single-file props (PublishSingleFile, SelfContained,
+      # IncludeNativeLibrariesForSelfExtract) live in the Server csproj —
+      # passing them as -p: globals propagates to the WASM Client project and
+      # fails with NETSDK1098. Keep only runtime/version/output here.
       - name: 📦 Publish Single-File (linux-x64)
         run: |
           dotnet publish src/KnowledgeHub.Server/KnowledgeHub.Server.csproj \
             --configuration Release \
             --runtime linux-x64 \
             --self-contained true \
-            -p:PublishSingleFile=true \
-            -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:Version=${{ needs.validate-tag.outputs.version }} \
             --output ./publish/linux-x64
 
@@ -77,8 +79,6 @@ jobs:
             --configuration Release \
             --runtime win-x64 \
             --self-contained true \
-            -p:PublishSingleFile=true \
-            -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:Version=${{ needs.validate-tag.outputs.version }} \
             --output ./publish/win-x64
 
