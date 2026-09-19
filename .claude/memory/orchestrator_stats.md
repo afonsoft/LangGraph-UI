@@ -7,9 +7,9 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 5` (SPEC-20260918-mcp-v2-hybrid entregue via PR #127; 5 Draft SPECs do gap-analysis-20260918 pendentes de aprovação)
+- **current_phase**: `Phase 7` (Epic #128 — 5 SPECs aprovadas do gap-analysis-20260918 em execução; PRs #135–#139 abertos; bug UI #134 em PR #136)
 - **repository**: `afonsoft/LangGraph-UI`
-- **branch**: `main` (`6a35d45`) — protegida (PR + 5 status checks obrigatórios)
+- **branch**: `main` (`958fdcb`) — protegida (PR + 5 status checks obrigatórios)
 - **last_updated**: `2026-09-19`
 
 ---
@@ -52,7 +52,14 @@
 ### Pending Tasks
 
 ```yaml
-(none — queue empty; SPEC-20260918-mcp-v2-hybrid entregue via PR #127)
+- id: TASK-024
+  desc: "Release repair v0.0.2 + delete malformed v.0.0.1 — aguarda merge PR #135 + confirmação destrutiva"
+  tier: T3
+  status: blocked_on_merge_and_confirmation
+- id: TASK-025
+  desc: "Merge PRs #135-#139 + redeploy prod :5550"
+  tier: T1
+  status: blocked_on_ci
 ```
 
 ### Completed Tasks
@@ -292,6 +299,65 @@
   status: done
   completed_at: "2026-09-19"
   validation: "PR #127 merged 6a35d45; 281 unit + 158 integration green; live curl ambos os paths + Stateless startup"
+
+- id: TASK-020
+  desc: "release-publish-singlefile — removidas props globais -p:PublishSingleFile/IncludeNativeLibrariesForSelfExtract do workflow (NETSDK1098 no WASM); lockfile regen p/ NU1403 ILLink re-publish"
+  tier: T2
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260918-release-publish-singlefile.md"
+  issue: "#129"
+  status: pr_open
+  completed_at: "2026-09-19"
+  validation: "PR #135; publish linux-x64 local OK (171MB ELF); NU1403 fix pushado"
+
+- id: TASK-021
+  desc: "install-docker-env-passthrough — docker run agora espelha env block do compose (24 vars) + host-gateway"
+  tier: T2
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260918-install-docker-env-passthrough.md"
+  issue: "#130"
+  status: pr_open
+  completed_at: "2026-09-19"
+  validation: "PR #137; shellcheck clean; docker inspect 24 vars; health 200; precedência shell>.env provada"
+
+- id: TASK-022
+  desc: "claude-md-feature-sync — Estado Atual cobre 7 features entregues + transporte MCP híbrido"
+  tier: T1
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260918-claude-md-feature-sync.md"
+  issue: "#131"
+  status: pr_open
+  completed_at: "2026-09-19"
+  validation: "PR #138; grep todos os termos presentes"
+
+- id: TASK-023
+  desc: "compose-override-chat-example — bloco Chat__* no override example"
+  tier: T1
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260918-compose-override-chat-example.md"
+  issue: "#133"
+  status: pr_open
+  completed_at: "2026-09-19"
+  validation: "PR #139; docker compose config resolve Chat__*"
+
+- id: TASK-024a
+  desc: "fix UI — FontAwesome nunca carregado (ícones invisíveis); +Text nos botões Approvals/Chat reportados"
+  tier: T1
+  skill: /execute-specs
+  issue: "#134"
+  status: pr_open
+  completed_at: "2026-09-19"
+  validation: "PR #136; BootstrapBlazor.FontAwesome 10.0.3 + css link; teste de regressão FrameworkAssetsTests"
+
+- id: TASK-026
+  desc: "orchestrator-state-sync — este arquivo + memory.md reconciliados"
+  tier: T1
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260918-orchestrator-state-sync.md"
+  issue: "#132"
+  status: pr_open
+  completed_at: "2026-09-19"
+  validation: "backlog #1-#12 reconciliado com PRs/issues"
 ```
 
 ---
@@ -314,18 +380,19 @@
 
 | # | Description | Source | Proposed Tier | Status |
 |---|-------------|--------|---------------|--------|
-| 1 | ONNX local embedding provider (all-MiniLM-L6-v2) — +90MB native payload | SPEC-03 | T2 | pending_approval |
-| 2 | sqlite-vec extension for native vector search | SPEC-02 | T2 | pending_approval |
-| 3 | McpProxy SourceType — catalog-driven upstream MCP servers via /api/sources | SPEC-07 | T2 | pending_approval |
-| 4 | Upstream tools/list passthrough (re-expose devin_* private tools when ApiKey set) | SPEC-07 | T2 | pending_approval |
-| 5 | `install.sh --systemd` nunca verificado em host real (requer mutação de sistema — aprovação) | gap-analysis-20260916 | T3 | pending_approval |
-| 6 | SSE E2E autenticado via https://rag.afonsoft.dev (requer credencial) | gap-analysis-20260916 | T2 | pending_approval |
+| 1 | ~~ONNX local embedding provider~~ — entregue SPEC-20260917-onnx-local-embeddings, PR #115 | SPEC-03 | T2 | done |
+| 2 | ~~sqlite-vec extension~~ — entregue SPEC-20260917-sqlite-vec-search, PR #116 | SPEC-02 | T2 | done |
+| 3 | ~~McpProxy SourceType~~ — entregue SPEC-20260917-mcp-proxy-source-type, PR #114 | SPEC-07 | T2 | done |
+| 4 | ~~Upstream tools/list passthrough~~ — entregue SPEC-20260917-upstream-tools-passthrough, PR #113 | SPEC-07 | T2 | done |
+| 5 | ~~`install.sh --systemd` verificação~~ — entregue SPEC-20260917-systemd-host-verify, PR #119 | gap-analysis-20260916 | T3 | done |
+| 6 | ~~SSE E2E autenticado~~ — entregue SPEC-20260918-sse-e2e-verify (?access_token=), PR #120 | gap-analysis-20260916 | T2 | done |
 | 7 | ~~Cleanup de branches mergeadas~~ — entregue via SPEC-20260917-merged-branch-cleanup (#93) | Phase 7 (2026-09-17) | T1 | done |
-| 8 | Release & Publish pipeline quebrada (NETSDK1098 single-file propaga p/ WASM; releases sem assets; tag v.0.0.1 malformada) | SPEC-20260918-release-publish-singlefile | T3 | pending_approval |
-| 9 | install.sh --docker não propaga envs | SPEC-20260918-install-docker-env-passthrough | T2 | pending_approval |
-| 10 | CLAUDE.md feature drift (7 features entregues não citadas) | SPEC-20260918-claude-md-feature-sync | T1 | pending_approval |
-| 11 | orchestrator_stats/memory stale (este arquivo corrigido nesta sessão) | SPEC-20260918-orchestrator-state-sync | T1 | pending_approval |
-| 12 | compose override example sem bloco Chat__* | SPEC-20260918-compose-override-chat-example | T1 | pending_approval |
+| 8 | Release & Publish pipeline quebrada (NETSDK1098; releases sem assets; tag v.0.0.1 malformada) | SPEC-20260918-release-publish-singlefile | T3 | pr_open #135 |
+| 9 | install.sh --docker não propaga envs | SPEC-20260918-install-docker-env-passthrough | T2 | pr_open #137 |
+| 10 | CLAUDE.md feature drift (7 features entregues não citadas) | SPEC-20260918-claude-md-feature-sync | T1 | pr_open #138 |
+| 11 | orchestrator_stats/memory stale (este arquivo corrigido nesta sessão) | SPEC-20260918-orchestrator-state-sync | T1 | pr_open (este) |
+| 12 | compose override example sem bloco Chat__* | SPEC-20260918-compose-override-chat-example | T1 | pr_open #139 |
+| 13 | Botões sem texto/ícone (FontAwesome ausente) em Approvals/Chat | Issue #134 | T1 | pr_open #136 |
 
 ---
 
@@ -337,9 +404,9 @@
 
 ## Metrics
 
-- **tasks_started**: `20`
-- **tasks_completed**: `20`
-- **tasks_blocked**: `0`
-- **human_interventions**: `9`
-- **validation_failures**: `2` (compose empty env → TASK-010/PR #52; format gate red on main → TASK-011/PR #87)
-- **estimated_remaining_minutes**: `0`
+- **tasks_started**: `26`
+- **tasks_completed**: `20` (6 em PR review: #135–#139 + #136)
+- **tasks_blocked**: `1` (release repair v0.0.2 — aguarda merge #135 + confirmação destrutiva para v.0.0.1)
+- **human_interventions**: `11`
+- **validation_failures**: `3` (compose empty env → TASK-010/PR #52; format gate red on main → TASK-011/PR #87; NU1403 ILLink re-publish → lockfile regen em #135)
+- **estimated_remaining_minutes**: `15`
