@@ -11,6 +11,9 @@
     <link rel="stylesheet" href="_content/BootstrapBlazor/css/motronic.min.css" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0f172a" />
     <link href="KnowledgeHub.Client.styles.css" rel="stylesheet" />
     <script type="importmap"></script>
 </head>
@@ -32,6 +35,13 @@
     <script src="_content/BootstrapBlazor/js/bootstrap.blazor.bundle.min.js"></script>
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script src="js/boot.js"></script>
+    <script>
+        // PWA (SPEC-20260918-ui-layout-polish): dev worker is a no-op;
+        // the published worker precaches the app shell.
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js');
+        }
+    </script>
 </body>
 
 </html>

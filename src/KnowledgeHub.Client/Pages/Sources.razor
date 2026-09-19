@@ -61,18 +61,20 @@
         </TableColumn>
         <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="300">
             <Template Context="v">
-                <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" Text="Editar"
-                        OnClick="() => ShowEdit(v.Row)" />
-                <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" Text="Sync"
-                        OnClick="() => SyncNow(v.Row)" />
-                <Button Size="Size.ExtraSmall" Color="Color.Warning"
-                        Icon="@(v.Row.IsActive ? "fa-solid fa-pause" : "fa-solid fa-play")"
-                        Text="@(v.Row.IsActive ? "Desativar" : "Ativar")"
-                        OnClick="() => ToggleActive(v.Row)" />
-                <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-trash"
-                                  Text="Excluir" Title="Confirmar exclusão"
-                                  Content="Documentos e chunks indexados serão removidos."
-                                  OnConfirm="() => DeleteSource(v.Row)" />
+                <div class="kh-actions">
+                    <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" Text="Editar"
+                            OnClick="() => ShowEdit(v.Row)" />
+                    <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" Text="Sync"
+                            OnClick="() => SyncNow(v.Row)" />
+                    <Button Size="Size.ExtraSmall" Color="Color.Warning"
+                            Icon="@(v.Row.IsActive ? "fa-solid fa-pause" : "fa-solid fa-play")"
+                            Text="@(v.Row.IsActive ? "Desativar" : "Ativar")"
+                            OnClick="() => ToggleActive(v.Row)" />
+                    <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-trash"
+                                      Text="Excluir" Title="Confirmar exclusão"
+                                      Content="Documentos e chunks indexados serão removidos."
+                                      OnConfirm="() => DeleteSource(v.Row)" />
+                </div>
             </Template>
         </TableColumn>
     </TableColumns>

@@ -9,8 +9,10 @@
 }
 
 <div class="page">
-    <div class="sidebar @(_mobileNavOpen ? "show" : "")">
-        <NavMenu OnNavItemClicked="CloseMobileNav" />
+    <div class="sidebar @(_mobileNavOpen ? "show" : "") @(_sidebarCollapsed ? "collapsed" : "")">
+        <NavMenu Collapsed="_sidebarCollapsed"
+                 OnToggleCollapse="ToggleSidebarAsync"
+                 OnNavItemClicked="CloseMobileNav" />
     </div>
 
     @if (_mobileNavOpen)
@@ -25,7 +27,7 @@
                     @onclick="ToggleMobileNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+            <span class="top-row-title">@_pageTitle</span>
         </div>
 
         <article class="content px-4">
@@ -35,15 +37,49 @@
 </div>
 
 @code {
+    private const string SidebarStateKey = "kh.sidebar.collapsed";
+
+    private static readonly Dictionary<string, string> PageTitles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["/"] = "Home",
+        ["/sources"] = "Fontes",
+        ["/mcp-monitor"] = "Monitor MCP",
+        ["/approvals"] = "Aprovações",
+        ["/chat"] = "Chat",
+        ["/playground"] = "Playground",
+        ["/api-keys"] = "API Keys",
+        ["/settings"] = "Settings",
+        ["/change-password"] = "Trocar senha",
+    };
+
     private bool _navigating;
     private bool _mobileNavOpen;
+    private bool _sidebarCollapsed;
+    private string _pageTitle = "Knowledge";
     private IDisposable? _locationChanging;
 
     /// <summary>Registra os hooks de navegação que acionam a barra de loading entre telas.</summary>
     protected override void OnInitialized()
     {
+        _pageTitle = ResolveTitle(Nav.Uri);
         _locationChanging = Nav.RegisterLocationChangingHandler(OnLocationChanging);
         Nav.LocationChanged += OnLocationChanged;
+    }
+
+    /// <summary>Restaura a preferência do rail recolhido (só faz efeito em desktop).</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", SidebarStateKey);
+            if (bool.TryParse(stored, out var collapsed) && collapsed != _sidebarCollapsed)
+            {
+                _sidebarCollapsed = collapsed;
+                StateHasChanged();
+            }
+        }
+        catch { /* localStorage indisponível (modo privado) — segue expandido */ }
     }
 
     /// <summary>Acende a barra assim que a navegação interna começa.</summary>
@@ -62,8 +98,15 @@
             await Task.Delay(350);
             _navigating = false;
             _mobileNavOpen = false; // RF-001: close sidebar on navigation
+            _pageTitle = ResolveTitle(e.Location);
             StateHasChanged();
         });
+    }
+
+    private static string ResolveTitle(string uri)
+    {
+        var path = new Uri(uri).LocalPath;
+        return PageTitles.TryGetValue(path, out var title) ? title : "Knowledge";
     }
 
     /// <summary>Alterna a visibilidade do menu mobile.</summary>
@@ -76,6 +119,17 @@
     private void CloseMobileNav()
     {
         _mobileNavOpen = false;
+    }
+
+    /// <summary>Alterna o rail só-ícone no desktop e persiste a preferência.</summary>
+    private async Task ToggleSidebarAsync()
+    {
+        _sidebarCollapsed = !_sidebarCollapsed;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", SidebarStateKey, _sidebarCollapsed ? "true" : "false");
+        }
+        catch { /* localStorage indisponível — estado vale só para a sessão */ }
     }
 
     /// <summary>Remove os hooks de navegação ao destruir o layout.</summary>

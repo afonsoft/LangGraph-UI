@@ -149,6 +149,9 @@ app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value ?? string.Empty;
     var bootShell = path is "/js/boot.js"
+        or "/service-worker.js"
+        or "/service-worker-assets.js"
+        or "/manifest.webmanifest"
         or "/_framework/blazor.webassembly.js"
         or "/_framework/dotnet.js"
         or "/_framework/dotnet.boot.js"
