@@ -32,4 +32,43 @@ public class SessionCallGateTests
         gate.Release("never-acquired"); // must not throw
         await gate.AcquireAsync("never-acquired", CancellationToken.None);
     }
+
+    // Covers SPEC-20260918-mcp-v2-hybrid-transport RF-004: sessionless calls
+    // (hybrid transport serves 2026-07-28 clients without a session id) must be
+    // bounded by a single shared bucket instead of bypassing the gate.
+    [Fact]
+    public async Task AcquireAsync_Sessionless_SharesBoundedBucket()
+    {
+        var gate = new SessionCallGate(maxConcurrentPerSession: 2);
+        await gate.AcquireAsync(null, CancellationToken.None);
+        await gate.AcquireAsync(null, CancellationToken.None);
+
+        var third = gate.AcquireAsync(null, CancellationToken.None);
+        Assert.False(third.IsCompleted); // shared bucket is full → queued, not unbounded
+
+        gate.Release(null);
+        await third;
+        gate.Release(null);
+        gate.Release(null);
+    }
+
+    [Fact]
+    public async Task AcquireAsync_Sessionless_DoesNotContendWithSessions()
+    {
+        // The shared sessionless bucket must not collide with real session ids.
+        var gate = new SessionCallGate(maxConcurrentPerSession: 1);
+        await gate.AcquireAsync(null, CancellationToken.None); // fills sessionless bucket
+
+        await gate.AcquireAsync("s1", CancellationToken.None); // different bucket → immediate
+        gate.Release("s1");
+        gate.Release(null);
+    }
+
+    [Fact]
+    public async Task Release_Sessionless_WithoutAcquire_IsNoOp()
+    {
+        var gate = new SessionCallGate(1);
+        gate.Release(null); // must not over-release the shared bucket
+        await gate.AcquireAsync(null, CancellationToken.None);
+    }
 }

@@ -21,7 +21,7 @@ a single Kestrel-hosted .NET 10 process.
 | `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/integrations*` | Persisted chat-provider config (endpoint/model/key, test connection) and masked integration keys (firecrawl, tavily) |
 | `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}` | Per-API-key overrides: chat endpoint/model/key and integration keys |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
-| `/mcp` | MCP — Streamable HTTP (modern clients) |
+| `/mcp` | MCP — Streamable HTTP, hybrid sessions: `initialize`-handshake clients (≤2025-11-25) get full stateful sessions incl. `tools/list_changed` push; `2026-07-28` clients are served statelessly (no session, re-list on demand). `Mcp:SessionMode` knob: `Stateless`/`Stateful`/`StatefulForInitializeClients` (default) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
 | `/hubs/mcp` | SignalR feed for the MCP monitor |
 

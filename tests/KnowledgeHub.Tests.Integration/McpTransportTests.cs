@@ -87,6 +87,109 @@ public class McpTransportTests : IClassFixture<McpTransportTests.Fixture>
     }
 
     [Fact]
+    public async Task Post_Mcp_Native2026_ToolsList_ReturnsResult_WithoutSessionHeader()
+    {
+        // SPEC-20260918-mcp-v2-hybrid-transport AC: hybrid mode — a client posting
+        // tools/list with MCP-Protocol-Version: 2026-07-28 gets 200 + full tool
+        // list + NO Mcp-Session-Id (served statelessly, no initialize downgrade).
+        var client = await TestAuth.LoginAsync(_factory);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            // 2026-07-28 (SEP-2567/SEP-2575): no initialize handshake — the
+            // revision is declared by MCP-Protocol-Version header + params._meta.
+            Content = new StringContent(
+                """{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}""",
+                Encoding.UTF8, "application/json")
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/list");
+
+        using var response = await client.SendAsync(request, cts.Token);
+        var body = await response.Content.ReadAsStringAsync(cts.Token);
+        Assert.True(response.IsSuccessStatusCode, $"expected success, got {(int)response.StatusCode}: {body}");
+        Assert.False(response.Headers.Contains("Mcp-Session-Id"));
+
+        Assert.Contains("\"tools\"", body);
+        Assert.Contains("search_knowledge", body);
+        Assert.DoesNotContain("-32022", body); // no UnsupportedProtocolVersion downgrade
+    }
+
+    [Fact]
+    public async Task Post_Mcp_Native2026_WithStraySessionHeader_IsIgnored()
+    {
+        // Edge case: a 2026-07-28 request carrying a stray Mcp-Session-Id must be
+        // served statelessly — the header is ignored, none is minted or echoed.
+        var client = await TestAuth.LoginAsync(_factory);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = new StringContent(
+                """{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}""",
+                Encoding.UTF8, "application/json")
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/list");
+        request.Headers.Add("Mcp-Session-Id", "stray-session-id");
+
+        using var response = await client.SendAsync(request, cts.Token);
+        var body = await response.Content.ReadAsStringAsync(cts.Token);
+        Assert.True(response.IsSuccessStatusCode, $"expected success, got {(int)response.StatusCode}: {body}");
+        Assert.False(response.Headers.Contains("Mcp-Session-Id"));
+
+        Assert.DoesNotContain("-32022", body);
+    }
+
+    [Fact]
+    public async Task Post_Mcp_Native2026_ToolsCall_ExecutesSessionless()
+    {
+        // SPEC AC + RF-004: a sessionless tools/call flows through the shared
+        // concurrency bucket and returns a normal result (no session minted).
+        var client = await TestAuth.LoginAsync(_factory);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = new StringContent(
+                """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_knowledge","arguments":{"query":"test"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}""",
+                Encoding.UTF8, "application/json")
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "search_knowledge");
+
+        using var response = await client.SendAsync(request, cts.Token);
+        var body = await response.Content.ReadAsStringAsync(cts.Token);
+        Assert.True(response.IsSuccessStatusCode, $"expected success, got {(int)response.StatusCode}: {body}");
+        Assert.False(response.Headers.Contains("Mcp-Session-Id"));
+        Assert.DoesNotContain("-32022", body);
+    }
+
+    [Fact]
+    public async Task Get_Mcp_WithoutSession_ReturnsMethodNotAllowed()
+    {
+        // SPEC AC: GET /mcp with no session → 405 (stateless requests can't open
+        // the long-lived stream; GET remains available only to session clients).
+        var client = await TestAuth.LoginAsync(_factory);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/mcp");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+
+        using var response = await client.SendAsync(request, cts.Token);
+        Assert.Equal(System.Net.HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Post_Mcp_WithMalformedJson_ReturnsJsonRpcError()
     {
         // Edge case: malformed JSON → -32700 parse error from the SDK
