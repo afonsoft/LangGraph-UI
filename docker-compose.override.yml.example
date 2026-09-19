@@ -20,3 +20,14 @@ services:
       # Remote vault via WebDAV: mount it on the HOST first (davfs2/rclone —
       # see README "Obsidian via WebDAV"), then bind it read-only:
       #   - /srv/webdav/obsidian:/vaults/webdav:ro
+    environment:
+      # Chat provider wiring (SPEC-20260918-compose-override-chat-example).
+      # The base docker-compose.yml intentionally does NOT map Chat__* —
+      # chat is a host-local choice and lives in this override layer.
+      # Values resolve from .env (CHAT__PROVIDER/ENDPOINT/MODEL/APIKEY —
+      # see .env.example). Without this block, .env's CHAT__* never reach
+      # the container and chat stays disabled.
+      Chat__Provider: ${CHAT__PROVIDER:-none}
+      Chat__Endpoint: ${CHAT__ENDPOINT:-}
+      Chat__Model: ${CHAT__MODEL:-}
+      Chat__ApiKey: ${CHAT__APIKEY:-}
