@@ -76,7 +76,7 @@ CLAUDE.md, README.md, .claude/memory/*                         (docs sync)
 
 ### RF-001: Hybrid SessionMode with config knob
 - **Description:** `WithHttpTransport` must set `transport.SessionMode = HttpServerSessionMode.StatefulForInitializeClients` by default, overridable via `Mcp:SessionMode` (`Stateless | Stateful | StatefulForInitializeClients`), parsed with a clear startup error on invalid value. Keep `EnableLegacySse = true` with the existing MCP9004 pragma and an updated comment explaining the hybrid rationale.
-- **Rules:** the `Stateless` bool shorthand is not used (it cannot express hybrid); `Mcp:SessionMode=Stateless` must be honored for future full-stateless deployments (legacy SSE will not map — accepted, documented).
+- **Rules:** the `Stateless` bool shorthand is not used (it cannot express hybrid); `Mcp:SessionMode=Stateless` must be honored for future full-stateless deployments (legacy SSE will not map — accepted, documented; SDK refuses `EnableLegacySse` under Stateless, so SSE is only enabled for session-capable modes).
 - **Input → Output:** config value → effective `SessionMode` on the transport.
 
 ### RF-002: Native 2026-07-28 path works
@@ -120,13 +120,12 @@ Wire-level (MCP over HTTP):
 
 | Client | Request | Expected |
 | --- | --- | --- |
-| `2026-07-28` | `POST /mcp` + `MCP-Protocol-Version: 2026-07-28` + `server/discover` | 200, capabilities result, **no** `Mcp-Session-Id` |
-| `2026-07-28` | `POST /mcp` + `tools/call` | 200, result; no session |
+| `2026-07-28` | `POST /mcp` + headers `MCP-Protocol-Version: 2026-07-28` + `Mcp-Method: <method>` (+ `Mcp-Name: <tool>` for `tools/call`) + body `params._meta["io.modelcontextprotocol/protocolVersion"]` + `params._meta["io.modelcontextprotocol/clientCapabilities"]` | 200, JSON-RPC result, **no** `Mcp-Session-Id` |
 | `2025-11-25` | `POST /mcp` + `initialize` | 200 + `Mcp-Session-Id`; session features on |
 | SSE-only | `GET /mcp/sse` (+`?access_token=`) | endpoint event; `POST /mcp/message` works |
-| any | `GET/DELETE /mcp` stateless | 405 |
+| `2026-07-28` | `GET/DELETE /mcp` (version header, no session) | 405 |
 
-**Expected errors:** `-32022` must NOT be returned to `2026-07-28` requests anymore; invalid `Mcp:SessionMode` config → startup `OptionsValidationException`-style failure with a clear message.
+**Expected errors:** `-32022` must NOT be returned to `2026-07-28` requests anymore; a `2026-07-28` request missing any of the required headers/`_meta` keys fails fast with `-32602`/`-32020` naming the missing piece; `ping` does not exist on `2026-07-28` (-32601); invalid `Mcp:SessionMode` config → startup `InvalidOperationException` naming the key and valid values.
 
 ## 6. Acceptance Criteria
 
