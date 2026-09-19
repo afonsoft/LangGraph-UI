@@ -9,7 +9,7 @@
 | Stack | `.NET 10 / ModelContextProtocol SDK 2.2.0` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-mcp-v2-hybrid` |
-| Ticket | `—` |
+| Ticket | `#126` |
 | Status | `Approved` |
 
 ## 1. User Story
