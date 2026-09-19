@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-override-chat-example` |
 | Ticket | `GAP-documentation-compose-override-chat` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 

@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-release-publish-singlefile` |
 | Ticket | `GAP-automation-release-publish-broken` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 
