@@ -5,7 +5,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/building-mcp-servers/SKILL.md",
-      "computedHash": "1fb74bff6f4bb250b16999be96dab13a44c8d8acc63beb54473bd589e4691cd2"
+      "computedHash": "2ee7aec1b8d61b10e90bfbc398bbcf6c02182a985f095b79614720f569f91b22"
     },
     "code-review-and-quality": {
       "source": "afonsoft/skills",
@@ -137,7 +137,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/write-specs/SKILL.md",
-      "computedHash": "5a77ab1c56f8a00d3c420edaf6765b633ae9fdd323e5668ee385b2c6eaf388ff"
+      "computedHash": "52082fc584d0b3093e5fa912d79dcf90bad801adcc58b8b97c656798df149d7e"
     }
   }
 }
