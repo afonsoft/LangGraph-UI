@@ -91,3 +91,19 @@ pipeline NETSDK1098 é prioridade alta); redeploy p/ :5550; prod smoke
 - #112 SSE E2E prod: Bearer path fully verified on rag.afonsoft.dev (handshake→initialize→tools/list 42 tools→tools/call). Found ?access_token= 401 gap → fixed handler scope (+/mcp/sse) in PR #120, re-verified 200 post-deploy.
 - Epic #106 closed — 6/6 slices. Prod redeployed via docker compose (image rebuilt from main).
 - Note: install.sh --docker does not propagate .env/compose volumes — deploys on this host should use `docker compose up -d --build`.
+
+## 2026-09-19 — MCP v2 hybrid + Epic #128 (gap-analysis SPECs) + release repair
+
+- SPEC-20260918-mcp-v2-hybrid-transport: híbrido `StatefulForInitializeClients`
+  + knob `Mcp:SessionMode` + bucket compartilhado no SessionCallGate. PR #127
+  merged 6a35d45. QA achou crash Stateless+EnableLegacySse — corrigido.
+- Epic #128 (5 SPECs aprovadas): #129 release-publish (PRs #135+#141+#142 —
+  3 bugs no workflow: props globais NETSDK1098, gha cache sem buildx, assets
+  soltos→rate limit), #130 install env passthrough (#137), #131 claude-md
+  sync (#138), #132 orchestrator-state (#140), #133 compose chat example (#139).
+- Bug UI #134: FontAwesome nunca carregado → ícones invisíveis. PR #136.
+- Release repair: v0.0.2 recriada com 2 archives + GHCR 0.0.2/latest;
+  v.0.0.1 tag+release deletada (confirmação explícita, ancestor de main).
+- Incidentes: NU1403 (ILLink re-publish → lockfile regen); rate limit no
+  upload de 222 assets soltos → motivou o fix de archives.
+- Final: main f282c43, 0 PRs, prod healthy :5550, backlog zerado.
