@@ -48,8 +48,11 @@ Options:
   --skip-tests      Skip dotnet build/test gate.
   -h, --help        Show this help.
 
-Env overrides: IMAGE_NAME, CONTAINER_NAME, KNOWLEDGEHUB_PORT, ALLOWED_HOSTS,
-               EMBEDDINGS_*, VECTORSTORE_*, DEEPWIKI_*.
+Env overrides (docker + host modes, shell env > .env): IMAGE_NAME,
+               CONTAINER_NAME, KNOWLEDGEHUB_PORT, ALLOWED_HOSTS,
+               EMBEDDINGS_*, VECTORSTORE_*, DEEPWIKI_*, FIRECRAWL_*,
+               TAVILY_*, CACHE_PROVIDER, REDIS_CONNECTIONSTRING,
+               AUTH_ADMIN_INITIAL_PASSWORD, CHAT__*.
 EOF
 }
 
@@ -136,11 +139,41 @@ docker_deploy() {
     docker rm -f "$CONTAINER_NAME" >/dev/null
   fi
   check_port
-  info "docker run -d -p $PORT:$CONTAINER_PORT -v $abs_data:/data $IMAGE_NAME"
+  # SPEC-20260918-install-docker-env-passthrough RF-001: propagate the same
+  # env surface docker-compose.yml maps — previously only AllowedHosts made
+  # it through, so every documented override was silently inert. Defaults
+  # mirror compose; secrets ride inside -e flags and are never printed.
+  info "docker run -d -p $PORT:$CONTAINER_PORT -v $abs_data:/data $IMAGE_NAME (env: documented overrides)"
   docker run -d --name "$CONTAINER_NAME" \
     -p "$PORT:$CONTAINER_PORT" \
     -v "$abs_data:/data" \
     -e AllowedHosts="${ALLOWED_HOSTS:-*}" \
+    -e "Embeddings__Provider=${EMBEDDINGS_PROVIDER:-deterministic}" \
+    -e "Embeddings__Endpoint=${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434}" \
+    -e "Embeddings__ApiKey=${EMBEDDINGS_APIKEY:-}" \
+    -e "Embeddings__Model=${EMBEDDINGS_MODEL:-nomic-embed-text}" \
+    -e "VectorStore__Provider=${VECTORSTORE_PROVIDER:-sqlite}" \
+    -e "VectorStore__ConnectionString=${VECTORSTORE_CONNECTIONSTRING:-}" \
+    -e "DeepWiki__Enabled=${DEEPWIKI_ENABLED:-true}" \
+    -e "DeepWiki__Endpoint=${DEEPWIKI_ENDPOINT:-https://mcp.deepwiki.com/mcp}" \
+    -e "DeepWiki__PrivateEndpoint=${DEEPWIKI_PRIVATE_ENDPOINT:-https://mcp.devin.ai/mcp}" \
+    -e "DeepWiki__ApiKey=${DEEPWIKI_APIKEY:-}" \
+    -e "Firecrawl__Enabled=${FIRECRAWL_ENABLED:-true}" \
+    -e "Firecrawl__Endpoint=${FIRECRAWL_ENDPOINT:-https://mcp.firecrawl.dev/v2/mcp}" \
+    -e "Firecrawl__ApiKey=${FIRECRAWL_APIKEY:-}" \
+    -e "Firecrawl__TimeoutSeconds=${FIRECRAWL_TIMEOUT_SECONDS:-300}" \
+    -e "Tavily__Enabled=${TAVILY_ENABLED:-true}" \
+    -e "Tavily__Endpoint=${TAVILY_ENDPOINT:-https://mcp.tavily.com/mcp}" \
+    -e "Tavily__ApiKey=${TAVILY_APIKEY:-}" \
+    -e "Tavily__TimeoutSeconds=${TAVILY_TIMEOUT_SECONDS:-120}" \
+    -e "Cache__Provider=${CACHE_PROVIDER:-memory}" \
+    -e "Cache__Redis__ConnectionString=${REDIS_CONNECTIONSTRING:-}" \
+    -e "Auth__AdminInitialPassword=${AUTH_ADMIN_INITIAL_PASSWORD:-123qwe}" \
+    -e "Chat__Provider=${CHAT__PROVIDER:-none}" \
+    -e "Chat__Endpoint=${CHAT__ENDPOINT:-}" \
+    -e "Chat__Model=${CHAT__MODEL:-}" \
+    -e "Chat__ApiKey=${CHAT__APIKEY:-}" \
+    --add-host host.docker.internal:host-gateway \
     --restart unless-stopped \
     "$IMAGE_NAME"
   info "Done. KnowledgeHub is up at http://localhost:$PORT"
