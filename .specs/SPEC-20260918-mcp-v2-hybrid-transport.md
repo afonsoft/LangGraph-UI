@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-mcp-v2-hybrid` |
 | Ticket | `—` |
-| Status | `Draft` |
+| Status | `Approved` |
 
 ## 1. User Story
 
