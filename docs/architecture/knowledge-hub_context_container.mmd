@@ -10,7 +10,7 @@ flowchart TB
         direction TB
         SPA["📄 Static host<br/>index.html + WASM assets"]
         API["🌐 REST API<br/>/api/sources · /api/search"]
-        MCP["📨 MCP Server<br/>/mcp (Streamable HTTP)<br/>/mcp/sse + /mcp/message (legacy)"]
+        MCP["📨 MCP Server<br/>/mcp (Streamable HTTP, hybrid:<br/>initialize→session · 2026-07-28→stateless)<br/>/mcp/sse + /mcp/message (legacy)"]
         HUB["📡 SignalR Hub<br/>/hubs/mcp"]
         CAT["🧰 DynamicToolCatalog<br/>IToolProviders"]
         ING["⚙️ IngestionService<br/>parser · chunker · watcher"]

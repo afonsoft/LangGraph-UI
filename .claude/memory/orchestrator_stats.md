@@ -7,10 +7,10 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 8` (Epic #90 gap-analysis-20260917 executado; resta merge da PR #98 + fechamento da Epic)
+- **current_phase**: `Phase 5` (SPEC-20260918-mcp-v2-hybrid entregue via PR #127; 5 Draft SPECs do gap-analysis-20260918 pendentes de aprovação)
 - **repository**: `afonsoft/LangGraph-UI`
-- **branch**: `main` (`00f1c18`) — protegida (PR + 5 status checks obrigatórios)
-- **last_updated**: `2026-09-17`
+- **branch**: `main` (`6a35d45`) — protegida (PR + 5 status checks obrigatórios)
+- **last_updated**: `2026-09-19`
 
 ---
 
@@ -52,7 +52,7 @@
 ### Pending Tasks
 
 ```yaml
-(none — queue empty; Epic #90 slices entregues, PR #98 aguardando checks)
+(none — queue empty; SPEC-20260918-mcp-v2-hybrid entregue via PR #127)
 ```
 
 ### Completed Tasks
@@ -280,6 +280,18 @@
   status: done (PR #98 open, aguardando checks)
   completed_at: "2026-09-17"
   validation: "validate-harness.sh PASS; settings.json válido"
+
+- id: TASK-019
+  desc: "MCP v2 hybrid transport — SessionMode=StatefulForInitializeClients + Mcp:SessionMode knob + shared sessionless gate bucket"
+  tier: T3
+  skill: /execute-specs
+  spec_ref: ".specs/SPEC-20260918-mcp-v2-hybrid-transport.md"
+  issue: "#126"
+  depends_on: []
+  isolation: inline
+  status: done
+  completed_at: "2026-09-19"
+  validation: "PR #127 merged 6a35d45; 281 unit + 158 integration green; live curl ambos os paths + Stateless startup"
 ```
 
 ---
@@ -309,6 +321,11 @@
 | 5 | `install.sh --systemd` nunca verificado em host real (requer mutação de sistema — aprovação) | gap-analysis-20260916 | T3 | pending_approval |
 | 6 | SSE E2E autenticado via https://rag.afonsoft.dev (requer credencial) | gap-analysis-20260916 | T2 | pending_approval |
 | 7 | ~~Cleanup de branches mergeadas~~ — entregue via SPEC-20260917-merged-branch-cleanup (#93) | Phase 7 (2026-09-17) | T1 | done |
+| 8 | Release & Publish pipeline quebrada (NETSDK1098 single-file propaga p/ WASM; releases sem assets; tag v.0.0.1 malformada) | SPEC-20260918-release-publish-singlefile | T3 | pending_approval |
+| 9 | install.sh --docker não propaga envs | SPEC-20260918-install-docker-env-passthrough | T2 | pending_approval |
+| 10 | CLAUDE.md feature drift (7 features entregues não citadas) | SPEC-20260918-claude-md-feature-sync | T1 | pending_approval |
+| 11 | orchestrator_stats/memory stale (este arquivo corrigido nesta sessão) | SPEC-20260918-orchestrator-state-sync | T1 | pending_approval |
+| 12 | compose override example sem bloco Chat__* | SPEC-20260918-compose-override-chat-example | T1 | pending_approval |
 
 ---
 
@@ -320,8 +337,8 @@
 
 ## Metrics
 
-- **tasks_started**: `19`
-- **tasks_completed**: `19`
+- **tasks_started**: `20`
+- **tasks_completed**: `20`
 - **tasks_blocked**: `0`
 - **human_interventions**: `9`
 - **validation_failures**: `2` (compose empty env → TASK-010/PR #52; format gate red on main → TASK-011/PR #87)

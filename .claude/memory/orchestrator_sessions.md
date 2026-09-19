@@ -5,6 +5,40 @@ context — see `.agents/skills/orchestrator/SKILL.md` Phase 8.
 
 ---
 
+## Session — 2026-09-19
+
+**Scope**: SPEC-20260918-mcp-v2-hybrid-transport (#126) — MCP SDK v2 hybrid
+transport + 5 Draft SPECs do gap-analysis-20260918.
+
+**Decisions**:
+- `SessionMode = StatefulForInitializeClients` (híbrido) atrás do knob
+  `Mcp:SessionMode` — clients `initialize`/SSE mantêm sessão completa;
+  `2026-07-28` servidos stateless no mesmo `/mcp` (sem downgrade -32022).
+- SessionCallGate: bucket dedicado `_sessionless` (SemaphoreSlim próprio,
+  não chave de dicionário) para calls sem sessão — antes era unbounded.
+- Wire 2026-07-28 descoberto via SDK: exige headers `MCP-Protocol-Version`
+  + `Mcp-Method` (+`Mcp-Name` p/ tools/call) E `params._meta`
+  protocolVersion + clientCapabilities; `ping` removido em 2026-07-28.
+- SDK rejeita `EnableLegacySse` em `Stateless` → SSE só habilitado para
+  modos com sessão (fix descoberto no smoke de edge case).
+- `Enum.TryParse` aceita numéricos ("0"→Stateless) — guard `char.IsLetter`.
+
+**Delivered**: PR #127 mergeado `6a35d45` (feat `1d8edbc`); #126 fechada;
+281 unit + 158 integration verdes; format 0; live curl smoke ambos os paths
++ Stateless startup. SPEC → Done. 6 SPECs novas commitadas em main
+(`60a1e9b`/`cce159a` — push direto autorizado pelo owner, bypass registrado).
+PR #125 (skills-lock) segue aberta.
+
+**Remaining**: 5 Draft SPECs do gap-analysis aguardando aprovação (release
+pipeline NETSDK1098 é prioridade alta); redeploy p/ :5550; prod smoke
+`?access_token=` em rag.afonsoft.dev.
+
+**Lessons**:
+- Não assumir wire contract do protocolo novo — o SDK ensina via erros
+  -32602/-32020 progressivos; escrever teste que captura o body primeiro.
+- Testar `SessionMode=Stateless` no startup real pega incompatibilidades
+  de options que unit tests não veem.
+
 ## Session — 2026-09-17 14:00
 
 **Scope**: Epic #90 (gap-analysis-20260917) — execução dos 5 SPECs aprovados

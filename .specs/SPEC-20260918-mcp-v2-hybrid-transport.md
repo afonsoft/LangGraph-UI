@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-mcp-v2-hybrid` |
 | Ticket | `#126` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -129,13 +129,13 @@ Wire-level (MCP over HTTP):
 
 ## 6. Acceptance Criteria
 
-- [ ] **Given** hybrid mode **when** a client posts `tools/list` with `MCP-Protocol-Version: 2026-07-28` **then** 200 + full tool list + no `Mcp-Session-Id` header.
-- [ ] **Given** hybrid mode **when** a client posts `initialize` **then** 200 + `Mcp-Session-Id` issued and subsequent session requests work.
-- [ ] **Given** an SSE-only client **when** `GET /mcp/sse?access_token=<key>` **then** endpoint event + `POST /mcp/message` tools/call works.
-- [ ] **Given** a catalog change **when** sessions exist **then** session clients receive `tools/list_changed`; sessionless clients see the new catalog on next `tools/list`.
-- [ ] **Given** >8 concurrent sessionless `tools/call` **when** the shared bucket is full **then** excess calls wait (bounded), then complete.
-- [ ] **Given** `Mcp:SessionMode=Stateless` **when** app starts **then** server runs stateless (documented SSE caveat); invalid value → clear startup error.
-- [ ] **Given** existing suite **when** `dotnet test` runs **then** all tests green including new stateless-path tests; `dotnet format` exit 0.
+- [x] **Given** hybrid mode **when** a client posts `tools/list` with `MCP-Protocol-Version: 2026-07-28` **then** 200 + full tool list + no `Mcp-Session-Id` header.
+- [x] **Given** hybrid mode **when** a client posts `initialize` **then** 200 + `Mcp-Session-Id` issued and subsequent session requests work.
+- [x] **Given** an SSE-only client **when** `GET /mcp/sse?access_token=<key>` **then** endpoint event + `POST /mcp/message` tools/call works.
+- [x] **Given** a catalog change **when** sessions exist **then** session clients receive `tools/list_changed`; sessionless clients see the new catalog on next `tools/list`.
+- [x] **Given** >8 concurrent sessionless `tools/call` **when** the shared bucket is full **then** excess calls wait (bounded), then complete.
+- [x] **Given** `Mcp:SessionMode=Stateless` **when** app starts **then** server runs stateless (documented SSE caveat); invalid value → clear startup error.
+- [x] **Given** existing suite **when** `dotnet test` runs **then** all tests green including new stateless-path tests; `dotnet format` exit 0.
 
 **Edge cases:**
 
@@ -149,14 +149,14 @@ Wire-level (MCP over HTTP):
 
 ## 7. Task Plan (agent execution)
 
-- [ ] **T1 — Discovery:** read section-3 files; confirm SDK 2.2.0 API surface (`HttpServerTransportOptions.SessionMode`, `HttpServerSessionMode`) via installed package; map every session-id touchpoint.
-- [ ] **T2 — Transport:** implement RF-001 (SessionMode + `Mcp:SessionMode` knob + updated comments/pragma).
-- [ ] **T3 — Gate:** implement RF-004 shared bucket in `SessionCallGate` (+ unit tests).
-- [ ] **T4 — Middleware/feed:** verify/adjust RF-006 tolerance; `server/discover` recorded correctly.
-- [ ] **T5 — Tests:** integration tests for stateless path (discover, tools/list, tools/call, no session header, 405 GET), session path regression, SSE path regression; gate unit tests.
-- [ ] **T6 — Docs:** RF-008 updates.
-- [ ] **T7 — Validation:** build 0 warnings, `dotnet test` green, `dotnet format` exit 0; local live smoke of both paths (`curl` initialize + `2026-07-28` probe + SSE).
-- [ ] **T8 — Done + PR:** DoD complete → `Status = Done` → PR open.
+- [x] **T1 — Discovery:** read section-3 files; confirm SDK 2.2.0 API surface (`HttpServerTransportOptions.SessionMode`, `HttpServerSessionMode`) via installed package; map every session-id touchpoint.
+- [x] **T2 — Transport:** implement RF-001 (SessionMode + `Mcp:SessionMode` knob + updated comments/pragma).
+- [x] **T3 — Gate:** implement RF-004 shared bucket in `SessionCallGate` (+ unit tests).
+- [x] **T4 — Middleware/feed:** verify/adjust RF-006 tolerance; `server/discover` recorded correctly.
+- [x] **T5 — Tests:** integration tests for stateless path (discover, tools/list, tools/call, no session header, 405 GET), session path regression, SSE path regression; gate unit tests.
+- [x] **T6 — Docs:** RF-008 updates.
+- [x] **T7 — Validation:** build 0 warnings, `dotnet test` green, `dotnet format` exit 0; local live smoke of both paths (`curl` initialize + `2026-07-28` probe + SSE).
+- [x] **T8 — Done + PR:** DoD complete → `Status = Done` → PR open.
 
 **7.1 Validation strategy by type/stack**
 
@@ -173,14 +173,14 @@ live `curl` evidence on localhost and prod smoke post-deploy.
 
 ## 9. Definition of Done
 
-- [ ] All requirements (section 4) implemented.
-- [ ] All acceptance criteria (section 6) covered by passing tests or live evidence.
-- [ ] Edge cases handled.
-- [ ] `dotnet build` 0 warnings, `dotnet test` green, `dotnet format` exit 0.
-- [ ] Legacy SSE + `?access_token=` verified working post-change.
-- [ ] Guardrails respected; docs synced.
+- [x] All requirements (section 4) implemented.
+- [x] All acceptance criteria (section 6) covered by passing tests or live evidence.
+- [x] Edge cases handled.
+- [x] `dotnet build` 0 warnings, `dotnet test` green, `dotnet format` exit 0.
+- [x] Legacy SSE + `?access_token=` verified working post-change.
+- [x] Guardrails respected; docs synced.
 
-**Next action after DoD is complete:** set `Status = Done` in section 0 and open the PR on branch `feature/Devin-20260918-mcp-v2-hybrid`.
+**Delivered:** PR #127 merged as `6a35d45` (feat `1d8edbc`) — closes #126. Evidence: 281 unit + 158 integration green; live curl smoke on both wire paths + Stateless-mode startup.
 
 ## Open Questions / Pending Ambiguity
 

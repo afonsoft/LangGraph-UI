@@ -1,6 +1,6 @@
 # Knowledge — System Architecture
 
-All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP + legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, documents, APIs, SQL).
+All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP in hybrid session mode — `initialize` clients get sessions, `2026-07-28` clients are served statelessly — plus legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, documents, APIs, SQL).
 
 > Source of truth: `.specs/` (SPEC-20260913-*, approved). Diagram sources: `*.mmd` (Mermaid) + `knowledge-hub-architecture.drawio` (editable XML).
 
@@ -19,7 +19,7 @@ flowchart TB
         direction TB
         SPA["Static host<br/>index.html + WASM assets"]
         API["REST API<br/>/api/sources · /api/search"]
-        MCP["MCP Server<br/>/mcp (Streamable HTTP)<br/>/mcp/sse + /mcp/message (legacy)"]
+        MCP["MCP Server<br/>/mcp (Streamable HTTP, hybrid:<br/>initialize→session · 2026-07-28→stateless)<br/>/mcp/sse + /mcp/message (legacy)"]
         HUB["SignalR Hub<br/>/hubs/mcp"]
         CAT["DynamicToolCatalog<br/>IToolProviders"]
         ING["IngestionService<br/>parser · chunker · watcher"]
@@ -77,7 +77,7 @@ flowchart TB
 | | LangGraph / Python agents | Streamable HTTP `POST /mcp` |
 | Edge | Static host | `index.html` + WASM assets, SPA fallback for `/sources` etc. |
 | | REST API | `/api/sources`, `/api/search` (Minimal APIs) |
-| | MCP transport | `MapMcp("/mcp")`, `EnableLegacySse` — official `ModelContextProtocol.AspNetCore` |
+| | MCP transport | `MapMcp("/mcp")`, `SessionMode=StatefulForInitializeClients` (`Mcp:SessionMode`), `EnableLegacySse` — official `ModelContextProtocol.AspNetCore` 2.2.0 |
 | | SignalR hub | `/hubs/mcp` — live sessions + call log |
 | Core | `DynamicToolCatalog` | Resolves tools live per `tools/list` from `IToolProviders` |
 | | `IngestionService` | Markdown parse → chunk (500/50 tok) → embed → upsert |
