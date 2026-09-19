@@ -44,6 +44,25 @@ public class FrameworkAssetsTests
         env.WebRootFileProvider.GetFileInfo($"_framework/{fileName}{suffix}").Exists;
 
     [Fact]
+    public void FontAwesome_StaticWebAsset_Exists_AndIndexReferencesIt()
+    {
+        // Covers #134: icon-only Buttons rendered empty because Font Awesome CSS
+        // was never loaded. Guards both ends — the static web asset must resolve
+        // and index.html must reference it.
+        using var factory = new Fixture();
+        var env = factory.Services.GetRequiredService<IWebHostEnvironment>();
+
+        const string cssPath = "_content/BootstrapBlazor.FontAwesome/css/font-awesome.min.css";
+        Assert.True(env.WebRootFileProvider.GetFileInfo(cssPath).Exists,
+            $"missing static web asset {cssPath}");
+
+        var index = env.WebRootFileProvider.GetFileInfo("index.html");
+        Assert.True(index.Exists);
+        using var reader = new StreamReader(index.CreateReadStream());
+        Assert.Contains("BootstrapBlazor.FontAwesome", reader.ReadToEnd());
+    }
+
+    [Fact]
     public async Task Get_KnownDatAsset_Anonymous_Returns200OctetStreamImmutableCache()
     {
         // Covers AC: remapped binary asset → 200 anonymously, octet-stream, immutable cache

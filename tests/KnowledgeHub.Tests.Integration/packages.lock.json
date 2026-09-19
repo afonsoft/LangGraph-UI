@@ -71,6 +71,14 @@
           "Microsoft.Extensions.Localization": "10.0.0"
         }
       },
+      "BootstrapBlazor.FontAwesome": {
+        "type": "Transitive",
+        "resolved": "10.0.3",
+        "contentHash": "d3llBdiO7YvjVycMT9c9zAW4pUCy6FxgZRfkx0q2lGtBcEkPxYLlBSocQhxXDA8TfvVWRcE1lQXEa/I954bzsQ==",
+        "dependencies": {
+          "BootstrapBlazor": "10.0.0"
+        }
+      },
       "DocumentFormat.OpenXml": {
         "type": "Transitive",
         "resolved": "3.3.0",
@@ -948,6 +956,7 @@
         "type": "Project",
         "dependencies": {
           "BootstrapBlazor": "[10.10.2, )",
+          "BootstrapBlazor.FontAwesome": "[10.0.3, )",
           "KnowledgeHub.Shared": "[1.0.0, )",
           "Microsoft.AspNetCore.Components.WebAssembly": "[10.0.12, )",
           "Microsoft.AspNetCore.SignalR.Client": "[10.0.12, )",
