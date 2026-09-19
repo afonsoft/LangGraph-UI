@@ -7,7 +7,7 @@
 ## Session
 
 - **started_at**: `2026-09-13`
-- **current_phase**: `Phase 7` (Epic #128 — 5 SPECs aprovadas do gap-analysis-20260918 em execução; PRs #135–#139 abertos; bug UI #134 em PR #136)
+- **current_phase**: `Phase 8` (Epic #128 — 5 SPECs Done; bug UI #134 resolvido; release v0.0.2 reparada; tag v.0.0.1 removida)
 - **repository**: `afonsoft/LangGraph-UI`
 - **branch**: `main` (`958fdcb`) — protegida (PR + 5 status checks obrigatórios)
 - **last_updated**: `2026-09-19`
