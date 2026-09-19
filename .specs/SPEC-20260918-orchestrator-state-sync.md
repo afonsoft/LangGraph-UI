@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260918-orchestrator-state-sync` |
 | Ticket | `GAP-operation-stale-orchestrator-state` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
