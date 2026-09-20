@@ -13,5 +13,8 @@ public enum SourceType
     SqlDatabase = 5,
     /// <summary>Upstream MCP server exposed through the tool catalog
     /// (SPEC-20260917-mcp-proxy-source-type) — proxy only, not ingestible.</summary>
-    McpProxy = 6
+    McpProxy = 6,
+    /// <summary>Notion workspace via REST API internal integration
+    /// (SPEC-20260919-notion-connector) — read-only ingestion.</summary>
+    Notion = 7
 }

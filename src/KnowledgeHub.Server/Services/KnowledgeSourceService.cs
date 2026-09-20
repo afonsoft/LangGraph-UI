@@ -28,7 +28,8 @@ public sealed class KnowledgeSourceService(
         [SourceType.RestApi] = ["endpoint"],
         [SourceType.SqlDatabase] = ["connectionString", "query"],
         [SourceType.DocumentFile] = ["path"],
-        [SourceType.McpProxy] = ["endpoint"]
+        [SourceType.McpProxy] = ["endpoint"],
+        [SourceType.Notion] = []
     };
 
     public async Task<IReadOnlyList<KnowledgeSourceDto>> ListAsync(SourceType? type, bool? active, CancellationToken ct = default)
@@ -64,6 +65,9 @@ public sealed class KnowledgeSourceService(
             AutoSyncEnabled = request.AutoSyncEnabled,
             SyncIntervalMinutes = request.SyncIntervalMinutes
         };
+        var secretError = await ValidateConnectorSecretAsync(source, request.Configuration, ct);
+        if (secretError is not null)
+            return ServiceResult<KnowledgeSourceDto>.Fail(400, secretError);
         db.Sources.Add(source);
         await PersistProxySecretAsync(source, request.Configuration, ct);
         await db.SaveChangesAsync(ct);
@@ -90,6 +94,9 @@ public sealed class KnowledgeSourceService(
         source.IsActive = request.IsActive;
         source.AutoSyncEnabled = request.AutoSyncEnabled;
         source.SyncIntervalMinutes = request.SyncIntervalMinutes;
+        var secretError = await ValidateConnectorSecretAsync(source, request.Configuration, ct);
+        if (secretError is not null)
+            return ServiceResult<KnowledgeSourceDto>.Fail(400, secretError);
         await PersistProxySecretAsync(source, request.Configuration, ct);
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
@@ -104,6 +111,8 @@ public sealed class KnowledgeSourceService(
         db.Sources.Remove(source); // cascade removes documents + chunks
         if (source.SourceType == SourceType.McpProxy)
             await secrets.RemoveAsync(McpProxySession.SecretKey(source.Id), ct);
+        if (source.SourceType == SourceType.Notion)
+            await secrets.RemoveAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct);
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
         return ServiceResult<bool>.Ok(true);
@@ -120,21 +129,49 @@ public sealed class KnowledgeSourceService(
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
     }
 
-    /// <summary>Moves <c>configuration.apiKey</c> to the encrypted store for
-    /// McpProxy sources (SPEC-20260917-mcp-proxy-source-type RF-003): the
+    /// <summary>Notion secret check (SPEC-20260919-notion-connector RF-001):
+    /// a config carrying no usable token is only valid when an encrypted token
+    /// already exists for this source — <c>hasKey:true</c> without a stored
+    /// secret is rejected, otherwise the source could never sync. An empty
+    /// token is allowed through when a secret exists (explicit removal).</summary>
+    private async Task<string?> ValidateConnectorSecretAsync(
+        KnowledgeSource source, JsonObject? configuration, CancellationToken ct)
+    {
+        if (source.SourceType != SourceType.Notion || configuration is null)
+            return null;
+
+        var usable = configuration["token"] is JsonValue tv
+            && tv.TryGetValue<string>(out var token)
+            && token.Length > 0 && token != "***";
+        if (usable)
+            return null;
+
+        return await secrets.GetAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct) is null
+            ? "Configuration key 'token' is required for Notion — no stored token for this source"
+            : null;
+    }
+
+    /// <summary>Moves the connector's secret field to the encrypted store —
+    /// <c>configuration.apiKey</c> for McpProxy (SPEC-20260917 RF-003) and
+    /// <c>configuration.token</c> for Notion (SPEC-20260919 RF-005): the
     /// persisted configuration keeps only a non-sensitive <c>hasKey</c> flag.
-    /// An absent <c>apiKey</c> keeps the stored key; <c>"***"</c> (the redaction
+    /// An absent key keeps the stored secret; <c>"***"</c> (the redaction
     /// marker echoed by edited forms) also keeps it; empty removes it.</summary>
     private async Task PersistProxySecretAsync(KnowledgeSource source, JsonObject? configuration, CancellationToken ct)
     {
-        if (source.SourceType != SourceType.McpProxy || configuration is null)
+        var (configKey, secretKey) = source.SourceType switch
+        {
+            SourceType.McpProxy => ("apiKey", McpProxySession.SecretKey(source.Id)),
+            SourceType.Notion => ("token", Ingestion.Connectors.NotionConnector.SecretKey(source.Id)),
+            _ => (null, null)
+        };
+        if (configKey is null || secretKey is null || configuration is null)
             return;
 
         var config = JsonNode.Parse(source.ConfigurationJson ?? "{}") as JsonObject ?? new JsonObject();
-        config.Remove("apiKey");
-        var secretKey = McpProxySession.SecretKey(source.Id);
+        config.Remove(configKey);
 
-        if (configuration.TryGetPropertyValue("apiKey", out var keyNode)
+        if (configuration.TryGetPropertyValue(configKey, out var keyNode)
             && keyNode?.GetValue<string>() is { } key
             && key != "***")
         {
@@ -208,6 +245,30 @@ public sealed class KnowledgeSourceService(
             if (configuration["transport"]?.GetValue<string>()?.ToLowerInvariant()
                     is not (null or "auto" or "http" or "sse"))
                 return "Configuration key 'transport' must be auto|http|sse for McpProxy";
+        }
+
+        if (type == SourceType.Notion)
+        {
+            var tokenPresent = configuration["token"] is JsonValue tv
+                && tv.TryGetValue<string>(out var _);
+            var hasKey = configuration["hasKey"] is JsonValue hk
+                && hk.TryGetValue<bool>(out var b) && b;
+            if (!tokenPresent && !hasKey)
+                return "Configuration key 'token' is required for Notion (integration token)";
+
+            var baseUrlNode = configuration["apiBaseUrl"];
+            if (baseUrlNode is not null
+                && (baseUrlNode is not JsonValue bv
+                    || !bv.TryGetValue<string>(out var baseUrl)
+                    || !Uri.TryCreate(baseUrl, UriKind.Absolute, out var bu)
+                    || (bu.Scheme != "http" && bu.Scheme != "https")))
+                return "Configuration key 'apiBaseUrl' must be an absolute http(s) URI for Notion";
+
+            var maxPagesNode = configuration["maxPages"];
+            if (maxPagesNode is not null
+                && (maxPagesNode is not JsonValue jv
+                    || !jv.TryGetValue<int>(out var mp) || mp is < 1 or > 1000))
+                return "Configuration key 'maxPages' must be an integer between 1 and 1000 for Notion";
         }
         return null;
     }

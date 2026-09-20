@@ -45,4 +45,22 @@ public sealed class ConnectorConfig
         && p.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? p.GetBoolean()
             : fallback;
+
+    /// <summary>String list — accepts a JSON array or a comma/line-separated string.</summary>
+    public string[] StringArray(string key)
+    {
+        if (_root.ValueKind != JsonValueKind.Object || !_root.TryGetProperty(key, out var p))
+            return [];
+        return p.ValueKind switch
+        {
+            JsonValueKind.Array => p.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToArray(),
+            JsonValueKind.String => (p.GetString() ?? "")
+                .Split([',', '\n', '\r', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            _ => []
+        };
+    }
 }

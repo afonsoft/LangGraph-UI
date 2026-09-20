@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260919-notion-connector` |
 | Ticket | `#143` |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -147,16 +147,16 @@ tests/KnowledgeHub.Tests.Integration/…                                   (crea
 
 ## 6. Acceptance Criteria
 
-- [ ] **CA-001:** **Given** source Notion com token válido e workspace com páginas compartilhadas, **when** `POST /api/sources/{id}/sync`, **then** páginas aparecem como documentos e respondem em `search_knowledge`/`query_{slug}`.
-- [ ] **CA-002:** **Given** re-sync sem alterações no Notion, **when** sync roda, **then** `DocumentsSkipped=N`, `DocumentsProcessed=0` e nenhuma chamada `blocks/children` é feita (verificável no handler fake).
-- [ ] **CA-003:** **Given** página editada no Notion (novo `last_edited_time`), **when** sync roda, **then** só ela é re-fetchada, re-chunked e re-embedada.
-- [ ] **CA-004:** **Given** página descompartilhada/deletada, **when** sync roda, **then** documento e chunks/vetores são removidos.
-- [ ] **CA-005:** **Given** database com rows, **when** sync roda, **then** cada row indexa com propriedades serializadas + blocos.
-- [ ] **CA-006:** **Given** token inválido, **when** sync roda, **then** `LastSyncStatus=failed` + `LastError` indica token inválido; nenhum documento criado.
-- [ ] **CA-007:** **Given** resposta 429 com `Retry-After`, **when** fetch, **then** o client aguarda e retenta (máx 3) antes de virar warning.
-- [ ] **CA-008:** **Given** `GET /api/sources/{id}`, **then** `configuration` nunca contém `token` — só `hasKey`.
-- [ ] **CA-009:** **Given** workspace maior que `maxPages`, **when** sync roda, **then** fetch trunca no bound e registra warning.
-- [ ] **CA-010:** **Given** `AutoSyncEnabled=true`, **then** `RunDueAutoSyncsAsync` dispara sync periódico para a source Notion.
+- [x] **CA-001:** **Given** source Notion com token válido e workspace com páginas compartilhadas, **when** `POST /api/sources/{id}/sync`, **then** páginas aparecem como documentos e respondem em `search_knowledge`/`query_{slug}`.
+- [x] **CA-002:** **Given** re-sync sem alterações no Notion, **when** sync roda, **then** `DocumentsSkipped=N`, `DocumentsProcessed=0` e nenhuma chamada `blocks/children` é feita (verificável no handler fake).
+- [x] **CA-003:** **Given** página editada no Notion (novo `last_edited_time`), **when** sync roda, **then** só ela é re-fetchada, re-chunked e re-embedada.
+- [x] **CA-004:** **Given** página descompartilhada/deletada, **when** sync roda, **then** documento e chunks/vetores são removidos.
+- [x] **CA-005:** **Given** database com rows, **when** sync roda, **then** cada row indexa com propriedades serializadas + blocos.
+- [x] **CA-006:** **Given** token inválido, **when** sync roda, **then** `LastSyncStatus=failed` + `LastError` indica token inválido; nenhum documento criado.
+- [x] **CA-007:** **Given** resposta 429 com `Retry-After`, **when** fetch, **then** o client aguarda e retenta (máx 3) antes de virar warning.
+- [x] **CA-008:** **Given** `GET /api/sources/{id}`, **then** `configuration` nunca contém `token` — só `hasKey`.
+- [x] **CA-009:** **Given** workspace maior que `maxPages`, **when** sync roda, **then** fetch trunca no bound e registra warning.
+- [x] **CA-010:** **Given** `AutoSyncEnabled=true`, **then** `RunDueAutoSyncsAsync` dispara sync periódico para a source Notion.
 
 **Edge cases:**
 
@@ -172,13 +172,13 @@ tests/KnowledgeHub.Tests.Integration/…                                   (crea
 
 ## 7. Task Plan
 
-- [ ] **T1 — Contratos:** `SourceType.Notion`, `RawDocument.Fingerprint`, contrato incremental no pipeline (`IngestionService` monta mapa e compara fingerprint). **Validação:** unit tests de hash/fingerprint.
-- [ ] **T2 — `NotionApiClient`:** endpoints, paginação, throttle, `Retry-After`, mapeamento de erros. **Validação:** unit tests com `HttpMessageHandler` fake (429, 401, paginação).
-- [ ] **T3 — `NotionBlockRenderer`:** flatten de todos os tipos suportados + bounds. **Validação:** unit tests com fixtures JSON de blocos.
-- [ ] **T4 — `NotionConnector`:** discovery (search/roots), páginas, databases (RF-005), warnings por item, fingerprint skip. **Validação:** unit + integração com API fake.
-- [ ] **T5 — Serviço/segredo/DI:** `RequiredKeys`, validação Notion, persistência do token no secret store, remoção no delete, `AddHttpClient("notion")`, registro, whitelist auto-sync. **Validação:** integration tests de CRUD/sync.
-- [ ] **T6 — UI:** seção Notion no `SourceEditDialog` + `ManagedKeys`/`Validate`/model. **Validação:** build WASM + smoke manual.
-- [ ] **T7 — Docs:** `CLAUDE.md`/`README` atualizados (novo conector, config keys, como criar a integração no Notion + compartilhar páginas).
+- [x] **T1 — Contratos:** `SourceType.Notion`, `RawDocument.Fingerprint`, contrato incremental no pipeline (`IngestionService` monta mapa e compara fingerprint). **Validação:** unit tests de hash/fingerprint.
+- [x] **T2 — `NotionApiClient`:** endpoints, paginação, throttle, `Retry-After`, mapeamento de erros. **Validação:** unit tests com `HttpMessageHandler` fake (429, 401, paginação).
+- [x] **T3 — `NotionBlockRenderer`:** flatten de todos os tipos suportados + bounds. **Validação:** unit tests com fixtures JSON de blocos.
+- [x] **T4 — `NotionConnector`:** discovery (search/roots), páginas, databases (RF-005), warnings por item, fingerprint skip. **Validação:** unit + integração com API fake.
+- [x] **T5 — Serviço/segredo/DI:** `RequiredKeys`, validação Notion, persistência do token no secret store, remoção no delete, `AddHttpClient("notion")`, registro, whitelist auto-sync. **Validação:** integration tests de CRUD/sync.
+- [x] **T6 — UI:** seção Notion no `SourceEditDialog` + `ManagedKeys`/`Validate`/model. **Validação:** build WASM + smoke manual.
+- [x] **T7 — Docs:** `CLAUDE.md`/`README` atualizados (novo conector, config keys, como criar a integração no Notion + compartilhar páginas).
 
 **7.1 Validation strategy (.NET):** unit tests para renderer/client/validação; integration tests do pipeline com Notion API fake; `dotnet build` 0 warnings, `dotnet test` verde, `dotnet format --verify-no-changes`; cobertura ≥80% nos arquivos novos.
 
@@ -193,12 +193,12 @@ tests/KnowledgeHub.Tests.Integration/…                                   (crea
 
 ## 9. Definition of Done
 
-- [ ] Todos os RFs (§4) implementados.
-- [ ] CA-001..CA-010 cobertos por testes passando (unit + integration conforme §7.1).
-- [ ] Edge cases da tabela tratados.
-- [ ] `dotnet build` 0 warnings · `dotnet test` verde · `dotnet format --verify-no-changes` exit 0.
-- [ ] Guardrails §8 respeitados — sem token em logs/respostas/persistência plana.
-- [ ] Documentação (`CLAUDE.md`/README) menciona o conector Notion e o fluxo de compartilhamento no Notion.
+- [x] Todos os RFs (§4) implementados.
+- [x] CA-001..CA-010 cobertos por testes passando (unit + integration conforme §7.1).
+- [x] Edge cases da tabela tratados.
+- [x] `dotnet build` 0 warnings · `dotnet test` verde · `dotnet format --verify-no-changes` exit 0.
+- [x] Guardrails §8 respeitados — sem token em logs/respostas/persistência plana.
+- [x] Documentação (`CLAUDE.md`/README) menciona o conector Notion e o fluxo de compartilhamento no Notion.
 
 **Next action after DoD:** `Status = Done` + PR na branch `feature/Devin-20260919-notion-connector` referenciando o ticket.
 

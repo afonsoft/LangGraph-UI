@@ -203,11 +203,19 @@ public sealed class IngestionService(
         Stopwatch stopwatch,
         CancellationToken cancellationToken)
     {
-        var fetch = await connector.FetchAsync(source, cancellationToken);
-
+        // SPEC-20260919-notion-connector RF-007: load existing hashes before the
+        // fetch — incremental connectors use the UriReference→ContentHash map to
+        // skip re-fetching unchanged remote items (Notion last_edited_time).
         var existing = await db.Documents
             .Where(d => d.KnowledgeSourceId == source.Id)
             .ToDictionaryAsync(d => d.UriReference, cancellationToken);
+
+        var fetch = connector is Connectors.IIncrementalSourceConnector incremental
+            ? await incremental.FetchAsync(
+                source,
+                existing.ToDictionary(kv => kv.Key, kv => kv.Value.ContentHash ?? ""),
+                cancellationToken)
+            : await connector.FetchAsync(source, cancellationToken);
 
         var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -217,7 +225,11 @@ public sealed class IngestionService(
             cancellationToken.ThrowIfCancellationRequested();
             seen.Add(raw.UriReference);
 
-            var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw.TextContent)));
+            // RF-007: a connector-supplied fingerprint (upstream change marker)
+            // replaces the content hash for dedup — unchanged items arrive with
+            // empty TextContent and must not overwrite stored RawContent.
+            var hash = raw.Fingerprint
+                ?? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw.TextContent)));
             if (existing.TryGetValue(raw.UriReference, out var doc) && doc.ContentHash == hash)
             {
                 skipped++;
