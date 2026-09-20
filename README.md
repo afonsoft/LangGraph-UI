@@ -354,6 +354,66 @@ Operational notes:
   `mount unavailable?` hint on the source; other sources stay healthy and the
   watcher re-arms automatically once the mount is back (≤10 s refresh).
 
+## Notion connector
+
+`SourceType.Notion` ingests Notion pages and database rows into the RAG
+pipeline via the Notion REST API — read-only, polled (no webhooks).
+SPEC-20260919-notion-connector.
+
+Setup:
+
+1. **Create an internal integration** at
+   [notion.so/my-integrations](https://www.notion.so/my-integrations) → *New
+   integration* → copy the **Internal Integration Secret** (`ntn_…` or
+   `secret_…`).
+2. **Share content with the integration** — in Notion, open each page or
+   database → `⋯` → *Connections* → invite the integration. Nothing outside
+   the shared set is reachable.
+3. **Create the source** in `/sources` (or `POST /api/sources`) with
+   `type: "Notion"` and paste the token into the *Integration token* field.
+   The token is moved to the encrypted secret store
+   (`IIntegrationSecretStore`, ASP.NET Data Protection) — the persisted
+   configuration only carries `hasKey: true`; it is never echoed back,
+   logged or stored in `ConfigurationJson`.
+
+Configuration keys (all optional except `token` on first save):
+
+| Key | Purpose | Default |
+|---|---|---|
+| `token` | Internal integration secret — encrypted on save; empty keeps the stored value, `***` is ignored | — |
+| `rootPageIds` | Restrict ingestion to these pages and everything nested below them (array, or one ID per line in the UI) | unset → all shared pages |
+| `rootDatabaseIds` | Restrict ingestion to these databases (each row becomes a document) | unset |
+| `maxPages` | Page/row budget per sync | `200` (1–1000) |
+| `maxBlocksPerPage` | Block budget per page — larger trees are truncated with a warning | `500` |
+| `maxBlockDepth` | Nesting depth for block traversal | `10` |
+| `apiBaseUrl` | API base override (testing) | `https://api.notion.com` |
+| `apiVersion` | `Notion-Version` header | `2022-06-28` |
+
+Behavior:
+
+- **Discovery.** With no roots configured, `POST /v1/search` enumerates
+  everything shared with the integration (pages and databases). With roots,
+  the connector traverses `child_page`/`child_database` blocks instead of
+  searching.
+- **One document per page; one per database row.** Row documents render
+  their properties as text before the row's own block content.
+- **Incremental sync.** Each document fingerprints on Notion's
+  `last_edited_time` (`notion:{timestamp}`); unchanged items keep their
+  previous hash so the pipeline skips re-chunking, and in `/search` mode
+  the block fetch is skipped entirely.
+- **Politeness.** ≥350 ms between requests (~3 rps cap), `Retry-After`
+  honored on `429` (up to 3 retries). Per-item failures (e.g. a restricted
+  page) become sync warnings — they never abort the run.
+- **Auto-sync** works like every other connector — enable `autoSync` and
+  set `syncIntervalMinutes`; Notion has no push channel, so polling is the
+  update mechanism.
+
+Scope notes: the connector is strictly **Notion → KnowledgeHub** — no
+write-back, no comments, no media/file binary download, no public OAuth
+(only internal integration tokens), and no `notion_*` MCP tools are
+exposed. It is unrelated to Notion's own "AI connectors" product (the
+inverse direction — feeding external data *into* Notion).
+
 ## Development
 
 ```bash

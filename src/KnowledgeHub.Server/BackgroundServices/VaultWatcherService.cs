@@ -144,7 +144,8 @@ public sealed class VaultWatcherService(
             .Where(s => s.IsActive && s.AutoSyncEnabled
                 && (s.SourceType == SourceType.ObsidianVault
                     || s.SourceType == SourceType.WebPage
-                    || s.SourceType == SourceType.DocumentFile))
+                    || s.SourceType == SourceType.DocumentFile
+                    || s.SourceType == SourceType.Notion))
             .Select(s => new { s.Id, s.SyncIntervalMinutes })
             .ToListAsync(ct);
 

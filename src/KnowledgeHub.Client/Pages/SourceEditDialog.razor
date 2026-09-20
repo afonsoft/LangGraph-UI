@@ -144,6 +144,31 @@
                    autocomplete="new-password" placeholder="@(Model.HasStoredKey ? "••••••••" : "")" />
         </div>
     }
+    @if (Model.Type is SourceType.Notion)
+    {
+        <div class="col-12">
+            <label class="form-label">
+                Integration token * @(Model.HasStoredKey ? "(armazenado — em branco mantém o atual)" : "")
+            </label>
+            <input type="password" class="form-control font-monospace" @bind="Model.NotionToken"
+                   autocomplete="new-password" placeholder="@(Model.HasStoredKey ? "••••••••" : "ntn_…")" />
+            <div class="form-text">
+                Crie uma integração interna em notion.so/my-integrations e compartilhe as páginas/databases com ela.
+            </div>
+        </div>
+        <div class="col-12 col-md-6">
+            <Textarea @bind-Value="Model.RootPageIds" DisplayText="Page IDs raiz (um por linha — vazio = tudo compartilhado)"
+                      ShowLabel="true" rows="3" />
+        </div>
+        <div class="col-12 col-md-6">
+            <Textarea @bind-Value="Model.RootDatabaseIds" DisplayText="Database IDs raiz (um por linha)"
+                      ShowLabel="true" rows="3" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInputNumber @bind-Value="Model.MaxPages" DisplayText="Máx. páginas (1–1000, padrão 200)"
+                                  ShowLabel="true" IsNullable="true" />
+        </div>
+    }
 
     <div class="col-6 col-md-3">
         <Switch @bind-Value="Model.IsActive" DisplayText="Ativa" ShowLabel="true" />
@@ -230,6 +255,9 @@
                 when string.IsNullOrWhiteSpace(Model.Endpoint) => "Endpoint é obrigatório",
             SourceType.SqlDatabase
                 when string.IsNullOrWhiteSpace(Model.ConnectionString) => "Connection string é obrigatória",
+            SourceType.Notion
+                when string.IsNullOrEmpty(Model.NotionToken) && !Model.HasStoredKey
+                => "Integration token é obrigatório",
             _ => null
         };
     }
@@ -237,7 +265,8 @@
     /// <summary>Config keys owned by this form — removed before re-adding so stale keys don't survive a type switch.</summary>
     private static readonly string[] ManagedKeys =
         ["path", "url", "endpoint", "headers", "connectionString", "query", "readOnly",
-         "transport", "namePrefix", "apiKey", "hasKey"];
+         "transport", "namePrefix", "apiKey", "hasKey",
+         "token", "rootPageIds", "rootDatabaseIds", "maxPages"];
 
     private static readonly List<SelectedItem> TransportItems =
         [new("auto", "auto"), new("http", "http"), new("sse", "sse")];
@@ -283,6 +312,21 @@
                 if (!string.IsNullOrEmpty(Model.ApiKey))
                     config["apiKey"] = Model.ApiKey;
                 break;
+            case SourceType.Notion:
+                // Empty keeps the stored token; non-empty replaces it (server
+                // moves the value to the encrypted store — never persisted).
+                if (!string.IsNullOrEmpty(Model.NotionToken))
+                    config["token"] = Model.NotionToken;
+                config["hasKey"] = Model.HasStoredKey;
+                var pageIds = ToJsonArray(Model.RootPageIds);
+                if (pageIds.Count > 0)
+                    config["rootPageIds"] = pageIds;
+                var dbIds = ToJsonArray(Model.RootDatabaseIds);
+                if (dbIds.Count > 0)
+                    config["rootDatabaseIds"] = dbIds;
+                if (Model.MaxPages is not null)
+                    config["maxPages"] = Model.MaxPages;
+                break;
         }
 
         if (Model.Type is SourceType.ObsidianVault && Model.ReadOnly)
@@ -290,6 +334,12 @@
 
         return config;
     }
+
+    /// <summary>Line/comma-separated textarea → JSON string array.</summary>
+    private static JsonArray ToJsonArray(string? raw) =>
+        new((raw ?? "")
+            .Split(['\n', '\r', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => (JsonNode?)JsonValue.Create(s)).ToArray());
 
     public sealed class SourceEditModel
     {
@@ -310,6 +360,10 @@
         public string? ApiKey { get; set; }
         public string? NamePrefix { get; set; }
         public string Transport { get; set; } = "auto";
+        public string? NotionToken { get; set; }
+        public string? RootPageIds { get; set; }
+        public string? RootDatabaseIds { get; set; }
+        public int? MaxPages { get; set; }
 
         /// <summary>True when the source already has an API key in the
         /// encrypted store (McpProxy) — the value itself is never returned.</summary>
@@ -336,6 +390,10 @@
             Query = dto.Configuration?["query"]?.GetValue<string>(),
             NamePrefix = dto.Configuration?["namePrefix"]?.GetValue<string>(),
             Transport = dto.Configuration?["transport"]?.GetValue<string>() ?? "auto",
+            RootPageIds = ReadStringList(dto.Configuration, "rootPageIds"),
+            RootDatabaseIds = ReadStringList(dto.Configuration, "rootDatabaseIds"),
+            MaxPages = dto.Configuration?["maxPages"] is JsonValue mp
+                && mp.TryGetValue<int>(out var mpn) ? mpn : null,
             OriginalConfiguration = dto.Configuration?.DeepClone() as JsonObject
         };
 
@@ -344,5 +402,18 @@
             && config.TryGetPropertyValue(key, out var node)
             && node is JsonValue value
             && value.TryGetValue<bool>(out var b) && b;
+
+        /// <summary>Reads a root-ID list stored as JSON array or plain string.</summary>
+        private static string? ReadStringList(JsonObject? config, string key) =>
+            config is not null && config.TryGetPropertyValue(key, out var node)
+                ? node switch
+                {
+                    JsonArray arr => string.Join('\n',
+                        arr.Select(n => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : null)
+                           .Where(s => !string.IsNullOrWhiteSpace(s))),
+                    JsonValue v when v.TryGetValue<string>(out var s) => s,
+                    _ => null
+                }
+                : null;
     }
 }
