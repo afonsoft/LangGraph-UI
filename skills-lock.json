@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "architecture": {
+      "source": "afonsoft/skills",
+      "sourceType": "github",
+      "skillPath": "skills/architecture/SKILL.md",
+      "computedHash": "222a4153f1a775fc3431d06133e764243e6391e2bf7e3960424eb8fd70f37558"
+    },
     "building-mcp-servers": {
       "source": "afonsoft/skills",
       "sourceType": "github",
@@ -23,7 +29,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/create-agent-harness/SKILL.md",
-      "computedHash": "edbf7afc0518ca1b1d43994c593f428c7cd664d5beb9db3b1e35e3a4d4e7079f"
+      "computedHash": "af0ccaa0c5f78275feaea9b4df2374a0c5585f72d2162d9649b0b04b6341ecd0"
     },
     "create-issues": {
       "source": "afonsoft/skills",
@@ -35,7 +41,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/create-readme/SKILL.md",
-      "computedHash": "3e7554ef6da8d9e3febc932cb3afe56ba975c673300e4b1b6a7015a73ebba166"
+      "computedHash": "4dd6a7e4c2fede717a8a2245a942f1bcf086f10f77ca6ae29d0fb3a043596f3f"
     },
     "design": {
       "source": "afonsoft/skills",
@@ -53,7 +59,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/drawio-architecture/SKILL.md",
-      "computedHash": "c8800d5462285546645e264e234c3f9b869050be67a77eb79e2f47f0c011bbc1"
+      "computedHash": "b60b12308a42b192b293e92d0d0321d3c78b811f4f1a833bcd4f596015ff44a7"
     },
     "execute-specs": {
       "source": "afonsoft/skills",
@@ -65,7 +71,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/gap-analysis/SKILL.md",
-      "computedHash": "dbf856f497846831a7e017fbd64be62cbd2bb718cbe4933dee3f1c5c3d49a9f9"
+      "computedHash": "6d3859359a83963578c6ccada1a0086ee399f849e4d61a58d456ce857bd04892"
     },
     "improve-codebase-architecture": {
       "source": "afonsoft/skills",
@@ -77,7 +83,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/mermaid-architecture/SKILL.md",
-      "computedHash": "81de3a34289e61bfa051139ae38ea072481b4c5723f35160f1aee329c0353715"
+      "computedHash": "2b5f3a6613606fa2efdcebf055084e8bddef02347cd5ca49201b3f30a1a8c58b"
     },
     "notebooklm-mcp": {
       "source": "afonsoft/skills",
@@ -101,7 +107,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/orchestrator/SKILL.md",
-      "computedHash": "c4e23d35cce47a7ebe890e82c6ba17d2f0194a1fd0f01653ec749fd7c3871588"
+      "computedHash": "c82324863c48ce1e33a03cc09a5382a02e21a1a6d133b2c72c6d03955b9c0cd8"
     },
     "qa-analyst": {
       "source": "afonsoft/skills",
