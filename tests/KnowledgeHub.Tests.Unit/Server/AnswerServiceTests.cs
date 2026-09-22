@@ -11,13 +11,14 @@ public sealed class AnswerServiceTests
 {
     private static readonly ChatProviderOptions Options = new() { Provider = "ollama", Model = "m" };
 
-    private static SearchResultItem Hit(string text = "ctx", string title = "Doc", int n = 1) =>
+    private static SearchResultItem Hit(string text = "ctx", string title = "Doc", int n = 1, SourceType type = SourceType.WebPage) =>
         new()
         {
             ChunkText = text,
             DocumentTitle = title,
             SourceName = "src",
             SourceId = Guid.NewGuid(),
+            SourceType = type,
             Score = 0.9,
             UriReference = $"uri-{n}"
         };
@@ -55,6 +56,31 @@ public sealed class AnswerServiceTests
         Assert.Equal(1, c.Index);
         Assert.Equal("Alpha", c.Title);
         Assert.Equal("uri-1", c.Uri);
+    }
+
+    [Fact]
+    public async Task Answer_VaultCitation_ExposesFilePath()
+    {
+        // Covers SPEC-20260922-tool-descriptions-en-us RF-003: vault citations carry
+        // the vault-relative path accepted by read_document.
+        var svc = new AnswerService(new StubChatClient("Answer [1]."), Options, NullLogger<AnswerService>.Instance);
+        var hit = Hit(n: 1, type: SourceType.ObsidianVault) with { UriReference = "folder/note.md" };
+        var result = await svc.AnswerAsync("q?", [hit]);
+
+        var c = Assert.Single(result.Citations);
+        Assert.Equal("folder/note.md", c.Path);
+        Assert.Equal("folder/note.md", c.Uri);
+    }
+
+    [Fact]
+    public async Task Answer_NonVaultCitation_PathIsNull()
+    {
+        // Covers RF-003 edge case: non-file-backed sources expose no path.
+        var svc = new AnswerService(new StubChatClient("Answer [1]."), Options, NullLogger<AnswerService>.Instance);
+        var result = await svc.AnswerAsync("q?", [Hit(n: 1, type: SourceType.WebPage)]);
+
+        var c = Assert.Single(result.Citations);
+        Assert.Null(c.Path);
     }
 
     [Fact]

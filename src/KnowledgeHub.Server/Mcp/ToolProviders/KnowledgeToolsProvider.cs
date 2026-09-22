@@ -18,45 +18,45 @@ public sealed class KnowledgeToolsProvider : IToolProvider
 {
     private static readonly JsonObject SearchSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "query":{"type":"string","description":"Texto ou pergunta a buscar","examples":["o que é RAG?"]},
-          "topK":{"type":"integer","description":"Máx. de resultados (default 5, máx 50)"},
-          "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
-          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"}
+          "query":{"type":"string","description":"Text or question to search for","examples":["what is RAG?"]},
+          "topK":{"type":"integer","description":"Max results (default 5, max 50)"},
+          "source":{"type":"string","description":"Source slug (default: all active sources)"},
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Search mode (default: hybrid)"}
         },"required":["query"],
-        "examples":[{"query":"o que é RAG?","topK":5,"mode":"hybrid"}]}
+        "examples":[{"query":"what is RAG?","topK":5,"mode":"hybrid"}]}
         """)!.AsObject();
 
     private static readonly JsonObject AskSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "question":{"type":"string","description":"Pergunta em linguagem natural","examples":["Como funciona a sincronização?"]},
-          "topK":{"type":"integer","description":"Máx. de passagens usadas como contexto (default 5, máx 50)"},
-          "source":{"type":"string","description":"Slug da fonte (default: todas as ativas)"},
-          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Modo de busca (default: hybrid)"},
-          "generate":{"type":"boolean","description":"Sintetizar resposta via LLM configurado no servidor (default: true quando Chat:Provider configurado)"}
+          "question":{"type":"string","description":"Natural-language question","examples":["How does synchronization work?"]},
+          "topK":{"type":"integer","description":"Max passages used as context (default 5, max 50)"},
+          "source":{"type":"string","description":"Source slug (default: all active sources)"},
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Search mode (default: hybrid)"},
+          "generate":{"type":"boolean","description":"Synthesize the answer via the server's configured chat provider (default: true when one is configured)"}
         },"required":["question"],
-        "examples":[{"question":"Como funciona a sincronização?","topK":5,"generate":true}]}
+        "examples":[{"question":"How does synchronization work?","topK":5,"generate":true}]}
         """)!.AsObject();
 
     private static readonly JsonObject AgentSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "prompt":{"type":"string","description":"Pergunta/tarefa em linguagem natural — o agente itera tools até responder","examples":["Resuma as notas da semana"]},
-          "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist de tools expostas ao modelo (default: todas as read-only)","examples":[["search_knowledge","ask_knowledge"]]},
-          "maxIterations":{"type":"integer","description":"Teto de iterações model→tools→model (default 10)"},
-          "allowWrite":{"type":"boolean","description":"Opt-in: expõe tools de escrita (write_knowledge, write_note)"},
-          "threadId":{"type":"string","description":"GUID de thread existente — continua a conversa com contexto"},
-          "persist":{"type":"boolean","description":"Cria thread nova e persiste os turnos desta chamada"}
+          "prompt":{"type":"string","description":"Natural-language question or task — the agent iterates tools until it can answer","examples":["Summarize this week's notes"]},
+          "tools":{"type":"array","items":{"type":"string"},"description":"Allowlist of tools exposed to the model (default: all read-only tools)","examples":[["search_knowledge","ask_knowledge"]]},
+          "maxIterations":{"type":"integer","description":"Max model→tools→model iterations (default 10)"},
+          "allowWrite":{"type":"boolean","description":"Opt-in: exposes write tools (write_knowledge, write_note)"},
+          "threadId":{"type":"string","description":"Existing thread GUID — continues the conversation with context"},
+          "persist":{"type":"boolean","description":"Creates a new thread and persists this call's turns"}
         },"required":["prompt"],
-        "examples":[{"prompt":"Resuma as notas da semana","tools":["search_knowledge","ask_knowledge"],"maxIterations":10,"persist":true}]}
+        "examples":[{"prompt":"Summarize this week's notes","tools":["search_knowledge","ask_knowledge"],"maxIterations":10,"persist":true}]}
         """)!.AsObject();
 
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "title":{"type":"string","description":"Título do documento (vira nome de arquivo em vaults)","examples":["Nota de exemplo"]},
-          "content":{"type":"string","description":"Conteúdo em markdown/texto","examples":["# Título\n\nConteúdo em markdown."]},
-          "source":{"type":"string","description":"Slug da fonte alvo (default: primeira ativa)"},
-          "tags":{"type":"array","items":{"type":"string"},"description":"Tags (frontmatter em vaults)","examples":[["exemplo"]]}
+          "title":{"type":"string","description":"Document title (becomes the file name in vault sources)","examples":["Example note"]},
+          "content":{"type":"string","description":"Markdown or plain-text content","examples":["# Title\n\nMarkdown content."]},
+          "source":{"type":"string","description":"Target source slug (default: first active source)"},
+          "tags":{"type":"array","items":{"type":"string"},"description":"Tags (stored as frontmatter in vault sources)","examples":[["example"]]}
         },"required":["title","content"],
-        "examples":[{"title":"Nota de exemplo","content":"# Título\n\nConteúdo em markdown.","tags":["exemplo"]}]}
+        "examples":[{"title":"Example note","content":"# Title\n\nMarkdown content.","tags":["example"]}]}
         """)!.AsObject();
 
     public Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
@@ -66,7 +66,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "search_knowledge",
-                Description = "Busca semântica unificada em todas as fontes de conhecimento ativas. Retorna trechos rankeados com fonte, título e score.",
+                Description = "Unified semantic search across all active knowledge sources. Returns ranked passages with source name, document title, score and URI. Use for exploratory lookups; use a scoped query_* tool to search a single source.",
                 InputSchema = SearchSchema,
                 ReadOnly = true,
                 Handler = async (ctx, ct) =>
@@ -82,7 +82,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "ask_knowledge",
-                Description = "Responde uma pergunta usando o conhecimento indexado. Com um chat provider configurado (Chat:Provider) sintetiza a resposta com citações [n]; caso contrário retorna o contexto agregado.",
+                Description = "Answers a natural-language question using the indexed knowledge base. When a chat provider is configured, returns a synthesized answer with [n] citations — each citation includes the document title, source name and file path, which can be passed to read_document to fetch the full document. Without a provider (or generate=false) returns the raw aggregated context.",
                 InputSchema = AskSchema,
                 ReadOnly = true,
                 Handler = AskKnowledgeAsync
@@ -90,7 +90,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "agent_chat",
-                Description = "Agente multi-step: itera model→tools→model sobre o catálogo vivo até responder. Requer Chat:Provider configurado.",
+                Description = "Multi-step agent: iterates model → tools → model over the live tool catalog until it can answer the prompt. Read-only tools are available by default; set allowWrite to expose write tools. Requires a configured chat provider.",
                 InputSchema = AgentSchema,
                 ReadOnly = true, // mutating tools still require allowWrite opt-in
                 Handler = AgentChatAsync
@@ -98,7 +98,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "write_knowledge",
-                Description = "Grava conteúdo na base de conhecimento. Em fontes ObsidianVault cria um arquivo .md; em outras fontes persiste um documento indexado imediatamente pesquisável.",
+                Description = "Persists content into the knowledge base. For markdown-vault sources it creates a .md file; for other sources it stores a document that is indexed and immediately searchable.",
                 InputSchema = WriteSchema,
                 Handler = WriteKnowledgeAsync
             }
@@ -173,7 +173,8 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 foreach (var c in answer.Citations)
                     text.Append("\n[").Append(c.Index).Append("] ")
                         .Append(c.Title).Append(" — ").Append(c.Source)
-                        .Append(" (").Append(c.Uri).Append(')');
+                        .Append(c.Path is not null ? " (path: " : " (")
+                        .Append(c.Path ?? c.Uri).Append(')');
             }
             return await ToolResults.Structured(text.ToString(), answer);
         }

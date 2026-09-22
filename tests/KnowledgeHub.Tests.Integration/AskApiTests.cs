@@ -159,6 +159,51 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
     }
 
     [Fact]
+    public async Task Ask_McpTool_VaultCitation_PathFeedsReadDocument()
+    {
+        // Covers SPEC-20260922-tool-descriptions-en-us RF-003/AC: citation.path is
+        // the vault-relative path read_document accepts; text shows (path: …).
+        var vault = Path.Combine(_dir, $"vault{Guid.NewGuid():N}");
+        Directory.CreateDirectory(vault);
+        var token = $"VAULTTOKEN{Guid.NewGuid():N}";
+        await File.WriteAllTextAsync(Path.Combine(vault, "note.md"), $"body about {token}");
+        var name = $"v{Guid.NewGuid():N}"; // separator-free name slugifies to itself
+        var src = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name,
+            type = "ObsidianVault",
+            configuration = new { path = vault },
+            isActive = true
+        });
+        src.EnsureSuccessStatusCode();
+        var source = (await src.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
+        await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+
+        await using var mcp = await TestMcp.ConnectAsync(_factory);
+        var result = await mcp.SendAsync("tools/call", new
+        {
+            name = "ask_knowledge",
+            arguments = new { question = token, mode = "lexical" }
+        });
+
+        Assert.False(result.GetProperty("isError").GetBoolean());
+        var text = result.GetProperty("content")[0].GetProperty("text").GetString()!;
+        Assert.Contains("(path: note.md)", text);
+
+        var citation = result.GetProperty("structuredContent")
+            .GetProperty("citations").EnumerateArray().First();
+        Assert.Equal("note.md", citation.GetProperty("path").GetString());
+
+        var read = await mcp.SendAsync("tools/call", new
+        {
+            name = "read_document",
+            arguments = new { path = "note.md", source = name }
+        });
+        Assert.False(read.GetProperty("isError").GetBoolean());
+        Assert.Contains(token, read.GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task Ask_McpTool_GenerateFalse_KeepsLegacyContext()
     {
         var token = $"LEGACYTOKEN{Guid.NewGuid():N}";

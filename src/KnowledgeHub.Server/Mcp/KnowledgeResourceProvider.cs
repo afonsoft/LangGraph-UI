@@ -26,7 +26,7 @@ public static class KnowledgeResourceProvider
             {
                 Uri = CatalogUri,
                 Name = "knowledge-sources",
-                Title = "KnowledgeHub active sources catalog",
+                Title = "Active knowledge sources catalog",
                 Description = "JSON catalog of active knowledge sources",
                 MimeType = "application/json"
             }
@@ -52,7 +52,7 @@ public static class KnowledgeResourceProvider
             {
                 Uri = $"obsidian://{slugs[doc.KnowledgeSourceId]}/{doc.UriReference}",
                 Name = doc.Title,
-                Description = $"Obsidian note in vault '{slugs[doc.KnowledgeSourceId]}'",
+                Description = $"Markdown note in vault '{slugs[doc.KnowledgeSourceId]}'",
                 MimeType = "text/markdown"
             });
         }
