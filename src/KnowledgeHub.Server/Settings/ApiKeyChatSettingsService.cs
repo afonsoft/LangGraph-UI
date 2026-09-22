@@ -11,7 +11,7 @@ namespace KnowledgeHub.Server.Settings;
 
 /// <summary>
 /// Per-API-key settings service — supports chat (endpoint+model) and integration
-/// API keys (firecrawl, tavily, context7) with fallback to global defaults
+/// API keys (firecrawl, deepwiki, tavily, context7) with fallback to global defaults
 /// (SPEC-20260916-api-key-settings RF-002 expanded).
 /// </summary>
 public sealed class ApiKeyChatSettingsService(
@@ -47,6 +47,7 @@ public sealed class ApiKeyChatSettingsService(
         var globalDto = await global;
         var chatSecret = await secrets.GetInfoAsync($"apikey-chat-{apiKeyId:N}", cancellationToken);
         var firecrawlSecret = await secrets.GetInfoAsync($"apikey-firecrawl-{apiKeyId:N}", cancellationToken);
+        var deepwikiSecret = await secrets.GetInfoAsync($"apikey-deepwiki-{apiKeyId:N}", cancellationToken);
         var tavilySecret = await secrets.GetInfoAsync($"apikey-tavily-{apiKeyId:N}", cancellationToken);
         var context7Secret = await secrets.GetInfoAsync($"apikey-context7-{apiKeyId:N}", cancellationToken);
 
@@ -79,6 +80,7 @@ public sealed class ApiKeyChatSettingsService(
             IntegrationKeys = new Dictionary<string, ApiKeyIntegrationKeyDto>
             {
                 ["firecrawl"] = new(firecrawlSecret?.KeyHint, firecrawlSecret is not null),
+                ["deepwiki"] = new(deepwikiSecret?.KeyHint, deepwikiSecret is not null),
                 ["tavily"] = new(tavilySecret?.KeyHint, tavilySecret is not null),
                 ["context7"] = new(context7Secret?.KeyHint, context7Secret is not null)
             }
@@ -157,6 +159,7 @@ public sealed class ApiKeyChatSettingsService(
 
         await secrets.RemoveAsync($"apikey-chat-{apiKeyId:N}", cancellationToken);
         await secrets.RemoveAsync($"apikey-firecrawl-{apiKeyId:N}", cancellationToken);
+        await secrets.RemoveAsync($"apikey-deepwiki-{apiKeyId:N}", cancellationToken);
         await secrets.RemoveAsync($"apikey-tavily-{apiKeyId:N}", cancellationToken);
         await secrets.RemoveAsync($"apikey-context7-{apiKeyId:N}", cancellationToken);
         Invalidate(apiKeyId);

@@ -40,16 +40,21 @@ public sealed class FirecrawlUpstreamClient(
     public async Task<bool> HasApiKeyAsync(CancellationToken cancellationToken = default) =>
         await ResolveApiKeyAsync(cancellationToken) is not null;
 
-    /// <summary>Invoke an upstream tool; never throws — failures become IsError results.</summary>
+    /// <summary>Invoke an upstream tool; never throws — failures become IsError results.
+    /// <paramref name="apiKeyOverride"/> is the caller's per-key effective secret
+    /// (SPEC-20260922-per-key-integration-secrets RF-002/RF-003) — when set it
+    /// wins over the store/env resolution and drives a reconnect via
+    /// <c>_connectedKey</c>.</summary>
     public async Task<CallToolResult> CallAsync(
         string toolName,
         IDictionary<string, JsonElement>? arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? apiKeyOverride = null)
     {
         var dict = arguments?.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
         try
         {
-            return await InvokeAsync(toolName, dict, cancellationToken);
+            return await InvokeAsync(toolName, dict, cancellationToken, apiKeyOverride);
         }
         catch (Exception first) when (first is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -57,7 +62,7 @@ public sealed class FirecrawlUpstreamClient(
             await ResetAsync();
             try
             {
-                return await InvokeAsync(toolName, dict, cancellationToken);
+                return await InvokeAsync(toolName, dict, cancellationToken, apiKeyOverride);
             }
             catch (Exception second)
             {
@@ -116,9 +121,10 @@ public sealed class FirecrawlUpstreamClient(
     private async Task<CallToolResult> InvokeAsync(
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? apiKeyOverride)
     {
-        var client = await GetClientAsync(cancellationToken);
+        var client = await GetClientAsync(cancellationToken, apiKeyOverride);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
         var result = await client.CallToolAsync(toolName, arguments, cancellationToken: timeout.Token);
@@ -128,9 +134,9 @@ public sealed class FirecrawlUpstreamClient(
         return result;
     }
 
-    private async Task<McpClient> GetClientAsync(CancellationToken cancellationToken)
+    private async Task<McpClient> GetClientAsync(CancellationToken cancellationToken, string? apiKeyOverride = null)
     {
-        var apiKey = await ResolveApiKeyAsync(cancellationToken);
+        var apiKey = apiKeyOverride ?? await ResolveApiKeyAsync(cancellationToken);
 
         await _gate.WaitAsync(cancellationToken);
         try

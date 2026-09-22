@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using KnowledgeHub.Server.Settings;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -154,13 +156,32 @@ public sealed partial class DeepWikiToolsProvider(
     private async ValueTask<CallToolResult> DispatchAsync(
         string toolName, ToolCallContext ctx, CancellationToken ct)
     {
-        if (!await upstream.HasApiKeyAsync(ct))
+        var overrideKey = await ResolveOverrideAsync(ctx, ct);
+        if (overrideKey is null && !await upstream.HasApiKeyAsync(ct))
             return new CallToolResult
             {
                 IsError = true,
                 Content = [new TextContentBlock { Text = NoKeyMessage }]
             };
-        return await upstream.CallAsync(toolName, ctx.Arguments, ct);
+        return await upstream.CallAsync(toolName, ctx.Arguments, ct, overrideKey);
+    }
+
+    /// <summary>Direct passthrough for the static core tools — works keyless
+    /// (public endpoint); the caller's per-key secret, when present, switches
+    /// to the private endpoint (SPEC-20260922 RF-002).</summary>
+    private async Task<CallToolResult> CallUpstreamAsync(
+        string toolName, ToolCallContext ctx, CancellationToken ct)
+        => await upstream.CallAsync(toolName, ctx.Arguments, ct, await ResolveOverrideAsync(ctx, ct));
+
+    /// <summary>Per-key effective secret for the calling API key, or null for
+    /// non-apikey callers (cookie sessions keep global resolution).</summary>
+    private static async Task<string?> ResolveOverrideAsync(ToolCallContext ctx, CancellationToken ct)
+    {
+        var keyId = CallerIdentity.TryGetApiKeyId(ctx);
+        if (keyId is null)
+            return null;
+        var settings = ctx.Services.GetRequiredService<IApiKeyChatSettingsService>();
+        return await settings.GetIntegrationSecretAsync(keyId.Value, IntegrationProviders.DeepWiki, ct);
     }
 
     private IReadOnlyList<CatalogTool> StaticCoreTools() =>
@@ -175,7 +196,7 @@ public sealed partial class DeepWikiToolsProvider(
                 {
                     ValidateRepoArg(ctx, out _);
                     var question = ToolArgs.RequiredString(ctx, "question");
-                    return await upstream.CallAsync("ask_question", ctx.Arguments, ct);
+                    return await CallUpstreamAsync("ask_question", ctx, ct);
                 }
             },
             new CatalogTool
@@ -187,7 +208,7 @@ public sealed partial class DeepWikiToolsProvider(
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
-                    return await upstream.CallAsync("read_wiki_structure", ctx.Arguments, ct);
+                    return await CallUpstreamAsync("read_wiki_structure", ctx, ct);
                 }
             },
             new CatalogTool
@@ -199,7 +220,7 @@ public sealed partial class DeepWikiToolsProvider(
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
-                    return await upstream.CallAsync("read_wiki_contents", ctx.Arguments, ct);
+                    return await CallUpstreamAsync("read_wiki_contents", ctx, ct);
                 }
             }
         ];
