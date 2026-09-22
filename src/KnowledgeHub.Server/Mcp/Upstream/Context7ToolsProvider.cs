@@ -1,0 +1,188 @@
+using System.Text.Json.Nodes;
+using KnowledgeHub.Server.Settings;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Protocol;
+
+namespace KnowledgeHub.Server.Mcp.Upstream;
+
+/// <summary>
+/// Context7 proxy tools (SPEC-20260922-context7-mcp-proxy RF-003) — hybrid
+/// registration: a static core set is always listed while Enabled (so calls
+/// without a key produce a friendly isError), and when an effective API key
+/// exists the upstream <c>tools/list</c> is merged in — names and inputSchema
+/// byte-identical to Context7, no aliases, except for a root-level
+/// <c>examples</c> annotation injected from <see cref="DynamicToolExamples"/>
+/// when the upstream omits one (Playground fill). Dynamic entries are
+/// authoritative on name collisions.
+/// </summary>
+public sealed class Context7ToolsProvider(
+    Context7UpstreamClient upstream,
+    IOptions<Context7Options> options,
+    ILogger<Context7ToolsProvider> logger) : IToolProvider
+{
+    internal const string NoKeyMessage =
+        "Context7 API key not configured — open Settings (/settings) or set Context7__ApiKey.";
+
+    private readonly Context7Options _options = options.Value;
+    private readonly SemaphoreSlim _cacheGate = new(1, 1);
+    private IReadOnlyList<CatalogTool>? _dynamicTools;
+    private DateTimeOffset _cacheExpiresAt = DateTimeOffset.MinValue;
+
+    /// <summary>Test seam — supplies upstream protocol tools without a live
+    /// <see cref="McpClient"/> session.</summary>
+    internal Func<CancellationToken, Task<IReadOnlyList<Tool>>>? DynamicToolsSource { get; set; }
+
+    /// <summary>Curated Playground examples (root <c>examples</c>) for the
+    /// known upstream tools — upstream schemas carry none, and dynamic entries
+    /// override the static core, so without this every dynamic tool would fall
+    /// back to the generic skeleton and produce invalid calls. Values are JSON
+    /// arrays of complete argument objects.</summary>
+    private static readonly IReadOnlyDictionary<string, string> DynamicToolExamples =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["resolve-library-id"] = """[{"libraryName":"Next.js","query":"app router routing"},{"libraryName":"MongoDB","query":"connection pooling"}]""",
+            ["query-docs"] = """[{"libraryId":"/vercel/next.js","query":"middleware authentication"},{"libraryId":"/mongodb/docs","query":"connection string format"}]"""
+        };
+
+    private static readonly JsonObject ResolveLibraryIdSchema = JsonNode.Parse("""
+        {"type":"object","additionalProperties":true,"properties":{
+          "query":{"type":"string","description":"What to look up in the library's documentation — used to rank results by relevance",
+                   "examples":["app router routing"]},
+          "libraryName":{"type":"string","description":"Official library name (e.g. 'Next.js', 'MongoDB', 'Three.js')",
+                         "examples":["Next.js"]}
+        },"required":["query","libraryName"],
+        "examples":[{"libraryName":"Next.js","query":"app router routing"},
+                    {"libraryName":"MongoDB","query":"connection pooling"}]}
+        """)!.AsObject();
+
+    private static readonly JsonObject QueryDocsSchema = JsonNode.Parse("""
+        {"type":"object","additionalProperties":true,"properties":{
+          "libraryId":{"type":"string","description":"Exact Context7 library ID (/org/project[/version]) — from resolve-library-id or the user query",
+                       "examples":["/vercel/next.js"]},
+          "query":{"type":"string","description":"Single-concept question to look up in the library docs",
+                   "examples":["middleware authentication"]}
+        },"required":["libraryId","query"],
+        "examples":[{"libraryId":"/vercel/next.js","query":"middleware authentication"},
+                    {"libraryId":"/mongodb/docs","query":"connection string format"}]}
+        """)!.AsObject();
+
+    public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (!_options.Enabled)
+            return [];
+
+        var tools = new Dictionary<string, CatalogTool>(StringComparer.Ordinal);
+        foreach (var tool in StaticCoreTools())
+            tools[tool.Name] = tool;
+
+        // Dynamic merge only makes sense when an upstream session can authenticate.
+        if (await upstream.HasApiKeyAsync(cancellationToken))
+            foreach (var tool in await GetDynamicToolsAsync(cancellationToken))
+                tools[tool.Name] = tool;
+
+        return [.. tools.Values];
+    }
+
+    /// <summary>Drops the cached upstream tools/list — called when the
+    /// integration secret changes via Settings.</summary>
+    public void InvalidateToolsCache()
+    {
+        _cacheGate.Wait();
+        try
+        {
+            _dynamicTools = null;
+            _cacheExpiresAt = DateTimeOffset.MinValue;
+        }
+        finally
+        {
+            _cacheGate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<CatalogTool>> GetDynamicToolsAsync(CancellationToken cancellationToken)
+    {
+        if (_dynamicTools is not null && DateTimeOffset.UtcNow < _cacheExpiresAt)
+            return _dynamicTools;
+
+        await _cacheGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_dynamicTools is not null && DateTimeOffset.UtcNow < _cacheExpiresAt)
+                return _dynamicTools;
+
+            try
+            {
+                var protocolTools = DynamicToolsSource is { } source
+                    ? await source(cancellationToken)
+                    : (await upstream.ListToolsAsync(cancellationToken))
+                        .Select(t => t.ProtocolTool).ToList();
+                _dynamicTools = protocolTools.Select(MapTool).ToList();
+                _cacheExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.ToolsCacheSeconds);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // last-known-good wins; empty when nothing was ever fetched.
+                logger.LogWarning(ex, "context7 tools/list failed — serving cached/static set");
+            }
+            return _dynamicTools ?? [];
+        }
+        finally
+        {
+            _cacheGate.Release();
+        }
+    }
+
+    private CatalogTool MapTool(Tool proto)
+    {
+        var schema = JsonNode.Parse(proto.InputSchema.GetRawText()) as JsonObject
+            ?? new JsonObject { ["type"] = "object" };
+        var name = proto.Name;
+        if (!schema.ContainsKey("examples") &&
+            DynamicToolExamples.TryGetValue(name, out var examplesJson))
+            schema["examples"] = JsonNode.Parse(examplesJson);
+        return new CatalogTool
+        {
+            Name = name,
+            Description = proto.Description ?? $"Context7 tool {name} (proxied).",
+            InputSchema = schema,
+            // Context7 exposes no write tools — absent upstream hints default
+            // to read-only.
+            ReadOnly = proto.Annotations?.ReadOnlyHint ?? true,
+            Handler = (ctx, ct) => DispatchAsync(name, ctx, ct)
+        };
+    }
+
+    /// <summary>Shared dispatch: friendly isError without a key, transparent
+    /// passthrough with one (RF-005 / CA-002).</summary>
+    private async ValueTask<CallToolResult> DispatchAsync(
+        string toolName, ToolCallContext ctx, CancellationToken ct)
+    {
+        if (!await upstream.HasApiKeyAsync(ct))
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = NoKeyMessage }]
+            };
+        return await upstream.CallAsync(toolName, ctx.Arguments, ct);
+    }
+
+    private IReadOnlyList<CatalogTool> StaticCoreTools() =>
+    [
+        new CatalogTool
+        {
+            Name = "resolve-library-id",
+            Description = "Resolve a library/package name to a Context7 library ID (proxied to Context7).",
+            InputSchema = ResolveLibraryIdSchema,
+            ReadOnly = true,
+            Handler = (ctx, ct) => DispatchAsync("resolve-library-id", ctx, ct)
+        },
+        new CatalogTool
+        {
+            Name = "query-docs",
+            Description = "Fetch up-to-date, version-specific documentation for a Context7 library ID (proxied to Context7).",
+            InputSchema = QueryDocsSchema,
+            ReadOnly = true,
+            Handler = (ctx, ct) => DispatchAsync("query-docs", ctx, ct)
+        }
+    ];
+}

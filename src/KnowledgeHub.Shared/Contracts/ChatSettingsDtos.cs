@@ -63,7 +63,7 @@ public sealed record ApiKeyChatSettingsDto : ChatSettingsDto
     public required bool HasOverride { get; init; }
     /// <summary>Which fields are overridden: endpoint, model, apiKey, or none.</summary>
     public required string[] OverrideFields { get; init; }
-    /// <summary>Per-integration API key status (firecrawl, tavily).</summary>
+    /// <summary>Per-integration API key status (firecrawl, tavily, context7).</summary>
     public Dictionary<string, ApiKeyIntegrationKeyDto>? IntegrationKeys { get; init; }
 }
 

@@ -45,6 +45,8 @@ public static class SettingsEndpoints
                 return Results.BadRequest(new { error = "Firecrawl API keys start with 'fc-'" });
             if (provider == IntegrationProviders.Tavily && !apiKey.StartsWith("tvly-", StringComparison.Ordinal))
                 return Results.BadRequest(new { error = "Tavily API keys start with 'tvly-'" });
+            if (provider == IntegrationProviders.Context7 && !apiKey.StartsWith("ctx7sk-", StringComparison.Ordinal))
+                return Results.BadRequest(new { error = "Context7 API keys start with 'ctx7sk-'" });
 
             await store.SetAsync(provider, apiKey, ct);
             await ResetProviderAsync(provider, services, ct);
@@ -146,6 +148,7 @@ public static class SettingsEndpoints
                 IntegrationProviders.Firecrawl => "Firecrawl",
                 IntegrationProviders.DeepWiki => "DeepWiki",
                 IntegrationProviders.Tavily => "Tavily",
+                IntegrationProviders.Context7 => "Context7",
                 _ => provider
             },
             HasKey = hasKey,
@@ -159,6 +162,8 @@ public static class SettingsEndpoints
                     "Com key, o DeepWiki usa o endpoint privado (mcp.devin.ai) — acesso a repos privados.",
                 IntegrationProviders.Tavily =>
                     "Expõe as tools oficiais do Tavily (search, extract, map, crawl, research) no MCP interno.",
+                IntegrationProviders.Context7 =>
+                    "Expõe as tools oficiais do Context7 (resolve-library-id, query-docs) no MCP interno.",
                 _ => null
             }
         };
@@ -170,6 +175,7 @@ public static class SettingsEndpoints
         IntegrationProviders.Firecrawl => "Firecrawl",
         IntegrationProviders.DeepWiki => "DeepWiki",
         IntegrationProviders.Tavily => "Tavily",
+        IntegrationProviders.Context7 => "Context7",
         _ => provider
     };
 
@@ -177,6 +183,7 @@ public static class SettingsEndpoints
     private static string MaskHint(string provider, string last4) =>
         provider == IntegrationProviders.Firecrawl ? $"fc-••••{last4}"
             : provider == IntegrationProviders.Tavily ? $"tvly-••••{last4}"
+            : provider == IntegrationProviders.Context7 ? $"ctx7sk-••••{last4}"
             : $"••••{last4}";
 
     /// <summary>Descarta a sessão upstream do provider para a próxima chamada usar a
@@ -197,6 +204,10 @@ public static class SettingsEndpoints
             case IntegrationProviders.Tavily:
                 await services.GetRequiredService<TavilyUpstreamClient>().ResetAsync();
                 services.GetRequiredService<TavilyToolsProvider>().InvalidateToolsCache();
+                break;
+            case IntegrationProviders.Context7:
+                await services.GetRequiredService<Context7UpstreamClient>().ResetAsync();
+                services.GetRequiredService<Context7ToolsProvider>().InvalidateToolsCache();
                 break;
         }
         await services.GetRequiredService<Mcp.IToolCatalogChangeNotifier>().NotifyToolsChangedAsync(ct);

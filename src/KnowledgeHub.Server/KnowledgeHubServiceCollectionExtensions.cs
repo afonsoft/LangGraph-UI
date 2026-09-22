@@ -210,6 +210,16 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.TavilyToolsProvider>());
 
+        // SPEC-20260922-context7-mcp-proxy: Context7 proxy tools
+        // (resolve-library-id / query-docs).
+        services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.Context7Options>()
+            .Configure<IConfiguration>((options, cfg) =>
+                cfg.GetSection(KnowledgeHub.Server.Mcp.Upstream.Context7Options.SectionName).Bind(options));
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.Context7UpstreamClient>();
+        services.AddSingleton<KnowledgeHub.Server.Mcp.Upstream.Context7ToolsProvider>();
+        services.AddSingleton<IToolProvider>(sp =>
+            sp.GetRequiredService<KnowledgeHub.Server.Mcp.Upstream.Context7ToolsProvider>());
+
         // SPEC-20260917-mcp-proxy-source-type: generic upstream MCP proxies
         // driven by McpProxy sources (tools re-exposed with slug prefix).
         services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.Upstream.McpProxyToolsProvider>();

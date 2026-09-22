@@ -166,6 +166,10 @@ docker_deploy() {
     -e "Tavily__Endpoint=${TAVILY_ENDPOINT:-https://mcp.tavily.com/mcp}" \
     -e "Tavily__ApiKey=${TAVILY_APIKEY:-}" \
     -e "Tavily__TimeoutSeconds=${TAVILY_TIMEOUT_SECONDS:-120}" \
+    -e "Context7__Enabled=${CONTEXT7_ENABLED:-true}" \
+    -e "Context7__Endpoint=${CONTEXT7_ENDPOINT:-https://mcp.context7.com/mcp}" \
+    -e "Context7__ApiKey=${CONTEXT7_APIKEY:-}" \
+    -e "Context7__TimeoutSeconds=${CONTEXT7_TIMEOUT_SECONDS:-60}" \
     -e "Cache__Provider=${CACHE_PROVIDER:-memory}" \
     -e "Cache__Redis__ConnectionString=${REDIS_CONNECTIONSTRING:-}" \
     -e "Auth__AdminInitialPassword=${AUTH_ADMIN_INITIAL_PASSWORD:-123qwe}" \
