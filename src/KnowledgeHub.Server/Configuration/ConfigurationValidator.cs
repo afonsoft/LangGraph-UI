@@ -32,6 +32,7 @@ public static class ConfigurationValidator
         ValidateDeepWiki(configuration, problems);
         ValidateFirecrawl(configuration, problems);
         ValidateTavily(configuration, problems);
+        ValidateContext7(configuration, problems);
         ValidateCache(configuration, problems);
         ValidateChat(configuration, problems);
         ValidateAuth(configuration, problems);
@@ -177,6 +178,22 @@ public static class ConfigurationValidator
 
         if (section["ToolsCacheSeconds"] is { } tc && (!int.TryParse(tc, out var tcs) || tcs <= 0))
             problems.Add($"Tavily:ToolsCacheSeconds '{tc}' must be a positive integer");
+    }
+
+    private static void ValidateContext7(IConfiguration cfg, List<string> problems)
+    {
+        var section = cfg.GetSection(Context7Options.SectionName);
+        if (section["Enabled"]?.Equals("false", StringComparison.OrdinalIgnoreCase) == true)
+            return;
+
+        if (section["Endpoint"] is { } endpoint && !IsHttpUri(endpoint))
+            problems.Add($"Context7:Endpoint '{endpoint}' must be an absolute http(s) URI");
+
+        if (section["TimeoutSeconds"] is { } t && (!int.TryParse(t, out var ts) || ts <= 0))
+            problems.Add($"Context7:TimeoutSeconds '{t}' must be a positive integer");
+
+        if (section["ToolsCacheSeconds"] is { } tc && (!int.TryParse(tc, out var tcs) || tcs <= 0))
+            problems.Add($"Context7:ToolsCacheSeconds '{tc}' must be a positive integer");
     }
 
     private static void ValidateCache(IConfiguration cfg, List<string> problems)

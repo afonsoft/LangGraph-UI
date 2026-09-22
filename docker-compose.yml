@@ -39,6 +39,10 @@ services:
       Tavily__Endpoint: ${TAVILY_ENDPOINT:-https://mcp.tavily.com/mcp}
       Tavily__ApiKey: ${TAVILY_APIKEY:-}
       Tavily__TimeoutSeconds: ${TAVILY_TIMEOUT_SECONDS:-120}
+      Context7__Enabled: ${CONTEXT7_ENABLED:-true}
+      Context7__Endpoint: ${CONTEXT7_ENDPOINT:-https://mcp.context7.com/mcp}
+      Context7__ApiKey: ${CONTEXT7_APIKEY:-}
+      Context7__TimeoutSeconds: ${CONTEXT7_TIMEOUT_SECONDS:-60}
       # SPEC-20260916-performance-memory-cache RF-005: IDistributedCache —
       # memory (default, zero-infra) | redis (host Redis via host-gateway).
       Cache__Provider: ${CACHE_PROVIDER:-memory}

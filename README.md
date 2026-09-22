@@ -18,7 +18,7 @@ a single Kestrel-hosted .NET 10 process.
 |---|---|
 | `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`, `/settings`, `/api-keys`) — installable PWA, collapsible icon-rail sidebar, mobile-responsive layout |
 | `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API |
-| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/integrations*` | Persisted chat-provider config (endpoint/model/key, test connection) and masked integration keys (firecrawl, tavily) |
+| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/integrations*` | Persisted chat-provider config (endpoint/model/key, test connection) and masked integration keys (firecrawl, deepwiki, tavily, context7) |
 | `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}` | Per-API-key overrides: chat endpoint/model/key and integration keys |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP, hybrid sessions: `initialize`-handshake clients (≤2025-11-25) get full stateful sessions incl. `tools/list_changed` push; `2026-07-28` clients are served statelessly (no session, re-list on demand). `Mcp:SessionMode` knob: `Stateless`/`Stateful`/`StatefulForInitializeClients` (default) |
@@ -77,8 +77,9 @@ UI, via `/api/api-keys/{id}/settings/*`, or through the
 `search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`,
 `read_document`, `write_note`, `set_api_key_settings` (per-key chat and
 integration settings), `query_{source_slug}` per active source,
-plus DeepWiki bypass:
-`ask_question`, `read_wiki_structure`, `read_wiki_contents`.
+plus upstream proxies — DeepWiki (`ask_question`, `read_wiki_structure`,
+`read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`) and
+Context7 (`resolve-library-id`, `query-docs`).
 
 ## Configuration
 
@@ -280,6 +281,10 @@ Placeholders only — never commit a real `.env`.
 | `TAVILY_ENDPOINT` | Tavily MCP endpoint | `https://mcp.tavily.com/mcp` | no |
 | `TAVILY_APIKEY` | Tavily API key | empty | no |
 | `TAVILY_TIMEOUT_SECONDS` | Upstream call timeout | `120` | no |
+| `CONTEXT7_ENABLED` | Context7 upstream MCP proxy | `true` | no |
+| `CONTEXT7_ENDPOINT` | Context7 MCP endpoint | `https://mcp.context7.com/mcp` | no |
+| `CONTEXT7_APIKEY` | Context7 API key (`ctx7sk-*`) | empty | no |
+| `CONTEXT7_TIMEOUT_SECONDS` | Upstream call timeout | `60` | no |
 | `CACHE_PROVIDER` | `IDistributedCache` backend: `memory` \| `redis` | `memory` | no |
 | `REDIS_CONNECTIONSTRING` | StackExchange.Redis conn string — required when `CACHE_PROVIDER=redis`; use `defaultDatabase=N` | empty | provider-dependent |
 | `AUTH_ADMIN_INITIAL_PASSWORD` | Seed password for `admin` (forced change on first login) | `123qwe` | no |

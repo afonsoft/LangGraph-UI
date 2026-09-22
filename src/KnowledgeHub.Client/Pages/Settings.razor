@@ -179,7 +179,7 @@ else
                         <div class="input-group">
                             <input type="password" class="form-control font-monospace"
                                    @bind="state.Input"
-                                   placeholder="@(item.Provider == "firecrawl" ? "fc-…" : item.Provider == "tavily" ? "tvly-…" : "API key")"
+                                   placeholder="@(item.Provider == "firecrawl" ? "fc-…" : item.Provider == "tavily" ? "tvly-…" : item.Provider == "context7" ? "ctx7sk-…" : "API key")"
                                    autocomplete="off" />
                             <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
                                     IsAsync="true" IsDisabled="state.Saving"

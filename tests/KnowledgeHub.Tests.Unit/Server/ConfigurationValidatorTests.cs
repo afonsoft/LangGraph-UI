@@ -160,6 +160,36 @@ public class ConfigurationValidatorTests
     }
 
     [Fact]
+    public void Invalid_Context7Endpoint_Fails()
+    {
+        var cfg = Config(new() { ["Context7:Endpoint"] = "not-a-url" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains("Context7:Endpoint", ex.Message);
+    }
+
+    [Fact]
+    public void Context7_Disabled_SkipsValidation()
+    {
+        var cfg = Config(new()
+        {
+            ["Context7:Enabled"] = "false",
+            ["Context7:Endpoint"] = "not-a-url",
+            ["Context7:TimeoutSeconds"] = "-1"
+        });
+        ConfigurationValidator.Validate(cfg);
+    }
+
+    [Theory]
+    [InlineData("Context7:TimeoutSeconds")]
+    [InlineData("Context7:ToolsCacheSeconds")]
+    public void Context7_InvalidPositiveInt_Fails(string key)
+    {
+        var cfg = Config(new() { [key] = "0" });
+        var ex = Assert.Throws<InvalidOperationException>(() => ConfigurationValidator.Validate(cfg));
+        Assert.Contains(key, ex.Message);
+    }
+
+    [Fact]
     public void DeepWiki_Disabled_SkipsEndpointValidation()
     {
         var cfg = Config(new()

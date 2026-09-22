@@ -36,6 +36,12 @@ public class UpstreamCredentialTests
             NullLoggerFactory.Instance,
             NullLogger<TavilyUpstreamClient>.Instance);
 
+    private static Context7UpstreamClient Context7(string? storedKey = null, string envKey = "") =>
+        new(Options.Create(new Context7Options { ApiKey = envKey }),
+            new FakeSecretStore(context7Key: storedKey),
+            NullLoggerFactory.Instance,
+            NullLogger<Context7UpstreamClient>.Instance);
+
     [Fact]
     public async Task DeepWiki_ResolveKey_StoreBeatsEnv()
     {
@@ -144,13 +150,40 @@ public class UpstreamCredentialTests
         Assert.False(keyless.AdditionalHeaders?.ContainsKey("Authorization") ?? false);
     }
 
-    private sealed class FakeSecretStore(string? firecrawlKey = null, string? deepwikiKey = null, string? tavilyKey = null)
+    // Covers SPEC-20260922-context7-mcp-proxy RF-002/RNF-001.
+    [Fact]
+    public async Task Context7_ResolveKey_StoreBeatsEnv()
+    {
+        var client = Context7(storedKey: "ctx7sk-store", envKey: "ctx7sk-env");
+        Assert.Equal("ctx7sk-store", await client.ResolveApiKeyAsync());
+    }
+
+    [Fact]
+    public async Task Context7_ResolveKey_EnvFallback_And_None()
+    {
+        Assert.Equal("ctx7sk-env", await Context7(envKey: "ctx7sk-env").ResolveApiKeyAsync());
+        Assert.Null(await Context7().ResolveApiKeyAsync());
+    }
+
+    [Fact]
+    public void Context7_TransportOptions_BearerOnlyWhenKeyed()
+    {
+        var keyed = Context7().CreateTransportOptions("ctx7sk-abc");
+        Assert.Equal("Bearer ctx7sk-abc", keyed.AdditionalHeaders?["Authorization"]);
+        Assert.Equal(new Uri("https://mcp.context7.com/mcp"), keyed.Endpoint);
+
+        var keyless = Context7().CreateTransportOptions(null);
+        Assert.False(keyless.AdditionalHeaders?.ContainsKey("Authorization") ?? false);
+    }
+
+    private sealed class FakeSecretStore(string? firecrawlKey = null, string? deepwikiKey = null, string? tavilyKey = null, string? context7Key = null)
         : IIntegrationSecretStore
     {
         public Task<string?> GetAsync(string provider, CancellationToken cancellationToken = default) =>
             Task.FromResult(provider == IntegrationProviders.Firecrawl ? firecrawlKey
                 : provider == IntegrationProviders.DeepWiki ? deepwikiKey
                 : provider == IntegrationProviders.Tavily ? tavilyKey
+                : provider == IntegrationProviders.Context7 ? context7Key
                 : (string?)null);
 
         public Task<IntegrationSecretInfo?> GetInfoAsync(string provider, CancellationToken cancellationToken = default) =>

@@ -43,7 +43,7 @@ public static class ApiKeySettingsEndpoints
             return Results.NoContent();
         });
 
-        // Integration keys (firecrawl, tavily)
+        // Integration keys (firecrawl, tavily, context7)
         var integrations = app.MapGroup("/api/api-keys/{id:guid}/settings/integrations/{provider}");
 
         integrations.MapPut("/", async (

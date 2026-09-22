@@ -5,7 +5,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/architecture/SKILL.md",
-      "computedHash": "222a4153f1a775fc3431d06133e764243e6391e2bf7e3960424eb8fd70f37558"
+      "computedHash": "42c7245e2fe7d5b61391301f1f311ab3f0141b734c45b56142ddd0894f4147bd"
     },
     "building-mcp-servers": {
       "source": "afonsoft/skills",
@@ -29,7 +29,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/create-agent-harness/SKILL.md",
-      "computedHash": "af0ccaa0c5f78275feaea9b4df2374a0c5585f72d2162d9649b0b04b6341ecd0"
+      "computedHash": "4bd586b5abd55fa404ce62602c91c3b2820a079bf42c75ac15ea1e9e3b045682"
     },
     "create-issues": {
       "source": "afonsoft/skills",
@@ -53,7 +53,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/diagnose/SKILL.md",
-      "computedHash": "7e601b5f56e7243480f4de59c770bed5119afbae3411f65e45c1e7d57a2fecf9"
+      "computedHash": "0f4cd8de73705965ec1a7b42a93d9a604036db5f569b8a7ea6b17d074dd55810"
     },
     "drawio-architecture": {
       "source": "afonsoft/skills",
