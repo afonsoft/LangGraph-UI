@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260922-tool-descriptions-en-us` |
 | Ticket | [#151](https://github.com/afonsoft/LangGraph-UI/issues/151) |
-| Status | `Approved` |
+| Status | `In implementation` |
 | Origin | Pedido direto do usuário (2026-09-22): traduzir descrições das tools para en-US, torná-las mais completas e genéricas (sem referência ao sistema), citação do `ask_knowledge` deve expor o nome do arquivo usável em `read_document`, `query_openclaw_vault` → `query_knowledge`. |
 
 ## 1. User Story
@@ -106,10 +106,10 @@ README.md / docs/architecture/system-architecture.md                  # quoted d
 
 ## 6. Acceptance Criteria
 
-- [ ] **Given** `tools/list` **when** inspecting any local tool **then** `description` and all `inputSchema` field descriptions/examples are en-US and contain none of: `KnowledgeHub`, `Chat:Provider`, `Obsidian`, pt-BR words. — contract test asserting absence of a pt-BR marker list + pinned schemas
-- [ ] **Given** an indexed vault document **when** `ask_knowledge` synthesizes an answer **then** `structuredContent.citations[].path` equals the vault-relative path and the text shows `(path: …)`; feeding that path to `read_document` returns the document.
-- [ ] **Given** a citation to a non-vault source **when** rendered **then** `path` is null and the text falls back to `(uri)`.
-- [ ] **Given** an active source **when** `tools/list` runs **then** its `query_*` description is en-US, names the source, and has no `(SourceType)` suffix.
+- [x] **Given** `tools/list` **when** inspecting any local tool **then** `description` and all `inputSchema` field descriptions/examples are en-US and contain none of: `KnowledgeHub`, `Chat:Provider`, `Obsidian`, pt-BR words. — contract test asserting absence of a pt-BR marker list + pinned schemas
+- [x] **Given** an indexed vault document **when** `ask_knowledge` synthesizes an answer **then** `structuredContent.citations[].path` equals the vault-relative path and the text shows `(path: …)`; feeding that path to `read_document` returns the document.
+- [x] **Given** a citation to a non-vault source **when** rendered **then** `path` is null and the text falls back to `(uri)`.
+- [x] **Given** an active source **when** `tools/list` runs **then** its `query_*` description is en-US, names the source, and has no `(SourceType)` suffix.
 - [ ] **Given** the deployed instance **when** the source is renamed to "Knowledge" **then** `tools/list` exposes `query_knowledge` and no `query_openclaw_vault`.
 
 **Edge cases:**
@@ -123,11 +123,11 @@ README.md / docs/architecture/system-architecture.md                  # quoted d
 
 ## 7. Task Plan (agent execution)
 
-- [ ] **T1 — Discovery:** read section-3 files; locate `CitationDto`; check `SearchResultItem` for a source-type signal to gate `Path`.
-- [ ] **T2 — Implementation:** rewrite descriptions/schemas (RF-001/RF-002); add `CitationDto.Path` + `ExtractCitations` fill + text rendering (RF-003); `query_*` template (RF-001); resource description.
-- [ ] **T3 — Tests:** re-pin `McpContractTests` schemas; unit test `ExtractCitations` path fill for vault vs non-vault; integration test asserting no pt-BR/system markers in local descriptions.
-- [ ] **T4 — Validation:** `dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`.
-- [ ] **T5 — Done + PR:** `Status = Done`, PR on `feature/Devin-20260922-tool-descriptions-en-us`.
+- [x] **T1 — Discovery:** read section-3 files; locate `CitationDto`; check `SearchResultItem` for a source-type signal to gate `Path`.
+- [x] **T2 — Implementation:** rewrite descriptions/schemas (RF-001/RF-002); add `CitationDto.Path` + `ExtractCitations` fill + text rendering (RF-003); `query_*` template (RF-001); resource description.
+- [x] **T3 — Tests:** re-pin `McpContractTests` schemas; unit test `ExtractCitations` path fill for vault vs non-vault; integration test asserting no pt-BR/system markers in local descriptions.
+- [x] **T4 — Validation:** `dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`.
+- [x] **T5 — Done + PR:** `Status = Done`, PR on `feature/Devin-20260922-tool-descriptions-en-us`.
 - [ ] **T6 — Deploy/ops:** redeploy container; rename source → verify `query_knowledge` (RF-004).
 
 **7.1 Validation strategy:** .NET — unit tests for `ExtractCitations`/formatting; integration contract tests; coverage must not decrease.
@@ -142,11 +142,11 @@ README.md / docs/architecture/system-architecture.md                  # quoted d
 
 ## 9. Definition of Done
 
-- [ ] All requirements (section 4) implemented.
-- [ ] All acceptance criteria (section 6) covered by passing tests.
-- [ ] Edge cases handled.
-- [ ] `dotnet build` + `dotnet test` + `dotnet format --verify-no-changes` green.
-- [ ] Guardrails respected.
+- [x] All requirements (section 4) implemented.
+- [x] All acceptance criteria (section 6) covered by passing tests.
+- [x] Edge cases handled.
+- [x] `dotnet build` + `dotnet test` + `dotnet format --verify-no-changes` green.
+- [x] Guardrails respected.
 - [ ] Deployed instance exposes `query_knowledge` (RF-004 verified post-deploy).
 
 **Next action after DoD:** set `Status = Done` and open the PR referencing the ticket.
