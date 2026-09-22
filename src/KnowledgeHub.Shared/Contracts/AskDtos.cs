@@ -19,6 +19,9 @@ public sealed record CitationDto
     public required string Source { get; init; }
     public required string Title { get; init; }
     public required string Uri { get; init; }
+    /// <summary>Vault-relative file path accepted by read_document; null for
+    /// non-file-backed sources (SPEC-20260922-tool-descriptions-en-us RF-003).</summary>
+    public string? Path { get; init; }
     public required double Score { get; init; }
 }
 

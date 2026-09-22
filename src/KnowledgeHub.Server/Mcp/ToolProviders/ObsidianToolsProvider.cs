@@ -16,20 +16,20 @@ public sealed class ObsidianToolsProvider : IToolProvider
 {
     private static readonly JsonObject ReadSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "path":{"type":"string","description":"Caminho relativo da nota dentro do vault","examples":["pasta/nota.md"]},
-          "source":{"type":"string","description":"Slug do vault (default: primeiro vault ativo)"}
+          "path":{"type":"string","description":"Vault-relative path of the document","examples":["folder/note.md"]},
+          "source":{"type":"string","description":"Vault slug (default: first active vault)"}
         },"required":["path"],
-        "examples":[{"path":"pasta/nota.md"}]}
+        "examples":[{"path":"folder/note.md"}]}
         """)!.AsObject();
 
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "path":{"type":"string","description":"Caminho relativo da nota (.md é acrescentado se ausente)","examples":["diario/2026-09-14"]},
-          "content":{"type":"string","description":"Conteúdo markdown","examples":["# Nota\n\nTexto."]},
-          "tags":{"type":"array","items":{"type":"string"},"description":"Tags → frontmatter","examples":[["diario"]]},
-          "source":{"type":"string","description":"Slug do vault (default: primeiro vault ativo)"}
+          "path":{"type":"string","description":"Vault-relative note path (.md is appended when missing)","examples":["journal/2026-09-14"]},
+          "content":{"type":"string","description":"Markdown content","examples":["# Note\n\nText."]},
+          "tags":{"type":"array","items":{"type":"string"},"description":"Tags → frontmatter","examples":[["journal"]]},
+          "source":{"type":"string","description":"Vault slug (default: first active vault)"}
         },"required":["path","content"],
-        "examples":[{"path":"diario/2026-09-14","content":"# Nota\n\nTexto.","tags":["diario"]}]}
+        "examples":[{"path":"journal/2026-09-14","content":"# Note\n\nText.","tags":["journal"]}]}
         """)!.AsObject();
 
     public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
@@ -45,7 +45,7 @@ public sealed class ObsidianToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "read_document",
-                Description = "Lê o conteúdo de uma nota markdown de um vault Obsidian ativo.",
+                Description = "Reads the full content of a markdown document from an active vault source, addressed by its vault-relative path.",
                 InputSchema = ReadSchema,
                 ReadOnly = true,
                 Handler = ReadDocumentAsync
@@ -53,7 +53,7 @@ public sealed class ObsidianToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "write_note",
-                Description = "Escreve uma nota markdown num vault Obsidian ativo e a reindexa.",
+                Description = "Writes a markdown note into an active vault source and re-indexes it. Appends .md when missing. Fails on read-only vaults.",
                 InputSchema = WriteSchema,
                 Handler = WriteNoteAsync
             }

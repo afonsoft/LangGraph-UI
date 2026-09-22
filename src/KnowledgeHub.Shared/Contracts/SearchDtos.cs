@@ -28,6 +28,9 @@ public sealed record SearchResultItem
     public required Guid SourceId { get; init; }
     public required double Score { get; init; }
     public required string UriReference { get; init; }
+    /// <summary>Connector type of the owning source. Non-required so older cached
+    /// payloads still deserialize (SPEC-20260922-tool-descriptions-en-us RF-003).</summary>
+    public SourceType SourceType { get; init; }
     /// <summary>Rank provenance when retrieved in hybrid/lexical mode; null for plain semantic.</summary>
     public SearchScoreBreakdown? ScoreBreakdown { get; init; }
 }

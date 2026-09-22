@@ -5,9 +5,11 @@
   integration green · `dotnet format --verify-no-changes` exit 0
 - **Branch protection**: `main` protected (PR + 5 status checks,
   enforce_admins=false) — owner bypass usado a pedido explícito p/ docs SPECs
-- **Deploy**: container `knowledgehub` healthy em `:5550`, imagem rebuildada de
-  main (FontAwesome fix + MCP híbrido + env passthrough)
-- **Active task**: nenhuma — fila zerada
+- **Deploy**: container `knowledgehub` healthy em `:5550` — redeploy 2026-09-22
+  de `main@31f8962` (inclui PRs #147 Context7 proxy, #149 per-key secrets,
+  #150 docs). Imagem `knowledgehub:latest` = sha256:b92dbca1…
+- **Active task**: SPEC-20260922-tool-descriptions-en-us Approved → Issue #151
+  (aguardando execução via execute-specs)
 - **Done hoje**: MCP v2 hybrid (PR #127), Epic #128 5/5 SPECs (PRs #135,
   #137–#142), bug UI #134 (PR #136), release v0.0.2 reparada (2 archives +
   GHCR), v.0.0.1 deletada, skills lock (PR #125)

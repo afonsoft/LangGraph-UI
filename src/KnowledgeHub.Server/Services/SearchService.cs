@@ -142,7 +142,7 @@ public sealed class SearchService(
         var chunks = await db.Chunks.AsNoTracking()
             .Where(c => chunkIds.Contains(c.Id))
             .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id, (c, d) => new { c.Id, c.TextContent, d.Title, d.UriReference, d.KnowledgeSourceId })
-            .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id, (x, s) => new { x.Id, x.TextContent, x.Title, x.UriReference, x.KnowledgeSourceId, SourceName = s.Name })
+            .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id, (x, s) => new { x.Id, x.TextContent, x.Title, x.UriReference, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType })
             .ToListAsync(ct);
 
         var byId = chunks.ToDictionary(c => c.Id);
@@ -154,6 +154,7 @@ public sealed class SearchService(
                 DocumentTitle = byId[h.ChunkId].Title,
                 SourceName = byId[h.ChunkId].SourceName,
                 SourceId = byId[h.ChunkId].KnowledgeSourceId,
+                SourceType = byId[h.ChunkId].SourceType,
                 Score = h.Score,
                 UriReference = byId[h.ChunkId].UriReference,
                 ScoreBreakdown = breakdowns?.GetValueOrDefault(h.ChunkId)
