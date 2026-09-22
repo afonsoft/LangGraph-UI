@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260922-tool-descriptions-en-us` |
 | Ticket | [#151](https://github.com/afonsoft/LangGraph-UI/issues/151) |
-| Status | `In implementation` |
+| Status | `Done` |
 | Origin | Pedido direto do usuário (2026-09-22): traduzir descrições das tools para en-US, torná-las mais completas e genéricas (sem referência ao sistema), citação do `ask_knowledge` deve expor o nome do arquivo usável em `read_document`, `query_openclaw_vault` → `query_knowledge`. |
 
 ## 1. User Story
@@ -110,7 +110,7 @@ README.md / docs/architecture/system-architecture.md                  # quoted d
 - [x] **Given** an indexed vault document **when** `ask_knowledge` synthesizes an answer **then** `structuredContent.citations[].path` equals the vault-relative path and the text shows `(path: …)`; feeding that path to `read_document` returns the document.
 - [x] **Given** a citation to a non-vault source **when** rendered **then** `path` is null and the text falls back to `(uri)`.
 - [x] **Given** an active source **when** `tools/list` runs **then** its `query_*` description is en-US, names the source, and has no `(SourceType)` suffix.
-- [ ] **Given** the deployed instance **when** the source is renamed to "Knowledge" **then** `tools/list` exposes `query_knowledge` and no `query_openclaw_vault`.
+- [x] **Given** the deployed instance **when** the source is renamed to "Knowledge" **then** `tools/list` exposes `query_knowledge` and no `query_openclaw_vault`. — verified live 2026-09-22
 
 **Edge cases:**
 
@@ -128,7 +128,7 @@ README.md / docs/architecture/system-architecture.md                  # quoted d
 - [x] **T3 — Tests:** re-pin `McpContractTests` schemas; unit test `ExtractCitations` path fill for vault vs non-vault; integration test asserting no pt-BR/system markers in local descriptions.
 - [x] **T4 — Validation:** `dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`.
 - [x] **T5 — Done + PR:** `Status = Done`, PR on `feature/Devin-20260922-tool-descriptions-en-us`.
-- [ ] **T6 — Deploy/ops:** redeploy container; rename source → verify `query_knowledge` (RF-004).
+- [x] **T6 — Deploy/ops:** redeploy container; rename source → verify `query_knowledge` (RF-004).
 
 **7.1 Validation strategy:** .NET — unit tests for `ExtractCitations`/formatting; integration contract tests; coverage must not decrease.
 
@@ -147,7 +147,7 @@ README.md / docs/architecture/system-architecture.md                  # quoted d
 - [x] Edge cases handled.
 - [x] `dotnet build` + `dotnet test` + `dotnet format --verify-no-changes` green.
 - [x] Guardrails respected.
-- [ ] Deployed instance exposes `query_knowledge` (RF-004 verified post-deploy).
+- [x] Deployed instance exposes `query_knowledge` (RF-004 verified post-deploy).
 
 **Next action after DoD:** set `Status = Done` and open the PR referencing the ticket.
 

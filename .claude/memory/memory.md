@@ -6,10 +6,13 @@
 - **Branch protection**: `main` protected (PR + 5 status checks,
   enforce_admins=false) — owner bypass usado a pedido explícito p/ docs SPECs
 - **Deploy**: container `knowledgehub` healthy em `:5550` — redeploy 2026-09-22
-  de `main@31f8962` (inclui PRs #147 Context7 proxy, #149 per-key secrets,
-  #150 docs). Imagem `knowledgehub:latest` = sha256:b92dbca1…
-- **Active task**: SPEC-20260922-tool-descriptions-en-us Approved → Issue #151
-  (aguardando execução via execute-specs)
+  de `main@09ebd51` (PR #152 — tool descriptions en-US). Imagem
+  `knowledgehub:latest` = sha256:073d3041…
+- **Done hoje**: SPEC-20260922-tool-descriptions-en-us DONE — Issue #151,
+  PR #152 squash-merged (`09ebd51`), 540 testes verdes; source
+  "OpenClaw Vault" → "Knowledge" no SQLite; live `tools/list` confirma
+  `query_knowledge` (sem `query_openclaw_vault`) e `citations[].path`
+  funciona com `read_document` ponta a ponta
 - **Done hoje**: MCP v2 hybrid (PR #127), Epic #128 5/5 SPECs (PRs #135,
   #137–#142), bug UI #134 (PR #136), release v0.0.2 reparada (2 archives +
   GHCR), v.0.0.1 deletada, skills lock (PR #125)
