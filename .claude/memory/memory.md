@@ -13,3 +13,12 @@
   GHCR), v.0.0.1 deletada, skills lock (PR #125)
 - **Blockers**: none
 - **Next**: aguardar nova direção do usuário (novo gap-analysis ou feature)
+
+## Session summary (2026-09-22 — per-key integration secrets)
+
+- Gap-analysis re-run: 73 SPECs auditadas, todas Done; único gap CONFIRMADO = `GetIntegrationSecretAsync` com 0 callers (per-key secrets persistidos mas nunca consumidos) + deepwiki órfão no per-key surface.
+- Descoberta extra: `IHttpContextAccessor` nunca registrado → `set_api_key_settings` quebrava em runtime e scoping per-key de IChatClient caía para global. Corrigido via `AddHttpContextAccessor()` (RF-000).
+- PR #147 (Context7 proxy) squash-merged em main (e5b96a0).
+- SPEC-20260922-per-key-integration-secrets → Issue #148 → branch feature/Devin-20260922-per-key-integration-secrets → implementado, 537 testes verdes (369 unit + 168 integration), format clean.
+- PR #149 squash-merged em main (0dc05a8); Issue #148 CLOSED; SPEC Status=Done; gap ENTREGUE.
+- Pendência carried: decisão `enforce_admins=true` segue aberta.
