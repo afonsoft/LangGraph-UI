@@ -21,6 +21,11 @@ public static class KnowledgeHubServiceCollectionExtensions
 {
     public static IServiceCollection AddKnowledgeHubServer(this IServiceCollection services, IConfiguration configuration)
     {
+        // SPEC-20260922-per-key-integration-secrets RF-000: caller identity for
+        // per-key settings/upstream resolution — previously unregistered, which
+        // silently disabled every per-key code path.
+        services.AddHttpContextAccessor();
+
         // Resolve Database:Path lazily so test hosts can override it via ConfigureWebHost
         // (Program.cs runs before the factory's ConfigureAppConfiguration callbacks).
         // SPEC-20260916-performance-memory-cache RF-006: pooled contexts — one

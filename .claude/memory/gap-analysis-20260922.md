@@ -42,3 +42,15 @@ com o `KeyIdClaim` do chamador em call time + inclui deepwiki no enum/Integratio
 
 - `enforce_admins=true` — decisão aberta desde r2.
 - PR #147 (Issue #146) — merge solicitado pelo usuário nesta sessão.
+
+## 5. Outcome (implementation done 2026-09-22)
+
+| Item | Result |
+| --- | --- |
+| SPEC | `.specs/SPEC-20260922-per-key-integration-secrets.md` — Status `Done` |
+| Issue | #148 (open) — tracking da implementação |
+| Branch | `feature/Devin-20260922-per-key-integration-secrets` |
+| Scope extra descoberto | `IHttpContextAccessor` **não registrado** — `set_api_key_settings` quebrava em runtime e o scoping per-key de `IChatClient`/`AnswerService` caía para global silenciosamente. Adicionado como RF-000 (`AddHttpContextAccessor` em `AddKnowledgeHubServer`). |
+| Implementação | `CallerIdentity.TryGetApiKeyId` + `apiKeyOverride` nos 4 upstream clients (`CallAsync`/`GetClientAsync`, reconnect via `_connectedKey`) + dispatch per-key nos 4 providers + deepwiki em `set_api_key_settings`/`IntegrationKeys`/`RemoveAsync` |
+| Validação | `dotnet build` 0W/0E · `dotnet test` 369 unit + 168 integration (11 novos unit + 4 novos integration) · `dotnet format --verify-no-changes` clean |
+| Veredito final | GAP-implementation-per-key-upstream-secrets **ENTREGUE** (inclui perkey-deepwiki-orphan folded) |

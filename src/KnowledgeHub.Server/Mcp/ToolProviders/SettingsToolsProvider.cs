@@ -9,13 +9,13 @@ namespace KnowledgeHub.Server.Mcp.ToolProviders;
 
 /// <summary>
 /// Settings tools (SPEC-20260916-api-key-settings RF-004 expanded):
-/// set_api_key_settings — allows an API key to configure chat, firecrawl, tavily and context7.
+/// set_api_key_settings — allows an API key to configure chat, firecrawl, deepwiki, tavily and context7.
 /// </summary>
 public sealed class SettingsToolsProvider : IToolProvider
 {
     private static readonly JsonObject SetApiKeySettingsSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "provider":{"type":"string","enum":["chat","firecrawl","tavily","context7"],"description":"Which provider to configure"},
+          "provider":{"type":"string","enum":["chat","firecrawl","deepwiki","tavily","context7"],"description":"Which provider to configure"},
           "endpoint":{"type":["string","null"],"description":"OpenAI-compatible base URL (chat only, null = inherit)"},
           "model":{"type":["string","null"],"description":"Model name (chat only, null = inherit)"},
           "apiKey":{"type":["string","null"],"description":"API key override (null = inherit from global)"}
@@ -30,7 +30,7 @@ public sealed class SettingsToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "set_api_key_settings",
-                Description = "Override settings (chat endpoint/model, or integration API keys for firecrawl/tavily/context7) for the current API key. Null fields inherit from global defaults. Only available to API-key-authenticated sessions.",
+                Description = "Override settings (chat endpoint/model, or integration API keys for firecrawl/deepwiki/tavily/context7) for the current API key. Null fields inherit from global defaults. Only available to API-key-authenticated sessions.",
                 InputSchema = SetApiKeySettingsSchema,
                 ReadOnly = false,
                 Handler = async (ctx, ct) =>
@@ -64,7 +64,7 @@ public sealed class SettingsToolsProvider : IToolProvider
                                   $"Override fields: {string.Join(", ", result.OverrideFields)}";
                         return await ToolResults.Text(msg);
                     }
-                    else if (provider == "firecrawl" || provider == "tavily" || provider == "context7")
+                    else if (provider is "firecrawl" or "deepwiki" or "tavily" or "context7")
                     {
                         var apiKey = ToolArgs.OptionalString(ctx, "apiKey");
                         if (apiKey is not null && !string.IsNullOrWhiteSpace(apiKey))

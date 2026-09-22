@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using KnowledgeHub.Server.Settings;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 
@@ -217,17 +218,30 @@ public sealed class FirecrawlToolsProvider(
     }
 
     /// <summary>Shared dispatch: friendly isError without a key, transparent
-    /// passthrough with one (RF-005 / CA-002).</summary>
+    /// passthrough with one (RF-005 / CA-002). The caller's per-key secret wins
+    /// over the global store/env resolution (SPEC-20260922 RF-002).</summary>
     private async ValueTask<CallToolResult> DispatchAsync(
         string toolName, ToolCallContext ctx, CancellationToken ct)
     {
-        if (!await upstream.HasApiKeyAsync(ct))
+        var overrideKey = await ResolveOverrideAsync(ctx, ct);
+        if (overrideKey is null && !await upstream.HasApiKeyAsync(ct))
             return new CallToolResult
             {
                 IsError = true,
                 Content = [new TextContentBlock { Text = NoKeyMessage }]
             };
-        return await upstream.CallAsync(toolName, ctx.Arguments, ct);
+        return await upstream.CallAsync(toolName, ctx.Arguments, ct, overrideKey);
+    }
+
+    /// <summary>Per-key effective secret for the calling API key, or null for
+    /// non-apikey callers (cookie sessions keep global resolution).</summary>
+    private static async Task<string?> ResolveOverrideAsync(ToolCallContext ctx, CancellationToken ct)
+    {
+        var keyId = CallerIdentity.TryGetApiKeyId(ctx);
+        if (keyId is null)
+            return null;
+        var settings = ctx.Services.GetRequiredService<IApiKeyChatSettingsService>();
+        return await settings.GetIntegrationSecretAsync(keyId.Value, IntegrationProviders.Firecrawl, ct);
     }
 
     private IReadOnlyList<CatalogTool> StaticCoreTools() =>
