@@ -268,6 +268,9 @@ app.MapSettingsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateL
 app.MapApiKeySettingsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapEvalApi().RequireAuthorization(AuthPolicies.Operational);
 app.MapSecurityApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+// SPEC-20260923-observability-metrics RF-003: opt-in Prometheus scrape endpoint.
+if (app.Configuration.GetValue("Telemetry:Metrics:Prometheus", false))
+    app.MapPrometheusScrapingEndpoint().RequireAuthorization(AuthPolicies.Operational);
 app.MapKnowledgeHubMcp().RequireAuthorization(AuthPolicies.Operational);
 app.MapHub<McpMonitorHub>("/hubs/mcp").RequireAuthorization(AuthPolicies.Operational);
 app.MapFallbackToFile("index.html");

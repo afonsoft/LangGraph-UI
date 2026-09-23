@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using KnowledgeHub.Server.Caching;
+using KnowledgeHub.Server.Telemetry;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Embeddings;
 using KnowledgeHub.Server.Search;
@@ -38,22 +40,46 @@ public sealed class SearchService(
         SearchMode mode = SearchMode.Hybrid, ResolvedSearchFilter? filter = null,
         CancellationToken ct = default)
     {
-        var scope = await callerScope.GetAsync(ct);
-        var indexVersion = await GetIndexVersionAsync(ct);
-        var resultKey = CacheKeys.Search(
-            mode.ToString(), topK, sourceId, filter?.Fingerprint() ?? "-",
-            scope.SourceFingerprint, query, indexVersion);
-        var cached = await SafeCache.GetStringAsync(cache, resultKey, logger, ct);
-        if (cached is not null)
+        var modeName = mode.ToString().ToLowerInvariant();
+        using var activity = KnowledgeHubActivity.Start("search");
+        activity?.SetTag("search.mode", modeName);
+        activity?.SetTag("search.topK", topK);
+        var stopwatch = Stopwatch.StartNew();
+        var cacheHit = false;
+        try
         {
-            var hit = JsonSerializerSafely(cached);
-            if (hit is not null)
-                return hit;
-        }
+            var scope = await callerScope.GetAsync(ct);
+            var indexVersion = await GetIndexVersionAsync(ct);
+            var resultKey = CacheKeys.Search(
+                mode.ToString(), topK, sourceId, filter?.Fingerprint() ?? "-",
+                scope.SourceFingerprint, query, indexVersion);
+            var cached = await SafeCache.GetStringAsync(cache, resultKey, logger, ct);
+            if (cached is not null)
+            {
+                var hit = JsonSerializerSafely(cached);
+                if (hit is not null)
+                {
+                    cacheHit = true;
+                    activity?.SetTag("cache.hit", true);
+                    return hit;
+                }
+            }
 
-        var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, ct);
-        await SafeCache.SetJsonAsync(cache, resultKey, results, ResultTtl, logger, ct);
-        return results;
+            var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, ct);
+            await SafeCache.SetJsonAsync(cache, resultKey, results, ResultTtl, logger, ct);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            KnowledgeHubActivity.Fail(activity, ex);
+            throw;
+        }
+        finally
+        {
+            KnowledgeHubMetrics.SearchDuration.Record(stopwatch.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("mode", modeName),
+                new KeyValuePair<string, object?>("cache_hit", cacheHit));
+        }
     }
 
     private async Task<IReadOnlyList<SearchResultItem>> ExecuteAsync(
@@ -103,18 +129,33 @@ public sealed class SearchService(
         if (mode == SearchMode.Semantic)
         {
             var queryVector = await EmbedQueryAsync(effectiveQuery, ct);
-            windowed = (await vectors.SearchAsync(queryVector, embeddings.ModelId, fetchLimit, activeSourceIds, ct)).ToList();
+            windowed = (await VectorSearchAsync(queryVector, fetchLimit, activeSourceIds, ct)).ToList();
         }
         else
         {
             var vectorRanked = mode == SearchMode.Hybrid
-                ? (await vectors.SearchAsync(
-                    await EmbedQueryAsync(effectiveQuery, ct), embeddings.ModelId, window, activeSourceIds, ct))
+                ? (await VectorSearchAsync(
+                    await EmbedQueryAsync(effectiveQuery, ct), window, activeSourceIds, ct))
                     .Select(h => h.ChunkId).ToList()
                 : [];
 
-            var lexicalRanked = (await lexical.SearchAsync(effectiveQuery, window, activeSourceIds, ct))
-                .Select(h => h.ChunkId).ToList();
+            using var lexicalSpan = KnowledgeHubActivity.Start("lexical_search");
+            var lexicalSw = Stopwatch.StartNew();
+            List<LexicalHit> lexicalHits;
+            try
+            {
+                lexicalHits = (await lexical.SearchAsync(effectiveQuery, window, activeSourceIds, ct)).ToList();
+            }
+            catch (Exception ex)
+            {
+                KnowledgeHubActivity.Fail(lexicalSpan, ex);
+                throw;
+            }
+            finally
+            {
+                KnowledgeHubMetrics.LexicalDuration.Record(lexicalSw.Elapsed.TotalMilliseconds);
+            }
+            var lexicalRanked = lexicalHits.Select(h => h.ChunkId).ToList();
 
             var fused = RrfFuser.Fuse(vectorRanked, lexicalRanked, fetchLimit);
             if (fused.Count == 0)
@@ -131,7 +172,19 @@ public sealed class SearchService(
             windowed = fused.Select(f => new VectorHit(f.ChunkId, f.Fused)).ToList();
         }
 
-        var items = await HydrateAsync(windowed, breakdowns, filter, ct);
+        List<SearchResultItem> items;
+        using (var hydrateSpan = KnowledgeHubActivity.Start("hydrate"))
+        {
+            try
+            {
+                items = await HydrateAsync(windowed, breakdowns, filter, ct);
+            }
+            catch (Exception ex)
+            {
+                KnowledgeHubActivity.Fail(hydrateSpan, ex);
+                throw;
+            }
+        }
         if (!rerankEnabled || items.Count <= 1)
             return items.Take(topK).ToList();
 
@@ -185,6 +238,30 @@ public sealed class SearchService(
         }).ToList();
     }
 
+    /// <summary>Vector store call wrapped in a span + duration histogram.</summary>
+    private async Task<IReadOnlyList<VectorHit>> VectorSearchAsync(
+        float[] queryVector, int topK, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct)
+    {
+        var store = vectors.GetType().Name;
+        using var span = KnowledgeHubActivity.Start("vector_search");
+        span?.SetTag("vector.store", store);
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            return await vectors.SearchAsync(queryVector, embeddings.ModelId, topK, sourceIds, ct);
+        }
+        catch (Exception ex)
+        {
+            KnowledgeHubActivity.Fail(span, ex);
+            throw;
+        }
+        finally
+        {
+            KnowledgeHubMetrics.VectorSearchDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("store", store));
+        }
+    }
+
     /// <summary>Query embedding via the distributed cache — embeddings are
     /// deterministic per (modelId, text) so the key needs no version.</summary>
     private async Task<float[]> EmbedQueryAsync(string query, CancellationToken ct)
@@ -194,9 +271,23 @@ public sealed class SearchService(
         if (cached is not null)
             return EmbeddingVectorCodec.FromBytes(cached);
 
-        var vector = await embeddings.EmbedAsync(query, ct);
-        await SafeCache.SetAsync(cache, key, EmbeddingVectorCodec.ToBytes(vector), EmbeddingTtl, logger, ct);
-        return vector;
+        using var span = KnowledgeHubActivity.Start("embed_query");
+        span?.SetTag("llm.model", embeddings.ModelId);
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var vector = await embeddings.EmbedAsync(query, ct);
+            KnowledgeHubMetrics.EmbeddingDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", embeddings.GetType().Name),
+                new KeyValuePair<string, object?>("model", embeddings.ModelId));
+            await SafeCache.SetAsync(cache, key, EmbeddingVectorCodec.ToBytes(vector), EmbeddingTtl, logger, ct);
+            return vector;
+        }
+        catch (Exception ex)
+        {
+            KnowledgeHubActivity.Fail(span, ex);
+            throw;
+        }
     }
 
     /// <summary>Current index-version token — shared helper so the answer

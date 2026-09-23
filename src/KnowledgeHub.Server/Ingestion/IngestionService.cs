@@ -31,7 +31,46 @@ public sealed class IngestionService(
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SourceLocks = new();
 
-    public async Task<SyncResultDto> SyncAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    public Task<SyncResultDto> SyncAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    {
+        // SPEC-20260923-observability-metrics: span + duration/chunk metrics
+        // around the whole sync, whichever status it returns with.
+        var span = Telemetry.KnowledgeHubActivity.Start("sync");
+        span?.SetTag("sync.sourceId", sourceId.ToString("N"));
+        var sw = Stopwatch.StartNew();
+        return TrackSyncAsync(SyncCoreAsync(sourceId, cancellationToken), span, sw);
+    }
+
+    private static async Task<SyncResultDto> TrackSyncAsync(
+        Task<SyncResultDto> task, Activity? span, Stopwatch sw)
+    {
+        var status = "failed";
+        var chunks = 0L;
+        try
+        {
+            var result = await task;
+            status = result.Status;
+            chunks = result.ChunksCreated;
+            return result;
+        }
+        catch (OperationCanceledException) { status = "canceled"; throw; }
+        catch (Exception ex)
+        {
+            Telemetry.KnowledgeHubActivity.Fail(span, ex);
+            throw;
+        }
+        finally
+        {
+            span?.SetTag("sync.status", status);
+            span?.Dispose();
+            var tag = new KeyValuePair<string, object?>("status", status);
+            Telemetry.KnowledgeHubMetrics.SyncDuration.Record(sw.Elapsed.TotalMilliseconds, tag);
+            if (chunks > 0)
+                Telemetry.KnowledgeHubMetrics.SyncChunks.Add(chunks, tag);
+        }
+    }
+
+    private async Task<SyncResultDto> SyncCoreAsync(Guid sourceId, CancellationToken cancellationToken = default)
     {
         var gate = SourceLocks.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
         if (!await gate.WaitAsync(0, cancellationToken))

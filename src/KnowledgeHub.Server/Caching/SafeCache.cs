@@ -1,4 +1,5 @@
 using System.Text.Json;
+using KnowledgeHub.Server.Telemetry;
 using Microsoft.Extensions.Caching.Distributed;
 
 namespace KnowledgeHub.Server.Caching;
@@ -15,11 +16,14 @@ public static class SafeCache
     {
         try
         {
-            return await cache.GetStringAsync(key, ct);
+            var value = await cache.GetStringAsync(key, ct);
+            RecordHit(key, value is not null);
+            return value;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning("cache get failed for {Key} — treating as miss: {Message}", key, ex.Message);
+            RecordHit(key, false);
             return null;
         }
     }
@@ -29,13 +33,26 @@ public static class SafeCache
     {
         try
         {
-            return await cache.GetAsync(key, ct);
+            var value = await cache.GetAsync(key, ct);
+            RecordHit(key, value is not null);
+            return value;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning("cache get failed for {Key} — treating as miss: {Message}", key, ex.Message);
+            RecordHit(key, false);
             return null;
         }
+    }
+
+    /// <summary>Records hit/miss tagged by bounded cache region (RF-004).</summary>
+    private static void RecordHit(string key, bool hit)
+    {
+        var tag = new KeyValuePair<string, object?>("region", TelemetryTags.RegionFor(key));
+        if (hit)
+            KnowledgeHubMetrics.CacheHits.Add(1, tag);
+        else
+            KnowledgeHubMetrics.CacheMisses.Add(1, tag);
     }
 
     public static async Task SetStringAsync(

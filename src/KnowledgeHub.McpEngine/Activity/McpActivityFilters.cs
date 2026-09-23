@@ -17,7 +17,8 @@ public static class McpActivityFilters
     /// and enforces the per-session concurrency gate.
     /// </summary>
     public static McpRequestFilter<CallToolRequestParams, CallToolResult> CreateToolCallFilter(
-        IMcpActivityFeed feed, SessionCallGate gate) => next => async (request, cancellationToken) =>
+        IMcpActivityFeed feed, SessionCallGate gate, IMcpRequestMetrics? metrics = null) =>
+        next => async (request, cancellationToken) =>
     {
         var sessionId = request.Server.SessionId;
         var toolName = request.Params?.Name;
@@ -28,6 +29,7 @@ public static class McpActivityFilters
         {
             var result = await next(request, cancellationToken);
             var succeeded = result.IsError != true;
+            metrics?.Record("tools/call", sessionId is null ? "stateless" : "stateful", succeeded);
             feed.Record(new McpActivityEvent
             {
                 Timestamp = DateTimeOffset.UtcNow,
@@ -66,7 +68,8 @@ public static class McpActivityFilters
     /// Incoming message filter: records non-<c>tools/call</c> JSON-RPC requests
     /// (initialize, tools/list, resources/*, ping) with method + latency.
     /// </summary>
-    public static McpMessageFilter CreateRequestTelemetryFilter(IMcpActivityFeed feed, McpSessionRegistry registry) =>
+    public static McpMessageFilter CreateRequestTelemetryFilter(
+        IMcpActivityFeed feed, McpSessionRegistry registry, IMcpRequestMetrics? metrics = null) =>
         next => async (context, cancellationToken) =>
     {
         // Track the session so tools/list_changed can broadcast to live clients.
@@ -93,6 +96,8 @@ public static class McpActivityFilters
         }
         finally
         {
+            metrics?.Record(request.Method,
+                context.Server.SessionId is null ? "stateless" : "stateful", succeeded);
             feed.Record(new McpActivityEvent
             {
                 Timestamp = DateTimeOffset.UtcNow,

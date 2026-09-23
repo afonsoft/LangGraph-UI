@@ -9,8 +9,8 @@
 | Stack | `.NET 10 / C# 14` + `System.Diagnostics.Metrics` + `ActivitySource` + OpenTelemetry exporters (opt-in) |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-observability-metrics` |
-| Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Ticket | `#163` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-observability-metrics (média). Proposal §13.3 (latência por etapa). |
 
 ## 1. User Story

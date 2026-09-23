@@ -48,6 +48,7 @@ public sealed class LlmQueryRewriter(
         if (cached is not null)
             return cached;
 
+        var llmSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var response = await chat.GetResponseAsync(
@@ -57,6 +58,10 @@ public sealed class LlmQueryRewriter(
                 ],
                 new ChatOptions { Temperature = 0, MaxOutputTokens = 128 },
                 ct);
+            Telemetry.KnowledgeHubMetrics.LlmDuration.Record(llmSw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", chat.GetType().Name),
+                new KeyValuePair<string, object?>("model", response.ModelId),
+                new KeyValuePair<string, object?>("kind", "rewrite"));
             var rewritten = response.Text?.Trim();
             if (string.IsNullOrEmpty(rewritten) || rewritten.Length > query.Length * 4)
             {

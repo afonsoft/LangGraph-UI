@@ -396,6 +396,7 @@ public sealed class AgentService(
     {
         var sw = Stopwatch.StartNew();
         var answer = "";
+        using var agentSpan = Telemetry.KnowledgeHubActivity.Start("agent_chat");
         try
         {
             while (loop.Iterations < loop.MaxIterations && !loop.LimitReached)
@@ -403,7 +404,29 @@ public sealed class AgentService(
                 cancellationToken.ThrowIfCancellationRequested();
                 loop.Iterations++;
 
-                var response = await GetModelResponseAsync(client, loop, sink, cancellationToken);
+                ChatResponse response;
+                using (var iterSpan = Telemetry.KnowledgeHubActivity.Start("agent_iteration"))
+                {
+                    iterSpan?.SetTag("agent.iteration", loop.Iterations);
+                    var llmSw = Stopwatch.StartNew();
+                    try
+                    {
+                        response = await GetModelResponseAsync(client, loop, sink, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        Telemetry.KnowledgeHubActivity.Fail(iterSpan, ex);
+                        Telemetry.KnowledgeHubActivity.Fail(agentSpan, ex);
+                        throw;
+                    }
+                    finally
+                    {
+                        Telemetry.KnowledgeHubMetrics.LlmDuration.Record(llmSw.Elapsed.TotalMilliseconds,
+                            new KeyValuePair<string, object?>("provider", client.GetType().Name),
+                            new KeyValuePair<string, object?>("model", "agent"),
+                            new KeyValuePair<string, object?>("kind", "agent"));
+                    }
+                }
                 loop.Messages.AddRange(response.Messages);
 
                 var calls = response.Messages
@@ -451,6 +474,8 @@ public sealed class AgentService(
                     await WriteEventAsync(sink, new SseEvent("tool_start",
                         new { tool = call.Name, args = Summarize(call.Arguments) }), cancellationToken);
                     var stepSw = Stopwatch.StartNew();
+                    using var toolSpan = Telemetry.KnowledgeHubActivity.Start("tool");
+                    toolSpan?.SetTag("tool.name", call.Name);
                     object? result;
                     var isError = false;
                     try
@@ -464,6 +489,12 @@ public sealed class AgentService(
                     {
                         isError = true;
                         result = $"ERROR: {ex.Message}";
+                        Telemetry.KnowledgeHubActivity.Fail(toolSpan, ex);
+                    }
+                    finally
+                    {
+                        Telemetry.KnowledgeHubMetrics.ToolDuration.Record(stepSw.Elapsed.TotalMilliseconds,
+                            new KeyValuePair<string, object?>("tool", call.Name));
                     }
 
                     await WriteEventAsync(sink, new SseEvent("tool_end",
