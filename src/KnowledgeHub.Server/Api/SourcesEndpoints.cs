@@ -45,13 +45,14 @@ public static class SourcesEndpoints
         group.MapPost("/{id:guid}/deactivate", (IKnowledgeSourceService svc, Guid id, CancellationToken ct) =>
             SetActive(svc, id, false, ct));
 
+        // SPEC-20260923-rate-limiting: sync burns embeddings — stricter bucket.
         group.MapPost("/{id:guid}/sync", async (IKnowledgeSourceService sources, IIngestionService ingestion, Guid id, CancellationToken ct) =>
         {
             if (await sources.GetAsync(id, ct) is null)
                 return Results.NotFound(new { error = "Source not found" });
             var result = await ingestion.SyncAsync(id, ct);
             return Results.Accepted($"/api/sources/{id}", result);
-        });
+        }).RequireRateLimiting("sync");
 
         group.MapGet("/{id:guid}/documents", async (IKnowledgeSourceService svc, Guid id, CancellationToken ct) =>
             await svc.ListDocumentsAsync(id, ct) is { } docs ? Results.Ok(docs) : Results.NotFound(new { error = "Source not found" }));

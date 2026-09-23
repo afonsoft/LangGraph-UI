@@ -44,7 +44,7 @@ public static class StreamingEndpoints
             var k = request.TopK is null or <= 0 ? SearchEndpoints.DefaultTopK : Math.Min(request.TopK.Value, SearchEndpoints.MaxTopK);
             var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, ct);
             await WriteSseAsync(http, answers.StreamAsync(request.Question, context, ct), ct);
-        }).RequireAuthorization(AuthPolicies.Operational);
+        }).RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
 
         app.MapPost("/api/agent/stream", async (HttpContext http, AgentRequest request, IAgentService agent) =>
         {
@@ -63,7 +63,7 @@ public static class StreamingEndpoints
 
             var ct = http.RequestAborted;
             await WriteSseAsync(http, agent.StreamAsync(request, ct), ct);
-        }).RequireAuthorization(AuthPolicies.Operational);
+        }).RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
     }
 
     /// <summary>Writes the event stream; exceptions become a terminal "error" event.</summary>

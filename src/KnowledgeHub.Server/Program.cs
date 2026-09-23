@@ -34,6 +34,75 @@ builder.Services.AddHealthChecks()
 builder.Services.AddKnowledgeHubServer(builder.Configuration);
 builder.Services.AddKnowledgeHubMcp(builder.Configuration);
 builder.Services.AddSignalR();
+
+// SPEC-20260923-rate-limiting: partitioned policies — llm (sliding),
+// sync (fixed), general (fixed). Partition precedence api-key → user → ip;
+// unauthenticated callers get the stricter anon bucket on llm.
+// NOTE: options bind lazily via DI — builder.Configuration at this point does
+// NOT include test-host overrides (added during builder.Build()).
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>()
+        .GetSection(KnowledgeHub.Server.RateLimiting.RateLimitOptions.SectionName)
+        .Get<KnowledgeHub.Server.RateLimiting.RateLimitOptions>()
+        ?? new KnowledgeHub.Server.RateLimiting.RateLimitOptions());
+builder.Services.AddSingleton<KnowledgeHub.Server.RateLimiting.McpToolRateLimiter>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (ctx, ct) =>
+    {
+        var response = ctx.HttpContext.Response;
+        // Windowed limiters don't always attach Retry-After metadata — fall back
+        // to the smallest configured window (most rejections are the llm policy).
+        var opts = ctx.HttpContext.RequestServices
+            .GetRequiredService<KnowledgeHub.Server.RateLimiting.RateLimitOptions>();
+        var retry = ctx.Lease.TryGetMetadata(
+            System.Threading.RateLimiting.MetadataName.RetryAfter, out var retryAfter)
+            ? retryAfter
+            : TimeSpan.FromSeconds(Math.Min(opts.LlmWindowSeconds, opts.GeneralWindowSeconds));
+        response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retry.TotalSeconds)).ToString();
+        response.ContentType = "application/problem+json";
+        await response.WriteAsJsonAsync(new
+        {
+            type = "https://tools.ietf.org/html/rfc9110#section-15.5.30",
+            title = "rate_limited",
+            status = 429,
+            detail = $"retry in {response.Headers.RetryAfter.FirstOrDefault() ?? "60"}s"
+        }, ct);
+    };
+    options.AddPolicy("llm", http =>
+        RateLimiting(http, http.RequestServices.GetRequiredService<KnowledgeHub.Server.RateLimiting.RateLimitOptions>(), llm: true));
+    options.AddPolicy("sync", http =>
+        RateLimiting(http, http.RequestServices.GetRequiredService<KnowledgeHub.Server.RateLimiting.RateLimitOptions>(), llm: false, sync: true));
+    options.AddPolicy("general", http =>
+        RateLimiting(http, http.RequestServices.GetRequiredService<KnowledgeHub.Server.RateLimiting.RateLimitOptions>(), llm: false));
+});
+
+static System.Threading.RateLimiting.RateLimitPartition<string> RateLimiting(
+    HttpContext http, KnowledgeHub.Server.RateLimiting.RateLimitOptions o, bool llm, bool sync = false)
+{
+    var (key, _, _) = KnowledgeHub.Server.RateLimiting.CallerPartitioner.Resolve(http, o.TrustForwardedHeaders);
+    if (llm)
+    {
+        var permit = key.StartsWith(KnowledgeHub.Server.RateLimiting.CallerPartitioner.AnonymousPrefix, StringComparison.Ordinal)
+            ? o.AnonymousLlmPermitLimit : o.LlmPermitLimit;
+        return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(key, _ =>
+            new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = permit,
+                Window = TimeSpan.FromSeconds(o.LlmWindowSeconds),
+                SegmentsPerWindow = 6,
+                QueueLimit = 0
+            });
+    }
+    return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(key, _ =>
+        new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+        {
+            PermitLimit = sync ? o.SyncPermitLimit : o.GeneralPermitLimit,
+            Window = TimeSpan.FromSeconds(sync ? o.SyncWindowSeconds : o.GeneralWindowSeconds),
+            QueueLimit = 0
+        });
+}
 builder.Services.AddHostedService<McpActivityBroadcastService>();
 
 // SPEC-20260914-auth-login: cookie session (browser SPA) + aft_* API keys
@@ -131,6 +200,12 @@ app.UseAuthorization();
 // authenticated via an aft_* API key (needs the post-auth claims).
 app.UseMiddleware<KnowledgeHub.Server.Auth.ApiKeyUsageMiddleware>();
 
+// SPEC-20260923-rate-limiting: after auth (partition claims) and inside the
+// usage-audit middleware so rejected apikey calls are still recorded (429).
+// Options resolve from the final configuration (incl. test-host overrides).
+if (app.Services.GetRequiredService<KnowledgeHub.Server.RateLimiting.RateLimitOptions>().Enabled)
+    app.UseRateLimiter();
+
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     Predicate = _ => false
@@ -179,18 +254,18 @@ app.MapFrameworkAssetsApi();
 // SPEC-20260914-auth-login RF-006: everything operational requires an
 // authenticated principal that has cleared the password-change gate.
 // Public: /api/auth/login, /health/*, static assets + SPA fallback.
-app.MapAuthApi();
-app.MapApiKeysApi();
-app.MapSourcesApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapSearchApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapAskApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapAgentApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapApprovalsApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapThreadsApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapStreamingApi(); // RequireAuthorization applied per-endpoint inside (returns void)
-app.MapToolsApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapSettingsApi().RequireAuthorization(AuthPolicies.Operational);
-app.MapApiKeySettingsApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapAuthApi().RequireRateLimiting("general");
+app.MapApiKeysApi().RequireRateLimiting("general");
+app.MapSourcesApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapSearchApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapAskApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
+app.MapAgentApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
+app.MapApprovalsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapThreadsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapStreamingApi(); // RequireAuthorization + RequireRateLimiting applied per-endpoint inside (returns void)
+app.MapToolsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapSettingsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapApiKeySettingsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapKnowledgeHubMcp().RequireAuthorization(AuthPolicies.Operational);
 app.MapHub<McpMonitorHub>("/hubs/mcp").RequireAuthorization(AuthPolicies.Operational);
 app.MapFallbackToFile("index.html");
