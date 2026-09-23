@@ -137,7 +137,7 @@ public sealed class PerformanceCacheTests
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, embeddings, vectors, new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(),
-            NoOpReranker.Instance, NullLogger<SearchService>.Instance);
+            NoOpReranker.Instance, new UnrestrictedScope(), NullLogger<SearchService>.Instance);
 
         var first = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(first);
@@ -181,7 +181,7 @@ public sealed class PerformanceCacheTests
         var search = new SearchService(db, new CountingEmbeddingProvider(),
             new CountingVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(),
             new ThrowingCache(), new ConfigurationBuilder().Build(), new PassthroughRewriter(),
-            NoOpReranker.Instance, NullLogger<SearchService>.Instance);
+            NoOpReranker.Instance, new UnrestrictedScope(), NullLogger<SearchService>.Instance);
 
         var results = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(results);
@@ -233,6 +233,12 @@ public sealed class PerformanceCacheTests
     {
         public Task<string> RewriteAsync(string query, CancellationToken ct = default) =>
             Task.FromResult(query);
+    }
+
+    private sealed class UnrestrictedScope : KnowledgeHub.Server.Auth.ICallerScopeProvider
+    {
+        public Task<KnowledgeHub.Server.Auth.CallerScope> GetAsync(CancellationToken ct) =>
+            Task.FromResult(KnowledgeHub.Server.Auth.CallerScope.Unrestricted);
     }
 
     // ---- RF-004: batch vector upsert ---------------------------------------

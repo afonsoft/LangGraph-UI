@@ -115,6 +115,7 @@ public sealed partial class McpProxyToolsProvider(
             // Absent upstream hint → not read-only: proxied tools may mutate
             // remote state, so the Playground keeps the write-confirm gate.
             ReadOnly = proto.Annotations?.ReadOnlyHint ?? false,
+            SourceId = config.SourceId,
             Handler = (ctx, ct) => session.CallAsync(upstreamName, ctx.Arguments, ct)
         };
     }

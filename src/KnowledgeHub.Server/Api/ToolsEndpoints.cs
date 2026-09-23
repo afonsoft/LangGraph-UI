@@ -1,4 +1,5 @@
 using System.Text.Json;
+using KnowledgeHub.Server.Auth;
 using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Shared.Contracts;
 using ModelContextProtocol;
@@ -37,7 +38,22 @@ public static class ToolsEndpoints
             var tool = (await catalog.GetToolsAsync(http.RequestServices, ct))
                 .FirstOrDefault(t => t.Name == name);
             if (tool is null)
-                return Results.NotFound(new { error = $"unknown tool '{name}'" });
+            {
+                // SPEC-20260923-source-authorization RF-004: scope-hidden tools
+                // get the same friendly isError as MCP tools/call; unknown
+                // names keep their 404.
+                var exists = (await catalog.GetUnfilteredToolsAsync(http.RequestServices, ct))
+                    .Any(t => t.Name == name);
+                if (!exists)
+                    return Results.NotFound(new { error = $"unknown tool '{name}'" });
+
+                await ScopeAudit.RecordToolDeniedAsync(http.RequestServices, name, ct);
+                return Results.Ok(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"tool '{name}' is not available for this credential" }],
+                    IsError = true
+                });
+            }
 
             var arguments = await ReadArgumentsAsync(http, ct);
             var context = new ToolCallContext

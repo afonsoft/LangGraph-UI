@@ -26,6 +26,7 @@ public sealed class SearchService(
     IConfiguration configuration,
     IQueryRewriter rewriter,
     IReranker reranker,
+    Auth.ICallerScopeProvider callerScope,
     ILogger<SearchService> logger) : ISearchService
 {
     private const int CandidateWindowFactor = 4;
@@ -37,9 +38,11 @@ public sealed class SearchService(
         SearchMode mode = SearchMode.Hybrid, ResolvedSearchFilter? filter = null,
         CancellationToken ct = default)
     {
+        var scope = await callerScope.GetAsync(ct);
         var indexVersion = await GetIndexVersionAsync(ct);
         var resultKey = CacheKeys.Search(
-            mode.ToString(), topK, sourceId, filter?.Fingerprint() ?? "-", query, indexVersion);
+            mode.ToString(), topK, sourceId, filter?.Fingerprint() ?? "-",
+            scope.SourceFingerprint, query, indexVersion);
         var cached = await SafeCache.GetStringAsync(cache, resultKey, logger, ct);
         if (cached is not null)
         {
@@ -48,18 +51,33 @@ public sealed class SearchService(
                 return hit;
         }
 
-        var results = await ExecuteAsync(query, topK, sourceId, mode, filter, ct);
+        var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, ct);
         await SafeCache.SetJsonAsync(cache, resultKey, results, ResultTtl, logger, ct);
         return results;
     }
 
     private async Task<IReadOnlyList<SearchResultItem>> ExecuteAsync(
         string query, int topK, Guid? sourceId,
-        SearchMode mode, ResolvedSearchFilter? filter, CancellationToken ct)
+        SearchMode mode, ResolvedSearchFilter? filter,
+        Auth.CallerScope scope, CancellationToken ct)
     {
         var activeSourceIds = sourceId is null
             ? await db.Sources.Where(s => s.IsActive).Select(s => s.Id).ToListAsync(ct)
             : [sourceId.Value];
+
+        // SPEC-20260923-source-authorization RF-003: intersect with the key's
+        // source scope before any vector/lexical call — never retrieve-then-
+        // filter. An explicit sourceId outside scope yields an empty result
+        // (not an error) and a SourceScopeDenied audit event.
+        if (scope.AllowedSourceIds is { } allowed)
+        {
+            if (sourceId is { } requested && !allowed.Contains(requested))
+                await Auth.ScopeAudit.RecordAsync(
+                    db, scope.ApiKeyId, Auth.ScopeAudit.SourceDenied, sourceId: requested, ct: ct);
+            activeSourceIds = activeSourceIds.Where(allowed.Contains).ToList();
+        }
+        if (activeSourceIds.Count == 0)
+            return [];
 
         // RF-001/RF-002: rewrite + rerank run on the user's retrieval intent.
         // Lexical skips rewriting unless explicitly opted in.
