@@ -26,6 +26,7 @@ public sealed class IngestionService(
     IEnumerable<Connectors.ISourceConnector> connectors,
     Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
     Security.IContentSanitizer sanitizer,
+    Settings.IGraphSettingsService graphSettings,
     ILogger<IngestionService> logger) : IIngestionService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
@@ -127,7 +128,7 @@ public sealed class IngestionService(
             var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
             var warnings = new List<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var graphBudget = configuration.GetValue("Graph:MaxChunksPerSync", 200);
+            var graphBudget = graphSettings.GetEffective().MaxChunksPerSync;
 
             foreach (var file in files)
             {
@@ -270,7 +271,7 @@ public sealed class IngestionService(
         var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
         var warnings = new List<string>(fetch.Warnings);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var graphBudget = configuration.GetValue("Graph:MaxChunksPerSync", 200);
+        var graphBudget = graphSettings.GetEffective().MaxChunksPerSync;
 
         foreach (var raw in fetch.Documents)
         {
@@ -556,7 +557,7 @@ public sealed class IngestionService(
     /// per-source <c>"graph": true</c> in ConfigurationJson.</summary>
     private bool GraphEnabledFor(KnowledgeSource source)
     {
-        if (!configuration.GetValue("Graph:Enabled", false))
+        if (!graphSettings.GetEffective().Enabled)
             return false;
         try
         {

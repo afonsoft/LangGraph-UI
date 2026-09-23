@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Server.Graph;
+using KnowledgeHub.Server.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 
@@ -10,11 +11,12 @@ namespace KnowledgeHub.Server.Mcp.ToolProviders;
 /// <summary>
 /// Read-only knowledge-graph tools (SPEC-20260923-graphrag RF-004):
 /// find_dependencies, find_dependents, find_path, analyze_impact.
-/// All depth args clamp to 1..3 and results are hard-capped by
-/// <c>Graph:MaxResults</c> (default 200 edges). Absent entirely when
-/// <c>Graph:Enabled=false</c>.
+/// All depth args clamp to 1..3 and results are hard-capped by the effective
+/// MaxResults (default 200 edges). Absent entirely when the graph is disabled —
+/// flag resolves through <see cref="IGraphSettingsService"/> so /settings
+/// edits apply without restart (SPEC-20260923-graph-settings-ui RF-003).
 /// </summary>
-public sealed class GraphToolsProvider(IConfiguration configuration) : IToolProvider
+public sealed class GraphToolsProvider(IGraphSettingsService graphSettings) : IToolProvider
 {
     private const int MaxDepth = 3;
 
@@ -45,7 +47,7 @@ public sealed class GraphToolsProvider(IConfiguration configuration) : IToolProv
     public Task<IReadOnlyList<CatalogTool>> GetToolsAsync(
         IServiceProvider services, CancellationToken cancellationToken)
     {
-        if (!configuration.GetValue("Graph:Enabled", false))
+        if (!graphSettings.GetEffective().Enabled)
             return Task.FromResult<IReadOnlyList<CatalogTool>>([]);
 
         IReadOnlyList<CatalogTool> tools =
@@ -179,7 +181,7 @@ public sealed class GraphToolsProvider(IConfiguration configuration) : IToolProv
 
     private (IKnowledgeGraphStore Store, int MaxEdges) Resolve(ToolCallContext ctx) =>
         (ctx.Services!.GetRequiredService<IKnowledgeGraphStore>(),
-         configuration.GetValue("Graph:MaxResults", 200));
+         graphSettings.GetEffective().MaxResults);
 
     private static int ClampDepth(ToolCallContext ctx, out bool clamped)
     {

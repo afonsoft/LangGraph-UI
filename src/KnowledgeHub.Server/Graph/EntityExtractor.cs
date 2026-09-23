@@ -23,7 +23,7 @@ public sealed record ExtractionResult(
 /// </summary>
 public sealed class EntityExtractor(
     IChatClient? chatClient,
-    IConfiguration configuration)
+    Settings.IGraphSettingsService graphSettings)
 {
     /// <summary>Prompt schema version — stamped on every edge (RF guardrail).</summary>
     public const string PromptVersion = "v1";
@@ -48,7 +48,7 @@ public sealed class EntityExtractor(
         for (var i = 0; i < chunks.Count; i++)
         {
             var text = chunks[i].TextContent;
-            var cap = configuration.GetValue("Graph:MaxChunkChars", 2000);
+            var cap = graphSettings.GetEffective().MaxChunkChars;
             if (text.Length > cap)
                 text = text[..cap];
             sb.Append('[').Append(i + 1).Append("] ").Append(text).Append("\n\n");

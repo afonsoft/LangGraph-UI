@@ -61,6 +61,26 @@ public sealed class SettingsApiClient(HttpClient http)
         return await ReadAsync<TestChatConnectionResponse>(response, ct);
     }
 
+    // SPEC-20260923-graph-settings-ui: GraphRAG switch + tuning knobs.
+
+    /// <summary>Obtém a configuração efetiva do grafo (store → env/defaults).</summary>
+    public Task<GraphSettingsDto?> GetGraphAsync(CancellationToken ct = default) =>
+        http.GetFromJsonAsync<GraphSettingsDto>("api/settings/graph", ct);
+
+    /// <summary>Salva a configuração do grafo; efeito imediato, sem restart.</summary>
+    public async Task<ApiResult<object>> SaveGraphAsync(SaveGraphSettingsRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/settings/graph", request, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    /// <summary>Apaga a configuração persistida do grafo, voltando às variáveis de ambiente.</summary>
+    public async Task<ApiResult<object>> ClearGraphAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("api/settings/graph", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     // SPEC-20260916-api-key-settings: per-API-key chat provider settings.
 
     /// <summary>Obtém a configuração efetiva de chat para uma API key específica.</summary>

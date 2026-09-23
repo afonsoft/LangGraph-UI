@@ -16,6 +16,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<ApiKeyUsageEvent> ApiKeyUsageEvents => Set<ApiKeyUsageEvent>();
     public DbSet<IntegrationSecret> IntegrationSecrets => Set<IntegrationSecret>();
     public DbSet<ChatSettings> ChatSettings => Set<ChatSettings>();
+    public DbSet<GraphSettings> GraphSettings => Set<GraphSettings>();
     public DbSet<ApiKeyChatSettings> ApiKeyChatSettings => Set<ApiKeyChatSettings>();
     public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
     public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
@@ -143,6 +144,11 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.HasKey(s => s.Id);
             e.Property(s => s.Endpoint).IsRequired().HasMaxLength(512);
             e.Property(s => s.Model).IsRequired().HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<GraphSettings>(e =>
+        {
+            e.HasKey(s => s.Id);
         });
 
         modelBuilder.Entity<ApiKeyChatSettings>(e =>
