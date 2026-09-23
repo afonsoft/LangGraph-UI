@@ -298,15 +298,34 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         var vectors = ctx.Services!.GetRequiredService<VectorStore.IVectorStore>();
         // SPEC-20260923-code-aware-chunking: kind from the document URI.
         var (kind, pieces) = Ingestion.Chunking.ChunkerSelector.Chunk(doc2.UriReference, body, 500, 50);
-        var newChunks = pieces.Select((p, i) => new Domain.Entities.DocumentChunk
+        var sanitizer = ctx.Services!.GetRequiredService<Security.IContentSanitizer>();
+        var flagged = 0;
+        var newChunks = pieces.Select((p, i) =>
         {
-            KnowledgeDocumentId = doc2.Id,
-            ChunkIndex = i,
-            TextContent = p.Text,
-            ChunkKind = kind.ToString().ToLowerInvariant(),
-            SymbolPath = p.SymbolPath
+            var flags = sanitizer.Scan(p.Text);
+            if (flags.Count > 0)
+                flagged++;
+            return new Domain.Entities.DocumentChunk
+            {
+                KnowledgeDocumentId = doc2.Id,
+                ChunkIndex = i,
+                TextContent = p.Text,
+                ChunkKind = kind.ToString().ToLowerInvariant(),
+                SymbolPath = p.SymbolPath,
+                SuspicionFlags = flags.Count == 0 ? null : string.Join(',', flags)
+            };
         }).ToList();
         db.Chunks.AddRange(newChunks);
+        foreach (var c in newChunks.Where(c => c.SuspicionFlags is not null))
+        {
+            db.SecurityEvents.Add(new Domain.Entities.SecurityEvent
+            {
+                SourceId = doc2.KnowledgeSourceId,
+                DocumentId = doc2.Id,
+                ChunkIndex = c.ChunkIndex,
+                Flags = c.SuspicionFlags!
+            });
+        }
         await db.SaveChangesAsync(ct);
 
         foreach (var chunk in newChunks)
@@ -318,8 +337,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         // RF-004: keep the FTS index consistent with Chunks.
         await ctx.Services!.GetRequiredService<Search.ILexicalSearchService>().ReconcileAsync(ct);
 
+        var flagNote = flagged == 0 ? "" : $"\nWarning: {flagged} chunk(s) flagged by the security scan (see /api/security/events).";
         return await ToolResults.Text(
-            $"Stored '{title}' in source '{target.Name}'.\nDocument id: {doc2.Id}\nChunks indexed: {newChunks.Count}");
+            $"Stored '{title}' in source '{target.Name}'.\nDocument id: {doc2.Id}\nChunks indexed: {newChunks.Count}{flagNote}");
     }
 
     internal static string FormatHits(IReadOnlyList<SearchResultItem> results)
@@ -333,7 +353,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
               .Append("- source: ").Append(r.SourceName)
               .Append(" | score: ").Append(r.Score.ToString("F3"))
               .Append(" | uri: ").Append(r.UriReference).Append('\n')
-              .Append(r.ChunkText).Append("\n\n");
+              .Append(Security.PromptBoundary.Escape(r.ChunkText)).Append("\n\n");
         }
         return sb.ToString();
     }
@@ -349,11 +369,12 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         var i = 1;
         foreach (var r in results)
         {
-            sb.Append('[').Append(i++).Append("] ")
-              .Append(r.DocumentTitle).Append(" — ").Append(r.SourceName)
-              .Append(" (score ").Append(r.Score.ToString("F3")).Append(", ")
-              .Append(r.UriReference).Append(")\n")
-              .Append(r.ChunkText).Append("\n\n");
+            var header = $"[{i}] {r.DocumentTitle} — {r.SourceName} (score {r.Score:F3}, {r.UriReference})";
+            sb.Append(Security.PromptBoundary.WrapChunk(
+                      i++, $"{r.SourceName}/{r.UriReference}",
+                      header + "\n" + r.ChunkText,
+                      r.SuspicionFlags is not null))
+              .Append("\n\n");
         }
         return sb.ToString();
     }

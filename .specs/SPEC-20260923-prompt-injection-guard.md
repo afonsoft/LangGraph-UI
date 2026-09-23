@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-prompt-injection-guard` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-security-prompt-injection (alta). Proposal §14 + §13.3 (malicious questions). |
 
 ## 1. User Story

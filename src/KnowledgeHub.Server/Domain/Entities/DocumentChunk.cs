@@ -16,6 +16,9 @@ public sealed class DocumentChunk
     /// <summary>Structural context — e.g. <c>Namespace.Type.Method</c> or
     /// <c>$.server.port</c>; null for prose/markdown chunks.</summary>
     public string? SymbolPath { get; set; }
+    /// <summary>SPEC-20260923-prompt-injection-guard RF-002: comma-separated
+    /// suspicion flags from the content sanitizer; null = clean.</summary>
+    public string? SuspicionFlags { get; set; }
 
     public KnowledgeDocument Document { get; set; } = null!;
 }

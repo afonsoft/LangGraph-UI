@@ -143,6 +143,8 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<ISearchService, SearchService>();
         // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
         services.AddScoped<Eval.EvalRunner>();
+        // SPEC-20260923-prompt-injection-guard: deterministic heuristic scanner.
+        services.AddSingleton<Security.IContentSanitizer, Security.ContentSanitizer>();
 
         services.AddSingleton<IngestionService>();
         services.AddSingleton<IIngestionService>(sp => sp.GetRequiredService<IngestionService>());
