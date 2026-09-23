@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-pgvector-hnsw` |
 | Ticket | `[A DEFINIR]` |
-| Status | `In implementation` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-implementation-pgvector-hnsw (média). Proposal §7.4. |
 
 ## 1. User Story
