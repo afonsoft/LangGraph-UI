@@ -25,6 +25,7 @@ public sealed class IngestionService(
     IConfiguration configuration,
     IEnumerable<Connectors.ISourceConnector> connectors,
     Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
+    Security.IContentSanitizer sanitizer,
     ILogger<IngestionService> logger) : IIngestionService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
@@ -85,6 +86,7 @@ public sealed class IngestionService(
                 .ToDictionaryAsync(d => d.UriReference, cancellationToken);
 
             var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
+            var warnings = new List<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var file in files)
@@ -144,6 +146,7 @@ public sealed class IngestionService(
                     SymbolPath = piece.SymbolPath
                 }).ToList();
                 db.Chunks.AddRange(newChunks);
+                ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
 
                 await db.SaveChangesAsync(cancellationToken);
                 chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);
@@ -178,7 +181,8 @@ public sealed class IngestionService(
                 DocumentsSkipped = skipped,
                 DocumentsRemoved = removed,
                 ChunksCreated = chunksCreated,
-                DurationMs = stopwatch.Elapsed.TotalMilliseconds
+                DurationMs = stopwatch.Elapsed.TotalMilliseconds,
+                Warnings = warnings.Count == 0 ? null : warnings
             };
         }
         catch (OperationCanceledException) { throw; }
@@ -222,6 +226,7 @@ public sealed class IngestionService(
             : await connector.FetchAsync(source, cancellationToken);
 
         var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
+        var warnings = new List<string>(fetch.Warnings);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var raw in fetch.Documents)
@@ -278,6 +283,7 @@ public sealed class IngestionService(
                     SymbolPath = piece.SymbolPath
                 }).ToList();
             db.Chunks.AddRange(newChunks);
+            ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
 
             await db.SaveChangesAsync(cancellationToken);
             chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, source.Id, vectors, cancellationToken);
@@ -295,8 +301,8 @@ public sealed class IngestionService(
 
         source.LastSyncAt = DateTimeOffset.UtcNow;
         source.LastSyncStatus = "completed";
-        source.LastError = fetch.Warnings.Count == 0 ? null
-            : $"{fetch.Warnings.Count} item(s) skipped: {string.Join("; ", fetch.Warnings.Take(5))}";
+        source.LastError = warnings.Count == 0 ? null
+            : $"{warnings.Count} item(s) skipped or flagged: {string.Join("; ", warnings.Take(5))}";
         await db.SaveChangesAsync(cancellationToken);
         await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
             .ReconcileAsync(cancellationToken);
@@ -311,8 +317,48 @@ public sealed class IngestionService(
             DocumentsRemoved = removed,
             ChunksCreated = chunksCreated,
             DurationMs = stopwatch.Elapsed.TotalMilliseconds,
-            Reason = fetch.Warnings.Count == 0 ? null : $"{fetch.Warnings.Count} item(s) skipped: {string.Join("; ", fetch.Warnings.Take(5))}"
+            Reason = warnings.Count == 0 ? null : $"{warnings.Count} item(s) skipped or flagged: {string.Join("; ", warnings.Take(5))}",
+            Warnings = warnings.Count == 0 ? null : warnings
         };
+    }
+
+    /// <summary>
+    /// SPEC-20260923-prompt-injection-guard RF-003: scans each new chunk,
+    /// persists flags on the row and one <c>SecurityEvent</c> per flagged chunk
+    /// (ids + flag names only — never content), and appends a per-document
+    /// warning for the sync result.
+    /// </summary>
+    private void ScanChunks(
+        List<DocumentChunk> chunks, Guid documentId, Guid sourceId, string title,
+        KnowledgeHubDbContext db, List<string> warnings)
+    {
+        var flaggedCount = 0;
+        var flagNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var chunk in chunks)
+        {
+            var flags = sanitizer.Scan(chunk.TextContent);
+            if (flags.Count == 0)
+                continue;
+            chunk.SuspicionFlags = string.Join(',', flags);
+            flaggedCount++;
+            foreach (var f in flags)
+                flagNames.Add(f);
+            db.SecurityEvents.Add(new SecurityEvent
+            {
+                SourceId = sourceId,
+                DocumentId = documentId,
+                ChunkIndex = chunk.ChunkIndex,
+                Flags = chunk.SuspicionFlags
+            });
+        }
+
+        if (flaggedCount > 0)
+        {
+            logger.LogWarning(
+                "Security scan flagged {Count} chunk(s) in '{Title}' ({DocumentId}): {Flags}",
+                flaggedCount, title, documentId, string.Join(',', flagNames));
+            warnings.Add($"{title}: {flaggedCount} chunk(s) flagged ({string.Join(',', flagNames)})");
+        }
     }
 
     /// <summary>Embed + upsert chunks in one batch — a single provider call for
@@ -463,7 +509,8 @@ public sealed class IngestionService(
             if (doc?.ContentHash == hash)
                 return;
 
-            var chunks = MarkdownChunker.Chunk(
+            var (kind, pieces) = Chunking.ChunkerSelector.Chunk(
+                relativePath,
                 body,
                 configuration.GetValue("Ingestion:MaxTokens", 500),
                 configuration.GetValue("Ingestion:OverlapTokens", 50));
@@ -485,13 +532,17 @@ public sealed class IngestionService(
             doc.IndexedAt = DateTimeOffset.UtcNow;
 
             // AddRange via DbSet — see vault path above.
-            var newChunks = chunks.Select((text, i) => new DocumentChunk
+            var watcherWarnings = new List<string>();
+            var newChunks = pieces.Select((piece, i) => new DocumentChunk
             {
                 KnowledgeDocumentId = doc.Id,
                 ChunkIndex = i,
-                TextContent = text
+                TextContent = piece.Text,
+                ChunkKind = kind.ToString().ToLowerInvariant(),
+                SymbolPath = piece.SymbolPath
             }).ToList();
             db.Chunks.AddRange(newChunks);
+            ScanChunks(newChunks, doc.Id, sourceId, title, db, watcherWarnings);
 
             await db.SaveChangesAsync(cancellationToken);
             await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);

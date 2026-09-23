@@ -23,6 +23,7 @@ public sealed class SearchService(
     IVectorStore vectors,
     ILexicalSearchService lexical,
     IDistributedCache cache,
+    IConfiguration configuration,
     ILogger<SearchService> logger) : ISearchService
 {
     private const int CandidateWindowFactor = 4;
@@ -141,24 +142,42 @@ public sealed class SearchService(
         var chunkIds = hits.Select(h => h.ChunkId).ToList();
         var chunks = await db.Chunks.AsNoTracking()
             .Where(c => chunkIds.Contains(c.Id))
-            .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id, (c, d) => new { c.Id, c.TextContent, d.Title, d.UriReference, d.KnowledgeSourceId })
-            .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id, (x, s) => new { x.Id, x.TextContent, x.Title, x.UriReference, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType })
+            .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id, (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, d.Title, d.UriReference, d.KnowledgeSourceId })
+            .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id, (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.Title, x.UriReference, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType })
             .ToListAsync(ct);
 
         var byId = chunks.ToDictionary(c => c.Id);
-        return hits
+        // SPEC-20260923-prompt-injection-guard RF-004: flagged chunks are dropped
+        // post-rank when ExcludeFlagged is on (default true) — ranking window is
+        // unaffected, the answer just never sees them.
+        var excludeFlagged = configuration.GetValue("Security:Injection:ExcludeFlagged", true);
+        var excluded = 0;
+        var items = hits
             .Where(h => byId.ContainsKey(h.ChunkId))
-            .Select(h => new SearchResultItem
+            .Select(h =>
             {
-                ChunkText = byId[h.ChunkId].TextContent,
-                DocumentTitle = byId[h.ChunkId].Title,
-                SourceName = byId[h.ChunkId].SourceName,
-                SourceId = byId[h.ChunkId].KnowledgeSourceId,
-                SourceType = byId[h.ChunkId].SourceType,
-                Score = h.Score,
-                UriReference = byId[h.ChunkId].UriReference,
-                ScoreBreakdown = breakdowns?.GetValueOrDefault(h.ChunkId)
+                var c = byId[h.ChunkId];
+                var flagged = c.SuspicionFlags is not null;
+                if (flagged && excludeFlagged)
+                    excluded++;
+                return flagged && excludeFlagged ? null : new SearchResultItem
+                {
+                    ChunkText = c.TextContent,
+                    DocumentTitle = c.Title,
+                    SourceName = c.SourceName,
+                    SourceId = c.KnowledgeSourceId,
+                    SourceType = c.SourceType,
+                    Score = h.Score,
+                    UriReference = c.UriReference,
+                    ScoreBreakdown = breakdowns?.GetValueOrDefault(h.ChunkId),
+                    SuspicionFlags = c.SuspicionFlags
+                };
             })
+            .OfType<SearchResultItem>()
             .ToList();
+
+        if (excluded > 0)
+            logger.LogInformation("Excluded {Count} flagged chunk(s) from search context", excluded);
+        return items;
     }
 }

@@ -18,6 +18,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<ChatSettings> ChatSettings => Set<ChatSettings>();
     public DbSet<ApiKeyChatSettings> ApiKeyChatSettings => Set<ApiKeyChatSettings>();
     public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
+    public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
 
     /// <summary>Configura as entidades do modelo: chaves, índices, tamanhos e relacionamentos.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -80,6 +81,15 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.Property(c => c.Embedding).HasColumnType("BLOB");
             e.Property(c => c.ChunkKind).IsRequired().HasMaxLength(16);
             e.Property(c => c.SymbolPath).HasMaxLength(300);
+            e.Property(c => c.SuspicionFlags).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<SecurityEvent>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Flags).IsRequired().HasMaxLength(200);
+            e.HasIndex(s => s.SourceId);
+            e.HasIndex(s => s.CreatedAt);
         });
 
         modelBuilder.Entity<AppUser>(e =>

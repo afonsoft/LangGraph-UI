@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
@@ -135,7 +136,7 @@ public sealed class PerformanceCacheTests
         var cache = new MemoryDistributedCache(
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, embeddings, vectors, new DisabledLexical(), cache,
-            NullLogger<SearchService>.Instance);
+            new ConfigurationBuilder().Build(), NullLogger<SearchService>.Instance);
 
         var first = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(first);
@@ -178,7 +179,7 @@ public sealed class PerformanceCacheTests
 
         var search = new SearchService(db, new CountingEmbeddingProvider(),
             new CountingVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(),
-            new ThrowingCache(), NullLogger<SearchService>.Instance);
+            new ThrowingCache(), new ConfigurationBuilder().Build(), NullLogger<SearchService>.Instance);
 
         var results = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(results);

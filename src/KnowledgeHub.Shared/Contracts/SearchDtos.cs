@@ -33,6 +33,9 @@ public sealed record SearchResultItem
     public SourceType SourceType { get; init; }
     /// <summary>Rank provenance when retrieved in hybrid/lexical mode; null for plain semantic.</summary>
     public SearchScoreBreakdown? ScoreBreakdown { get; init; }
+    /// <summary>Suspicion flags carried into the prompt when exclusion is
+    /// disabled (SPEC-20260923-prompt-injection-guard RF-004); null = clean.</summary>
+    public string? SuspicionFlags { get; init; }
 }
 
 public sealed record SearchResponse

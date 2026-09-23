@@ -66,4 +66,7 @@ public sealed record SyncResultDto
     public int DocumentsRemoved { get; init; }
     public int ChunksCreated { get; init; }
     public double DurationMs { get; init; }
+    /// <summary>Non-fatal findings: connector item skips + security scan flags
+    /// (SPEC-20260923-prompt-injection-guard RF-003).</summary>
+    public IReadOnlyList<string>? Warnings { get; init; }
 }
