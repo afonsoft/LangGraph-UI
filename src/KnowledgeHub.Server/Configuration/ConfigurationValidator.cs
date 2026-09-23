@@ -36,6 +36,7 @@ public static class ConfigurationValidator
         ValidateCache(configuration, problems);
         ValidateChat(configuration, problems);
         ValidateAuth(configuration, problems);
+        ValidateRateLimiting(configuration, problems);
 
         if (problems.Count > 0)
             throw new InvalidOperationException(
@@ -255,6 +256,21 @@ public static class ConfigurationValidator
             problems.Add($"Auth:MinPasswordLength '{l}' must be a positive integer");
         if (section["SessionHours"] is { } h && (!int.TryParse(h, out var hh) || hh <= 0))
             problems.Add($"Auth:SessionHours '{h}' must be a positive integer");
+    }
+
+    private static void ValidateRateLimiting(IConfiguration cfg, List<string> problems)
+    {
+        // SPEC-20260923-rate-limiting: numeric knobs must be positive ints.
+        var section = cfg.GetSection(RateLimiting.RateLimitOptions.SectionName);
+        foreach (var key in new[]
+        {
+            "LlmPermitLimit", "LlmWindowSeconds", "AnonymousLlmPermitLimit",
+            "SyncPermitLimit", "SyncWindowSeconds", "GeneralPermitLimit", "GeneralWindowSeconds"
+        })
+        {
+            if (section[key] is { } v && (!int.TryParse(v, out var n) || n <= 0))
+                problems.Add($"RateLimiting:{key} '{v}' must be a positive integer");
+        }
     }
 
     private static bool IsHttpUri(string? value) =>

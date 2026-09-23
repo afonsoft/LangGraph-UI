@@ -258,6 +258,22 @@ public static class KnowledgeHubServiceCollectionExtensions
                 var tool = (await catalog.GetToolsAsync(ctx.Services!, ct))
                     .FirstOrDefault(t => t.Name == name)
                     ?? throw new McpProtocolException($"unknown tool '{name}'", McpErrorCode.MethodNotFound);
+
+                // SPEC-20260923-rate-limiting RF-003: LLM-spending / write tools
+                // are charged per caller — over-limit yields a friendly isError
+                // result (JSON-RPC has no 429).
+                var limiter = ctx.Services!.GetRequiredService<RateLimiting.McpToolRateLimiter>();
+                var http = ctx.Services!.GetService<IHttpContextAccessor>()?.HttpContext;
+                if (!limiter.TryAcquire(name!, http, out var retryAfter))
+                    return new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new ModelContextProtocol.Protocol.TextContentBlock
+                        {
+                            Text = $"rate limited — retry in {retryAfter}s"
+                        }]
+                    };
+
                 return await tool.Handler(
                     new KnowledgeHub.Server.Mcp.ToolCallContext
                     {

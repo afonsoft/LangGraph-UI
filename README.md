@@ -287,6 +287,12 @@ Placeholders only — never commit a real `.env`.
 | `CONTEXT7_TIMEOUT_SECONDS` | Upstream call timeout | `60` | no |
 | `CACHE_PROVIDER` | `IDistributedCache` backend: `memory` \| `redis` | `memory` | no |
 | `REDIS_CONNECTIONSTRING` | StackExchange.Redis conn string — required when `CACHE_PROVIDER=redis`; use `defaultDatabase=N` | empty | provider-dependent |
+| `RateLimiting__Enabled` | Per-caller rate limiting (api key → user → ip partitions) | `true` | no |
+| `RateLimiting__LlmPermitLimit` / `RateLimiting__LlmWindowSeconds` | `llm` policy — `/api/ask*`, `/api/agent*`, MCP `ask_knowledge`/`agent_chat`/`search_knowledge` | `20` / `60` | no |
+| `RateLimiting__AnonymousLlmPermitLimit` | Stricter `llm` bucket for unauthenticated callers | `5` | no |
+| `RateLimiting__SyncPermitLimit` / `RateLimiting__SyncWindowSeconds` | `sync` policy — source syncs + `write_*` tools | `10` / `3600` | no |
+| `RateLimiting__GeneralPermitLimit` / `RateLimiting__GeneralWindowSeconds` | `general` policy — remaining `/api/*` (hubs/health/static exempt) | `300` / `60` | no |
+| `RateLimiting__TrustForwardedHeaders` | Partition by `X-Forwarded-For` — only behind a trusted proxy (spoofable) | `false` | no |
 | `AUTH_ADMIN_INITIAL_PASSWORD` | Seed password for `admin` (forced change on first login) | `123qwe` | no |
 | `CHAT__PROVIDER` | `none` \| `ollama` \| `openai` — server-side answer synthesis / agent loop. Not wired in the base compose — set via `environment:` in the override | `none` | no |
 | `CHAT__ENDPOINT` / `CHAT__MODEL` / `CHAT__APIKEY` | Chat provider endpoint, model and key (same override note; use `host.docker.internal` from the container) | `http://localhost:11434` / `llama3.1` / empty | provider-dependent |

@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-rate-limiting` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `In implementation` |
 | Origin | `gap-analysis-20260923` — GAP-security-rate-limiting (média). Proposal §14 (limites de tamanho, profundidade e quantidade). |
 
 ## 1. User Story
