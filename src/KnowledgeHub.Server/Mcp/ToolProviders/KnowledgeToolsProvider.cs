@@ -21,7 +21,11 @@ public sealed class KnowledgeToolsProvider : IToolProvider
           "query":{"type":"string","description":"Text or question to search for","examples":["what is RAG?"]},
           "topK":{"type":"integer","description":"Max results (default 5, max 50)"},
           "source":{"type":"string","description":"Source slug (default: all active sources)"},
-          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Search mode (default: hybrid)"}
+          "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Search mode (default: hybrid)"},
+          "sourceType":{"type":"string","description":"Filter by connector type (e.g. DocumentFile, WebPage)"},
+          "pathPrefix":{"type":"string","description":"Filter by document path/URI prefix"},
+          "indexedAfter":{"type":"string","description":"ISO-8601 date — only documents indexed at/after it"},
+          "language":{"type":"string","description":"BCP-47 language tag filter (matches document metadata when present)"}
         },"required":["query"],
         "examples":[{"query":"what is RAG?","topK":5,"mode":"hybrid"}]}
         """)!.AsObject();
@@ -32,7 +36,11 @@ public sealed class KnowledgeToolsProvider : IToolProvider
           "topK":{"type":"integer","description":"Max passages used as context (default 5, max 50)"},
           "source":{"type":"string","description":"Source slug (default: all active sources)"},
           "mode":{"type":"string","enum":["hybrid","semantic","lexical"],"description":"Search mode (default: hybrid)"},
-          "generate":{"type":"boolean","description":"Synthesize the answer via the server's configured chat provider (default: true when one is configured)"}
+          "generate":{"type":"boolean","description":"Synthesize the answer via the server's configured chat provider (default: true when one is configured)"},
+          "sourceType":{"type":"string","description":"Filter by connector type (e.g. DocumentFile, WebPage)"},
+          "pathPrefix":{"type":"string","description":"Filter by document path/URI prefix"},
+          "indexedAfter":{"type":"string","description":"ISO-8601 date — only documents indexed at/after it"},
+          "language":{"type":"string","description":"BCP-47 language tag filter (matches document metadata when present)"}
         },"required":["question"],
         "examples":[{"question":"How does synchronization work?","topK":5,"generate":true}]}
         """)!.AsObject();
@@ -73,9 +81,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 {
                     var query = ToolArgs.RequiredString(ctx, "query");
                     var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
-                    var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
+                    var (sourceId, mode, filter) = await ResolveScopeAsync(ctx, ct);
                     var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(query, topK, sourceId, mode, ct);
+                    var results = await search.SearchAsync(query, topK, sourceId, mode, filter, ct);
                     return await ToolResults.Text(FormatHits(results));
                 }
             },
@@ -107,10 +115,11 @@ public sealed class KnowledgeToolsProvider : IToolProvider
     }
 
     /// <summary>
-    /// Resolves the optional `source` slug and `mode` args shared by
-    /// search_knowledge/ask_knowledge (SPEC-20260914-hybrid-retrieval RF-003).
+    /// Resolves the optional `source` slug, `mode` and metadata-filter args
+    /// shared by search_knowledge/ask_knowledge (SPEC-20260914-hybrid-retrieval
+    /// RF-003, SPEC-20260923-retrieval-quality RF-003).
     /// </summary>
-    private static async Task<(Guid? SourceId, SearchMode Mode)> ResolveScopeAsync(
+    private static async Task<(Guid? SourceId, SearchMode Mode, Search.ResolvedSearchFilter Filter)> ResolveScopeAsync(
         ToolCallContext ctx, CancellationToken ct)
     {
         var modeArg = ToolArgs.OptionalString(ctx, "mode");
@@ -121,9 +130,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 : throw new McpProtocolException(
                     $"invalid mode '{modeArg}' (expected: hybrid | semantic | lexical)", McpErrorCode.InvalidParams);
 
+        var filter = ResolveFilter(ctx);
         var sourceSlug = ToolArgs.OptionalString(ctx, "source");
         if (sourceSlug is null)
-            return (null, mode);
+            return (null, mode, filter);
 
         var db = ctx.Services!.GetRequiredService<KnowledgeHubDbContext>();
         var active = await db.Sources.Where(s => s.IsActive).OrderBy(s => s.Name)
@@ -132,7 +142,22 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         var sourceId = slugs.FirstOrDefault(kv => kv.Value == sourceSlug).Key;
         return sourceId == Guid.Empty
             ? throw new McpProtocolException($"unknown source slug '{sourceSlug}'", McpErrorCode.InvalidParams)
-            : (sourceId, mode);
+            : (sourceId, mode, filter);
+    }
+
+    /// <summary>Validates the optional filter args into a typed filter.</summary>
+    private static Search.ResolvedSearchFilter ResolveFilter(ToolCallContext ctx)
+    {
+        var raw = new SearchFilter
+        {
+            SourceType = ToolArgs.OptionalString(ctx, "sourceType"),
+            PathPrefix = ToolArgs.OptionalString(ctx, "pathPrefix"),
+            IndexedAfter = ToolArgs.OptionalString(ctx, "indexedAfter"),
+            Language = ToolArgs.OptionalString(ctx, "language")
+        };
+        return Search.ResolvedSearchFilter.TryResolve(raw, out var filter, out var error)
+            ? filter
+            : throw new McpProtocolException(error!, McpErrorCode.InvalidParams);
     }
 
     /// <summary>
@@ -145,9 +170,9 @@ public sealed class KnowledgeToolsProvider : IToolProvider
     {
         var question = ToolArgs.RequiredString(ctx, "question");
         var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
-        var (sourceId, mode) = await ResolveScopeAsync(ctx, ct);
+        var (sourceId, mode, filter) = await ResolveScopeAsync(ctx, ct);
         var search = ctx.Services!.GetRequiredService<ISearchService>();
-        var results = await search.SearchAsync(question, topK, sourceId, mode, ct);
+        var results = await search.SearchAsync(question, topK, sourceId, mode, filter, ct);
 
         var answers = ctx.Services!.GetRequiredService<IAnswerService>();
         var generate = ToolArgs.OptionalBool(ctx, "generate") ?? answers.IsConfigured;

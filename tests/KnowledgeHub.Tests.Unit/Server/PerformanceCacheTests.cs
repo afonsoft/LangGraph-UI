@@ -136,7 +136,8 @@ public sealed class PerformanceCacheTests
         var cache = new MemoryDistributedCache(
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, embeddings, vectors, new DisabledLexical(), cache,
-            new ConfigurationBuilder().Build(), NullLogger<SearchService>.Instance);
+            new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            NoOpReranker.Instance, NullLogger<SearchService>.Instance);
 
         var first = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(first);
@@ -179,7 +180,8 @@ public sealed class PerformanceCacheTests
 
         var search = new SearchService(db, new CountingEmbeddingProvider(),
             new CountingVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(),
-            new ThrowingCache(), new ConfigurationBuilder().Build(), NullLogger<SearchService>.Instance);
+            new ThrowingCache(), new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            NoOpReranker.Instance, NullLogger<SearchService>.Instance);
 
         var results = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(results);
@@ -225,6 +227,12 @@ public sealed class PerformanceCacheTests
             string query, int topK, IReadOnlyCollection<Guid>? sourceIds, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<LexicalHit>>([]);
         public Task ReconcileAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class PassthroughRewriter : IQueryRewriter
+    {
+        public Task<string> RewriteAsync(string query, CancellationToken ct = default) =>
+            Task.FromResult(query);
     }
 
     // ---- RF-004: batch vector upsert ---------------------------------------

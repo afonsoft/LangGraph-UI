@@ -141,6 +141,13 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<IKnowledgeSourceService, KnowledgeSourceService>();
         services.AddScoped<Search.ILexicalSearchService, Search.LexicalSearchService>();
         services.AddScoped<ISearchService, SearchService>();
+        // SPEC-20260923-retrieval-quality: opt-in query rewriting + reranker.
+        services.AddScoped<Search.IQueryRewriter, Search.LlmQueryRewriter>();
+        services.AddScoped<Search.IReranker>(sp =>
+            sp.GetRequiredService<IConfiguration>().GetValue("Search:Rerank:Enabled", false)
+                && sp.GetService<Microsoft.Extensions.AI.IChatClient>() is { } chat
+                ? new Search.LlmReranker(chat, sp.GetRequiredService<ILogger<Search.LlmReranker>>())
+                : Search.NoOpReranker.Instance);
         // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
         services.AddScoped<Eval.EvalRunner>();
         // SPEC-20260923-prompt-injection-guard: deterministic heuristic scanner.

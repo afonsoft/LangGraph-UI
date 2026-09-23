@@ -13,7 +13,10 @@ public static class SearchEndpoints
     {
         var group = app.MapGroup("/api/search");
 
-        group.MapGet("/", async (ISearchService svc, string? query, int? topK, Guid? sourceId, string? mode, CancellationToken ct) =>
+        group.MapGet("/", async (
+            ISearchService svc, string? query, int? topK, Guid? sourceId, string? mode,
+            string? sourceType, string? pathPrefix, string? indexedAfter, string? language,
+            CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(query))
                 return Results.BadRequest(new { error = "query is required" });
@@ -23,8 +26,37 @@ public static class SearchEndpoints
             if (searchMode is null)
                 return Results.BadRequest(new { error = "mode must be hybrid | semantic | lexical" });
 
+            // SPEC-20260923-retrieval-quality RF-003: flat filter params.
+            if (!Search.ResolvedSearchFilter.TryResolve(
+                    new SearchFilter
+                    {
+                        SourceType = sourceType,
+                        PathPrefix = pathPrefix,
+                        IndexedAfter = indexedAfter,
+                        Language = language
+                    }, out var filter, out var error))
+                return Results.BadRequest(new { error });
+
             var k = topK is null or <= 0 ? DefaultTopK : Math.Min(topK.Value, MaxTopK);
-            var results = await svc.SearchAsync(query, k, sourceId, searchMode.Value, ct);
+            var results = await svc.SearchAsync(query, k, sourceId, searchMode.Value, filter, ct);
+            return Results.Ok(new SearchResponse { Results = results });
+        });
+
+        // SPEC-20260923-retrieval-quality §5: POST variant accepting a filters object.
+        group.MapPost("/", async (ISearchService svc, SearchRequest request, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Query))
+                return Results.BadRequest(new { error = "query is required" });
+
+            var searchMode = ParseMode(request.Mode);
+            if (searchMode is null)
+                return Results.BadRequest(new { error = "mode must be hybrid | semantic | lexical" });
+
+            if (!Search.ResolvedSearchFilter.TryResolve(request.Filters, out var filter, out var error))
+                return Results.BadRequest(new { error });
+
+            var k = request.TopK is null or <= 0 ? DefaultTopK : Math.Min(request.TopK.Value, MaxTopK);
+            var results = await svc.SearchAsync(request.Query, k, request.SourceId, searchMode.Value, filter, ct);
             return Results.Ok(new SearchResponse { Results = results });
         });
 

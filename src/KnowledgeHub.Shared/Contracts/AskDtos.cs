@@ -10,6 +10,8 @@ public sealed record AskRequest
     public string? Mode { get; init; }
     /// <summary>Override LLM generation; default true when a chat provider is configured.</summary>
     public bool? Generate { get; init; }
+    /// <summary>Optional metadata filters (SPEC-20260923-retrieval-quality RF-003).</summary>
+    public SearchFilter? Filters { get; init; }
 }
 
 /// <summary>One citation linking an answer marker [n] to a retrieved chunk.</summary>

@@ -17,6 +17,24 @@ public sealed record SearchScoreBreakdown
     public int? VectorRank { get; init; }
     public int? LexicalRank { get; init; }
     public double Fused { get; init; }
+    /// <summary>Reranker score (0–10) when Search:Rerank:Enabled
+    /// (SPEC-20260923-retrieval-quality RF-002).</summary>
+    public double? Rerank { get; init; }
+}
+
+/// <summary>Optional metadata filters for search/ask
+/// (SPEC-20260923-retrieval-quality RF-003). All fields optional; an empty
+/// object behaves like no filters.</summary>
+public sealed record SearchFilter
+{
+    /// <summary>Connector type name, e.g. "ObsidianVault", "WebPage".</summary>
+    public string? SourceType { get; init; }
+    /// <summary>Prefix match on the document URI/path.</summary>
+    public string? PathPrefix { get; init; }
+    /// <summary>ISO-8601 date — only documents indexed at/after it.</summary>
+    public string? IndexedAfter { get; init; }
+    /// <summary>BCP-47 tag matched against document language metadata when present.</summary>
+    public string? Language { get; init; }
 }
 
 /// <summary>One ranked chunk hit from semantic search (SPEC-02 RF-004).</summary>
@@ -36,9 +54,27 @@ public sealed record SearchResultItem
     /// <summary>Suspicion flags carried into the prompt when exclusion is
     /// disabled (SPEC-20260923-prompt-injection-guard RF-004); null = clean.</summary>
     public string? SuspicionFlags { get; init; }
+    /// <summary>Stable chunk id (SPEC-20260923-retrieval-quality RF-004).</summary>
+    public Guid? ChunkId { get; init; }
+    /// <summary>Owning document id.</summary>
+    public Guid? DocumentId { get; init; }
+    /// <summary>Derived provenance metadata (sourceType, path, chunkKind, symbolPath).</summary>
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+    /// <summary>When the owning document was last indexed.</summary>
+    public DateTimeOffset? IndexedAt { get; init; }
 }
 
 public sealed record SearchResponse
 {
     public required IReadOnlyList<SearchResultItem> Results { get; init; }
+}
+
+/// <summary>POST /api/search body (SPEC-20260923-retrieval-quality §5).</summary>
+public sealed record SearchRequest
+{
+    public required string Query { get; init; }
+    public int? TopK { get; init; }
+    public Guid? SourceId { get; init; }
+    public string? Mode { get; init; }
+    public SearchFilter? Filters { get; init; }
 }

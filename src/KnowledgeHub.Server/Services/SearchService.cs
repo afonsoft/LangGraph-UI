@@ -24,6 +24,8 @@ public sealed class SearchService(
     ILexicalSearchService lexical,
     IDistributedCache cache,
     IConfiguration configuration,
+    IQueryRewriter rewriter,
+    IReranker reranker,
     ILogger<SearchService> logger) : ISearchService
 {
     private const int CandidateWindowFactor = 4;
@@ -32,10 +34,12 @@ public sealed class SearchService(
 
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query, int topK, Guid? sourceId = null,
-        SearchMode mode = SearchMode.Hybrid, CancellationToken ct = default)
+        SearchMode mode = SearchMode.Hybrid, ResolvedSearchFilter? filter = null,
+        CancellationToken ct = default)
     {
         var indexVersion = await GetIndexVersionAsync(ct);
-        var resultKey = CacheKeys.Search(mode.ToString(), topK, sourceId, query, indexVersion);
+        var resultKey = CacheKeys.Search(
+            mode.ToString(), topK, sourceId, filter?.Fingerprint() ?? "-", query, indexVersion);
         var cached = await SafeCache.GetStringAsync(cache, resultKey, logger, ct);
         if (cached is not null)
         {
@@ -44,52 +48,123 @@ public sealed class SearchService(
                 return hit;
         }
 
-        var results = await ExecuteAsync(query, topK, sourceId, mode, ct);
+        var results = await ExecuteAsync(query, topK, sourceId, mode, filter, ct);
         await SafeCache.SetJsonAsync(cache, resultKey, results, ResultTtl, logger, ct);
         return results;
     }
 
     private async Task<IReadOnlyList<SearchResultItem>> ExecuteAsync(
         string query, int topK, Guid? sourceId,
-        SearchMode mode, CancellationToken ct)
+        SearchMode mode, ResolvedSearchFilter? filter, CancellationToken ct)
     {
         var activeSourceIds = sourceId is null
             ? await db.Sources.Where(s => s.IsActive).Select(s => s.Id).ToListAsync(ct)
             : [sourceId.Value];
 
+        // RF-001/RF-002: rewrite + rerank run on the user's retrieval intent.
+        // Lexical skips rewriting unless explicitly opted in.
+        var effectiveQuery = mode == SearchMode.Lexical
+            && !configuration.GetValue("Search:QueryRewrite:LexicalToo", false)
+            ? query
+            : await rewriter.RewriteAsync(query, ct);
+
+        var rerankEnabled = configuration.GetValue("Search:Rerank:Enabled", false);
+        var filtersActive = filter is { IsEmpty: false };
+        var window = topK * CandidateWindowFactor;
+        var rerankCap = configuration.GetValue("Search:Rerank:MaxCandidates", 20);
+
+        // Fetch a wider window when filters or rerank need room to work;
+        // otherwise hydrate exactly topK — identical to the pre-filter pipeline.
+        var fetchLimit = rerankEnabled || filtersActive
+            ? (rerankEnabled ? Math.Min(window, Math.Max(rerankCap, topK)) : window)
+            : topK;
+
+        List<VectorHit> windowed;
+        IReadOnlyDictionary<Guid, SearchScoreBreakdown>? breakdowns = null;
+
         if (mode == SearchMode.Semantic)
         {
-            var queryVector = await EmbedQueryAsync(query, ct);
-            var hits = await vectors.SearchAsync(queryVector, embeddings.ModelId, topK, activeSourceIds, ct);
-            return await HydrateAsync(hits, breakdowns: null, ct);
+            var queryVector = await EmbedQueryAsync(effectiveQuery, ct);
+            windowed = (await vectors.SearchAsync(queryVector, embeddings.ModelId, fetchLimit, activeSourceIds, ct)).ToList();
+        }
+        else
+        {
+            var vectorRanked = mode == SearchMode.Hybrid
+                ? (await vectors.SearchAsync(
+                    await EmbedQueryAsync(effectiveQuery, ct), embeddings.ModelId, window, activeSourceIds, ct))
+                    .Select(h => h.ChunkId).ToList()
+                : [];
+
+            var lexicalRanked = (await lexical.SearchAsync(effectiveQuery, window, activeSourceIds, ct))
+                .Select(h => h.ChunkId).ToList();
+
+            var fused = RrfFuser.Fuse(vectorRanked, lexicalRanked, fetchLimit);
+            if (fused.Count == 0)
+                return [];
+
+            breakdowns = fused.ToDictionary(
+                f => f.ChunkId,
+                f => new SearchScoreBreakdown
+                {
+                    VectorRank = f.VectorRank,
+                    LexicalRank = f.LexicalRank,
+                    Fused = f.Fused
+                });
+            windowed = fused.Select(f => new VectorHit(f.ChunkId, f.Fused)).ToList();
         }
 
-        var window = topK * CandidateWindowFactor;
+        var items = await HydrateAsync(windowed, breakdowns, filter, ct);
+        if (!rerankEnabled || items.Count <= 1)
+            return items.Take(topK).ToList();
 
-        var vectorRanked = mode == SearchMode.Hybrid
-            ? (await vectors.SearchAsync(
-                await EmbedQueryAsync(query, ct), embeddings.ModelId, window, activeSourceIds, ct))
-                .Select(h => h.ChunkId).ToList()
-            : [];
+        return await RerankAsync(query, items, breakdowns, topK, ct);
+    }
 
-        var lexicalRanked = (await lexical.SearchAsync(query, window, activeSourceIds, ct))
-            .Select(h => h.ChunkId).ToList();
+    /// <summary>RF-002: re-orders the hydrated window by rerank score; any
+    /// failure preserves the fused order (fail-open).</summary>
+    private async Task<IReadOnlyList<SearchResultItem>> RerankAsync(
+        string query, List<SearchResultItem> items,
+        IReadOnlyDictionary<Guid, SearchScoreBreakdown>? breakdowns, int topK, CancellationToken ct)
+    {
+        IReadOnlyList<RerankScore> scores;
+        try
+        {
+            scores = await reranker.RerankAsync(query, items, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Reranker failed — returning fused order");
+            return items.Take(topK).ToList();
+        }
 
-        var fused = RrfFuser.Fuse(vectorRanked, lexicalRanked, topK);
-        if (fused.Count == 0)
-            return [];
+        if (scores.Count == 0)
+            return items.Take(topK).ToList();
 
-        var breakdowns = fused.ToDictionary(
-            f => f.ChunkId,
-            f => new SearchScoreBreakdown
+        var scoreById = scores.ToDictionary(s => s.ChunkId, s => s.Score);
+        var order = items.Select((item, i) => (item, i)).ToList();
+        order.Sort((a, b) =>
+        {
+            var sa = a.item.ChunkId is { } id && scoreById.TryGetValue(id, out var s) ? s : double.NegativeInfinity;
+            var sb = b.item.ChunkId is { } id2 && scoreById.TryGetValue(id2, out var s2) ? s2 : double.NegativeInfinity;
+            var cmp = sb.CompareTo(sa);
+            return cmp != 0 ? cmp : a.i.CompareTo(b.i); // stable: fused order on ties
+        });
+
+        return order.Take(topK).Select(x =>
+        {
+            var rerank = x.item.ChunkId is { } id && scoreById.TryGetValue(id, out var s) ? s : (double?)null;
+            var bd = x.item.ScoreBreakdown ?? new SearchScoreBreakdown();
+            return x.item with
             {
-                VectorRank = f.VectorRank,
-                LexicalRank = f.LexicalRank,
-                Fused = f.Fused
-            });
-
-        return await HydrateAsync(
-            fused.Select(f => new VectorHit(f.ChunkId, f.Fused)).ToList(), breakdowns, ct);
+                ScoreBreakdown = new SearchScoreBreakdown
+                {
+                    VectorRank = bd.VectorRank,
+                    LexicalRank = bd.LexicalRank,
+                    Fused = bd.Fused,
+                    Rerank = rerank
+                }
+            };
+        }).ToList();
     }
 
     /// <summary>Query embedding via the distributed cache — embeddings are
@@ -131,20 +206,33 @@ public sealed class SearchService(
         }
     }
 
-    private async Task<IReadOnlyList<SearchResultItem>> HydrateAsync(
+    private async Task<List<SearchResultItem>> HydrateAsync(
         IReadOnlyList<VectorHit> hits,
         IReadOnlyDictionary<Guid, SearchScoreBreakdown>? breakdowns,
+        ResolvedSearchFilter? filter,
         CancellationToken ct)
     {
         if (hits.Count == 0)
             return [];
 
         var chunkIds = hits.Select(h => h.ChunkId).ToList();
-        var chunks = await db.Chunks.AsNoTracking()
+        // RF-003: sourceType/pathPrefix filter in SQL; indexedAfter filters in
+        // memory (SQLite cannot compare DateTimeOffset); language filters the
+        // derived metadata map (documents carry no language column yet).
+        var query = db.Chunks.AsNoTracking()
             .Where(c => chunkIds.Contains(c.Id))
-            .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id, (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, d.Title, d.UriReference, d.KnowledgeSourceId })
-            .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id, (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.Title, x.UriReference, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType })
-            .ToListAsync(ct);
+            .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id,
+                (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, c.ChunkKind, c.SymbolPath, DocId = d.Id, d.Title, d.UriReference, d.IndexedAt, d.KnowledgeSourceId })
+            .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id,
+                (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.ChunkKind, x.SymbolPath, x.DocId, x.Title, x.UriReference, x.IndexedAt, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType });
+        if (filter?.SourceType is { } st)
+            query = query.Where(x => x.SourceType == st);
+        if (filter?.PathPrefix is { } pp)
+            query = query.Where(x => x.UriReference.StartsWith(pp));
+        var chunks = await query.ToListAsync(ct);
+
+        if (filter?.IndexedAfter is { } ia)
+            chunks = chunks.Where(x => x.IndexedAt >= ia).ToList();
 
         var byId = chunks.ToDictionary(c => c.Id);
         // SPEC-20260923-prompt-injection-guard RF-004: flagged chunks are dropped
@@ -160,7 +248,18 @@ public sealed class SearchService(
                 var flagged = c.SuspicionFlags is not null;
                 if (flagged && excludeFlagged)
                     excluded++;
-                return flagged && excludeFlagged ? null : new SearchResultItem
+                if (flagged && excludeFlagged)
+                    return null;
+                // RF-003: language is metadata-derived (no column) — a set
+                // filter keeps only items whose metadata carries a match.
+                if (filter?.Language is { } lang)
+                {
+                    var meta = BuildMetadata(c.SourceType, c.UriReference, c.ChunkKind, c.SymbolPath);
+                    if (!meta.TryGetValue("language", out var l) ||
+                        !l.Equals(lang, StringComparison.OrdinalIgnoreCase))
+                        return null;
+                }
+                return new SearchResultItem
                 {
                     ChunkText = c.TextContent,
                     DocumentTitle = c.Title,
@@ -170,7 +269,11 @@ public sealed class SearchService(
                     Score = h.Score,
                     UriReference = c.UriReference,
                     ScoreBreakdown = breakdowns?.GetValueOrDefault(h.ChunkId),
-                    SuspicionFlags = c.SuspicionFlags
+                    SuspicionFlags = c.SuspicionFlags,
+                    ChunkId = c.Id,
+                    DocumentId = c.DocId,
+                    Metadata = BuildMetadata(c.SourceType, c.UriReference, c.ChunkKind, c.SymbolPath),
+                    IndexedAt = c.IndexedAt
                 };
             })
             .OfType<SearchResultItem>()
@@ -179,5 +282,20 @@ public sealed class SearchService(
         if (excluded > 0)
             logger.LogInformation("Excluded {Count} flagged chunk(s) from search context", excluded);
         return items;
+    }
+
+    /// <summary>RF-004: provenance metadata derived from stored columns.</summary>
+    private static IReadOnlyDictionary<string, string> BuildMetadata(
+        SourceType sourceType, string uri, string chunkKind, string? symbolPath)
+    {
+        var meta = new Dictionary<string, string>
+        {
+            ["sourceType"] = sourceType.ToString(),
+            ["path"] = uri,
+            ["chunkKind"] = chunkKind
+        };
+        if (symbolPath is not null)
+            meta["symbolPath"] = symbolPath;
+        return meta;
     }
 }

@@ -23,9 +23,12 @@ public static class AskEndpoints
             if (mode is null)
                 return Results.BadRequest(new { error = "mode must be hybrid | semantic | lexical" });
 
+            if (!Search.ResolvedSearchFilter.TryResolve(request.Filters, out var filter, out var filterError))
+                return Results.BadRequest(new { error = filterError });
+
             var generate = request.Generate ?? answers.IsConfigured;
             var k = request.TopK is null or <= 0 ? SearchEndpoints.DefaultTopK : Math.Min(request.TopK.Value, SearchEndpoints.MaxTopK);
-            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, ct);
+            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, filter, ct);
 
             if (!generate)
             {
