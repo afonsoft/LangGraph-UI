@@ -1,0 +1,238 @@
+using KnowledgeHub.Server.Data;
+using KnowledgeHub.Server.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace KnowledgeHub.Server.Graph;
+
+/// <summary>
+/// SQLite adjacency-table graph store (SPEC-20260923-graphrag RF-002/RF-004):
+/// bounded BFS in C# over indexed FK columns — each node visited once, result
+/// size hard-capped. Recursive-CTE was considered; per-level EF queries are
+/// equally bounded and stay provider-portable.
+/// </summary>
+public sealed class SqliteKnowledgeGraphStore(
+    KnowledgeHubDbContext db,
+    ILogger<SqliteKnowledgeGraphStore> logger) : IKnowledgeGraphStore
+{
+    /// <inheritdoc />
+    public async Task<KgNode> ResolveNodeAsync(string name, string? type, Guid sourceId, CancellationToken ct)
+    {
+        var normalized = EntityResolver.Normalize(name);
+        var nodeType = EntityResolver.NormalizeType(type);
+        if (normalized.Length == 0)
+            throw new ArgumentException("entity name cannot be empty", nameof(name));
+
+        var node = await db.KgNodes
+            .FirstOrDefaultAsync(n => n.NormalizedName == normalized && n.Type == nodeType, ct);
+        if (node is null)
+        {
+            node = new KgNode { Name = name.Trim(), NormalizedName = normalized, Type = nodeType };
+            db.KgNodes.Add(node);
+            // Conflict visibility: another node already holds this normalized
+            // name under a different type — both get conflict alias rows.
+            var siblings = await db.KgNodes
+                .Where(n => n.NormalizedName == normalized && n.Type != nodeType)
+                .ToListAsync(ct);
+            foreach (var sibling in siblings)
+                db.KgAliases.Add(new KgAlias
+                {
+                    AliasNormalized = normalized,
+                    KgNodeId = sibling.Id,
+                    KnowledgeSourceId = sourceId,
+                    Reason = "conflict"
+                });
+            if (siblings.Count > 0)
+            {
+                logger.LogInformation(
+                    "entity '{Name}' now exists under {Count}+1 types — conflict aliases recorded",
+                    normalized, siblings.Count);
+                db.KgAliases.Add(new KgAlias
+                {
+                    AliasNormalized = normalized,
+                    KgNodeId = node.Id,
+                    KnowledgeSourceId = sourceId,
+                    Reason = "conflict"
+                });
+            }
+        }
+        else if (node.Name != name.Trim()
+            && !await db.KgAliases.AnyAsync(
+                a => a.AliasNormalized == normalized && a.KgNodeId == node.Id, ct))
+        {
+            // Variant spelling merged into the canonical node — recorded.
+            db.KgAliases.Add(new KgAlias
+            {
+                AliasNormalized = normalized,
+                KgNodeId = node.Id,
+                KnowledgeSourceId = sourceId,
+                Reason = "merge"
+            });
+        }
+        await db.SaveChangesAsync(ct);
+        return node;
+    }
+
+    /// <inheritdoc />
+    public async Task<KgNode?> FindNodeAsync(string name, CancellationToken ct)
+    {
+        var normalized = EntityResolver.Normalize(name);
+        var node = await db.KgNodes
+            .Where(n => n.NormalizedName == normalized)
+            .OrderBy(n => n.Type)
+            .FirstOrDefaultAsync(ct);
+        if (node is not null)
+            return node;
+        var alias = await db.KgAliases
+            .Where(a => a.AliasNormalized == normalized)
+            .Select(a => a.KgNodeId)
+            .FirstOrDefaultAsync(ct);
+        return alias == default
+            ? null
+            : await db.KgNodes.FirstOrDefaultAsync(n => n.Id == alias, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<KgNode>> SuggestAsync(string name, int max, CancellationToken ct)
+    {
+        var normalized = EntityResolver.Normalize(name);
+        if (normalized.Length == 0)
+            return [];
+        // Prefix first, then contains — bounded by max.
+        var prefix = await db.KgNodes
+            .Where(n => n.NormalizedName.StartsWith(normalized))
+            .OrderBy(n => n.NormalizedName).Take(max).ToListAsync(ct);
+        if (prefix.Count >= max)
+            return prefix;
+        var rest = await db.KgNodes
+            .Where(n => n.NormalizedName.Contains(normalized)
+                && !prefix.Select(p => p.Id).Contains(n.Id))
+            .OrderBy(n => n.NormalizedName).Take(max - prefix.Count).ToListAsync(ct);
+        return [.. prefix, .. rest];
+    }
+
+    /// <inheritdoc />
+    public async Task<int> AddEdgesAsync(IEnumerable<KgEdge> edges, CancellationToken ct)
+    {
+        var batch = edges.ToList();
+        if (batch.Count == 0)
+            return 0;
+        var added = 0;
+        foreach (var edge in batch)
+        {
+            if (edge.EvidenceChunkId == Guid.Empty)
+                continue; // provenance is non-negotiable
+            var exists = await db.KgEdges.AnyAsync(x =>
+                x.FromNodeId == edge.FromNodeId && x.ToNodeId == edge.ToNodeId
+                && x.Kind == edge.Kind && x.EvidenceChunkId == edge.EvidenceChunkId, ct);
+            if (!exists)
+            {
+                db.KgEdges.Add(edge);
+                added++;
+            }
+        }
+        await db.SaveChangesAsync(ct);
+        return added;
+    }
+
+    /// <inheritdoc />
+    public async Task<GraphSubgraph> TraverseAsync(
+        Guid startNodeId, GraphDirection direction, int depth, int maxEdges, CancellationToken ct)
+    {
+        depth = Math.Clamp(depth, 1, 3);
+        var visited = new HashSet<Guid> { startNodeId };
+        var edges = new List<KgEdge>();
+        var frontier = new List<Guid> { startNodeId };
+        var truncated = false;
+
+        for (var d = 0; d < depth && frontier.Count > 0; d++)
+        {
+            var batch = await db.KgEdges
+                .Include(e => e.From).Include(e => e.To).Include(e => e.Document)
+                .Where(e => direction == GraphDirection.Outbound
+                    ? frontier.Contains(e.FromNodeId)
+                    : frontier.Contains(e.ToNodeId))
+                .Take(maxEdges - edges.Count + 1)
+                .ToListAsync(ct);
+            if (batch.Count == 0)
+                break;
+            truncated = edges.Count + batch.Count > maxEdges;
+
+            var next = new List<Guid>();
+            foreach (var e in batch.Take(maxEdges - edges.Count))
+            {
+                edges.Add(e);
+                var neighbor = direction == GraphDirection.Outbound ? e.ToNodeId : e.FromNodeId;
+                if (visited.Add(neighbor))
+                    next.Add(neighbor);
+            }
+            frontier = next;
+            if (truncated)
+                break;
+        }
+
+        var nodes = await db.KgNodes.Where(n => visited.Contains(n.Id)).ToListAsync(ct);
+        return new GraphSubgraph(nodes, edges, truncated);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<IReadOnlyList<KgEdge>>> FindPathsAsync(
+        Guid fromId, Guid toId, int depth, int maxPaths, CancellationToken ct)
+    {
+        depth = Math.Clamp(depth, 1, 3);
+        var paths = new List<IReadOnlyList<KgEdge>>();
+        // BFS with parent tracking; stop at first level that reaches `toId`
+        // (shortest paths only) or when maxPaths is hit.
+        var parent = new Dictionary<Guid, (Guid Prev, KgEdge Edge)>();
+        var frontier = new List<Guid> { fromId };
+        var visited = new HashSet<Guid> { fromId };
+        var reached = false;
+
+        for (var d = 0; d < depth && frontier.Count > 0 && !reached; d++)
+        {
+            var batch = await db.KgEdges
+                .Include(e => e.From).Include(e => e.To).Include(e => e.Document)
+                .Where(e => frontier.Contains(e.FromNodeId))
+                .ToListAsync(ct);
+            var next = new List<Guid>();
+            foreach (var e in batch)
+            {
+                if (!visited.Add(e.ToNodeId))
+                    continue;
+                parent[e.ToNodeId] = (e.FromNodeId, e);
+                if (e.ToNodeId == toId)
+                    reached = true;
+                else
+                    next.Add(e.ToNodeId);
+            }
+            frontier = next;
+        }
+
+        if (!reached)
+            return paths;
+
+        // Reconstruct the shortest path from parent pointers.
+        var path = new List<KgEdge>();
+        for (var cur = toId; cur != fromId && parent.TryGetValue(cur, out var p); cur = p.Prev)
+            path.Insert(0, p.Edge);
+        if (path.Count > 0)
+            paths.Add(path);
+        return paths;
+    }
+
+    /// <inheritdoc />
+    public async Task<GraphSubgraph> ImpactAsync(Guid nodeId, int maxEdges, CancellationToken ct)
+    {
+        // 1-hop dependents (inbound) + the documents behind the evidence.
+        var edges = await db.KgEdges
+            .Include(e => e.From).Include(e => e.To).Include(e => e.Document)
+            .Where(e => e.ToNodeId == nodeId)
+            .Take(maxEdges + 1)
+            .ToListAsync(ct);
+        var truncated = edges.Count > maxEdges;
+        edges = edges.Take(maxEdges).ToList();
+
+        var nodeIds = edges.Select(e => e.FromNodeId).Append(nodeId).Distinct().ToList();
+        var nodes = await db.KgNodes.Where(n => nodeIds.Contains(n.Id)).ToListAsync(ct);
+        return new GraphSubgraph(nodes, edges, truncated);
+    }
+}

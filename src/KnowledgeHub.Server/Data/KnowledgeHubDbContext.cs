@@ -19,6 +19,9 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<ApiKeyChatSettings> ApiKeyChatSettings => Set<ApiKeyChatSettings>();
     public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
     public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
+    public DbSet<KgNode> KgNodes => Set<KgNode>();
+    public DbSet<KgEdge> KgEdges => Set<KgEdge>();
+    public DbSet<KgAlias> KgAliases => Set<KgAlias>();
 
     /// <summary>Configura as entidades do modelo: chaves, índices, tamanhos e relacionamentos.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -159,6 +162,49 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.HasKey(r => r.Id);
             e.Property(r => r.DatasetHash).IsRequired().HasMaxLength(64);
             e.HasIndex(r => r.StartedAt);
+        });
+
+        modelBuilder.Entity<KgNode>(e =>
+        {
+            e.HasKey(n => n.Id);
+            e.Property(n => n.Name).IsRequired().HasMaxLength(300);
+            e.Property(n => n.NormalizedName).IsRequired().HasMaxLength(300);
+            e.Property(n => n.Type).IsRequired().HasMaxLength(64);
+            // Identity: normalized name + type — same name with another type is
+            // a distinct node (conflict surfaced via aliases, never merged).
+            e.HasIndex(n => new { n.NormalizedName, n.Type }).IsUnique();
+            e.HasIndex(n => n.NormalizedName);
+        });
+
+        modelBuilder.Entity<KgEdge>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).IsRequired().HasMaxLength(32);
+            e.Property(x => x.PromptVersion).HasMaxLength(16);
+            e.HasIndex(x => x.FromNodeId);
+            e.HasIndex(x => x.ToNodeId);
+            e.HasIndex(x => x.EvidenceChunkId);
+            e.HasIndex(x => x.KnowledgeDocumentId);
+            e.HasIndex(x => x.KnowledgeSourceId);
+            e.HasOne(x => x.From).WithMany().HasForeignKey(x => x.FromNodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.To).WithMany().HasForeignKey(x => x.ToNodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Document).WithMany().HasForeignKey(x => x.KnowledgeDocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<KgAlias>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.AliasNormalized).IsRequired().HasMaxLength(300);
+            e.Property(a => a.Reason).IsRequired().HasMaxLength(16);
+            // A normalized spelling maps to one row per node — conflict rows
+            // intentionally share the spelling across typed nodes.
+            e.HasIndex(a => new { a.AliasNormalized, a.KgNodeId }).IsUnique();
+            e.HasIndex(a => a.AliasNormalized);
+            e.HasOne(a => a.Node).WithMany().HasForeignKey(a => a.KgNodeId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

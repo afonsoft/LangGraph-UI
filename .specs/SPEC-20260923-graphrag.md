@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-graphrag` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` — **phase-4 feature; implement only when retrieval gap is measured** (see §2 guardrail) |
+| Status | `Done` — approved by owner 2026-09-23 (batch approval of all 10 gap-analysis SPECs) |
 | Origin | `gap-analysis-20260923` — GAP-requirements-graphrag (baixa, conditional). Proposal §2.2, §11. |
 
 ## 1. User Story
