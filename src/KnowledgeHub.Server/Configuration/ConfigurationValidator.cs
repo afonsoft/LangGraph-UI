@@ -110,6 +110,13 @@ public static class ConfigurationValidator
             && string.IsNullOrWhiteSpace(section["ConnectionString"]))
             problems.Add("VectorStore:ConnectionString is required when VectorStore:Provider=postgres");
 
+        // SPEC-20260923-pgvector-hnsw-scale: numeric knobs must be positive ints.
+        foreach (var key in new[] { "HnswThreshold", "HnswM", "HnswEfConstruction", "BatchMax" })
+        {
+            if (section[$"Postgres:{key}"] is { } v && (!int.TryParse(v, out var n) || n <= 0))
+                problems.Add($"VectorStore:Postgres:{key} '{v}' must be a positive integer");
+        }
+
         // SPEC-20260917-sqlite-vec-search CA-002: the extension is native and
         // RID-specific — probe it at startup so a missing lib fails loudly.
         if (provider?.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase) == true)

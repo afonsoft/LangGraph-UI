@@ -7,24 +7,33 @@ namespace KnowledgeHub.Server.VectorStore;
 /// pgvector-backed store (SPEC-02 RF-006). Catalog/documents stay on SQLite —
 /// only embeddings live in Postgres (kh_embeddings table), ranked server-side
 /// with the &lt;=&gt; cosine-distance operator.
+/// SPEC-20260923-pgvector-hnsw-scale: conditional HNSW index once the table
+/// crosses <see cref="PostgresOptions.HnswThreshold"/> (exact scan is better
+/// below it), batched upserts, and a <c>metadata jsonb</c> column reserved for
+/// SQL-side filtering (SPEC-20260923-retrieval-quality).
 /// </summary>
 public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
 {
+    internal const string HnswIndexName = "kh_embeddings_embedding_hnsw_idx";
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _dimensions;
+    private readonly PostgresOptions _options;
     private bool _initialized;
     private readonly SemaphoreSlim _initGate = new(1, 1);
 
-    public PostgresVectorStore(string connectionString, int dimensions = 384)
+    public PostgresVectorStore(string connectionString, int dimensions = 384, PostgresOptions? options = null)
     {
         var builder = new NpgsqlDataSourceBuilder(connectionString);
         builder.UseVector();
         _dataSource = builder.Build();
         _dimensions = dimensions;
+        _options = options ?? new PostgresOptions();
     }
 
     public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default)
     {
+        CheckDimensions(vector);
         await EnsureInitializedAsync(cancellationToken);
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var cmd = conn.CreateCommand();
@@ -39,6 +48,66 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         cmd.Parameters.AddWithValue(model);
         cmd.Parameters.AddWithValue(new Vector(vector));
         await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// SPEC-20260923-pgvector-hnsw-scale RF-002: one multi-row INSERT per batch
+    /// (≤ <see cref="PostgresOptions.BatchMax"/> rows per command) instead of the
+    /// interface default's per-item round-trips.
+    /// </summary>
+    public async Task UpsertBatchAsync(
+        IReadOnlyList<VectorUpsert> items, string model, CancellationToken cancellationToken = default)
+    {
+        if (items.Count == 0)
+            return;
+        foreach (var item in items)
+            CheckDimensions(item.Vector);
+
+        await EnsureInitializedAsync(cancellationToken);
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            foreach (var batch in items.Chunk(_options.BatchMax))
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.Transaction = (NpgsqlTransaction)tx;
+                cmd.CommandText = BuildBatchUpsertSql(batch.Length);
+                foreach (var item in batch)
+                {
+                    cmd.Parameters.AddWithValue(item.ChunkId);
+                    cmd.Parameters.AddWithValue(item.DocumentId);
+                    cmd.Parameters.AddWithValue(item.SourceId);
+                    cmd.Parameters.AddWithValue(model);
+                    cmd.Parameters.AddWithValue(new Vector(item.Vector));
+                }
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await tx.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>Multi-row INSERT with 5 positional parameters per row.</summary>
+    internal static string BuildBatchUpsertSql(int rowCount)
+    {
+        var sb = new System.Text.StringBuilder(
+            "INSERT INTO kh_embeddings (chunk_id, document_id, source_id, model, embedding) VALUES ");
+        for (var i = 0; i < rowCount; i++)
+        {
+            if (i > 0)
+                sb.Append(',');
+            var b = i * 5;
+            sb.Append($"(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5})");
+        }
+        sb.Append(
+            " ON CONFLICT (chunk_id) DO UPDATE SET model = EXCLUDED.model, embedding = EXCLUDED.embedding," +
+            " document_id = EXCLUDED.document_id, source_id = EXCLUDED.source_id");
+        return sb.ToString();
     }
 
     public async Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
@@ -85,6 +154,25 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         return hits;
     }
 
+    /// <summary>
+    /// RF-001: HNSW DDL — interpolated ints only (identifiers can't be parameters).
+    /// Runs as a standalone command; CONCURRENTLY is intentionally not used because
+    /// it cannot run inside the init batch and the store owns this DB exclusively.
+    /// </summary>
+    internal string BuildHnswIndexSql() => $"""
+        CREATE INDEX IF NOT EXISTS {HnswIndexName}
+        ON kh_embeddings USING hnsw (embedding vector_cosine_ops)
+        WITH (m = {_options.HnswM}, ef_construction = {_options.HnswEfConstruction})
+        """;
+
+    private void CheckDimensions(float[] vector)
+    {
+        if (vector.Length != _dimensions)
+            throw new ArgumentException(
+                $"Vector dimension {vector.Length} does not match configured {_dimensions}",
+                nameof(vector));
+    }
+
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         if (_initialized)
@@ -96,23 +184,51 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 return;
             await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
+            // RF-003: metadata jsonb — additive on existing DBs via ALTER … IF NOT EXISTS.
+            cmd.CommandText = $$"""
                 CREATE EXTENSION IF NOT EXISTS vector;
                 CREATE TABLE IF NOT EXISTS kh_embeddings (
                     chunk_id    uuid PRIMARY KEY,
                     document_id uuid NOT NULL,
                     source_id   uuid NOT NULL,
                     model       text NOT NULL,
-                    embedding   vector({_dimensions}) NOT NULL
+                    embedding   vector({{_dimensions}}) NOT NULL
                 );
+                ALTER TABLE kh_embeddings ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
                 CREATE INDEX IF NOT EXISTS kh_embeddings_model_idx ON kh_embeddings (model);
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
+            await MaybeCreateHnswIndexAsync(conn, cancellationToken);
             _initialized = true;
         }
         finally
         {
             _initGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// RF-001: creates the HNSW index only when the row count crosses the
+    /// configured threshold. Failure to create it (e.g. pgvector &lt;0.5) is a
+    /// warning — exact search keeps working.
+    /// </summary>
+    private async Task MaybeCreateHnswIndexAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        await using var count = conn.CreateCommand();
+        count.CommandText = "SELECT count(*) FROM kh_embeddings";
+        var rows = (long)(await count.ExecuteScalarAsync(ct))!;
+        if (rows < _options.HnswThreshold)
+            return;
+
+        try
+        {
+            await using var idx = conn.CreateCommand();
+            idx.CommandText = BuildHnswIndexSql();
+            await idx.ExecuteNonQueryAsync(ct);
+        }
+        catch (PostgresException)
+        {
+            // Extension too old for hnsw / index build refused — exact scan stays.
         }
     }
 

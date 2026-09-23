@@ -127,7 +127,8 @@ public static class KnowledgeHubServiceCollectionExtensions
                 return new PostgresVectorStore(
                     cfg.GetValue<string>("VectorStore:ConnectionString")
                         ?? throw new InvalidOperationException("VectorStore:ConnectionString is required when VectorStore:Provider=postgres"),
-                    cfg.GetValue("Embeddings:Dimensions", 384));
+                    cfg.GetValue("Embeddings:Dimensions", 384),
+                    cfg.GetSection(PostgresOptions.SectionName).Get<PostgresOptions>() ?? new PostgresOptions());
             // SPEC-20260917-sqlite-vec-search: opt-in native KNN via the
             // sqlite-vec vec0 extension; "sqlite" stays the default.
             if (provider.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase))
