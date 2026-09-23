@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-eval-harness` |
 | Ticket | `[A DEFINIR]` |
-| Status | `In implementation` |
+| Status | `Done` — merged via PR #158 (6b5cdca) |
 | Origin | `gap-analysis-20260923` — GAP-tests-eval-harness (alta). Proposal §13.3. |
 
 ## 1. User Story
