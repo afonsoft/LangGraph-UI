@@ -266,6 +266,7 @@ app.MapStreamingApi(); // RequireAuthorization + RequireRateLimiting applied per
 app.MapToolsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapSettingsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapApiKeySettingsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapEvalApi().RequireAuthorization(AuthPolicies.Operational);
 app.MapKnowledgeHubMcp().RequireAuthorization(AuthPolicies.Operational);
 app.MapHub<McpMonitorHub>("/hubs/mcp").RequireAuthorization(AuthPolicies.Operational);
 app.MapFallbackToFile("index.html");
