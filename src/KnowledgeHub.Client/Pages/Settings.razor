@@ -127,6 +127,84 @@ else
     </div>
 }
 
+<h5 class="mb-2 text-muted">Knowledge Graph (GraphRAG)</h5>
+<p class="text-muted">
+    Extrai entidades e relações dos chunks indexados e expõe as tools
+    <code>find_dependencies</code>, <code>find_dependents</code>, <code>find_path</code>
+    e <code>analyze_impact</code> no catálogo MCP. A extração também exige
+    <code>"graph": true</code> na configuração de cada source.
+</p>
+
+@if (_graph is null)
+{
+    <div class="text-muted mb-4 kh-action-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando configuração do grafo…</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <Card>
+                <HeaderTemplate>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Extração e travessia do grafo</span>
+                        @if (_graph.Source == "store")
+                        {
+                            <Badge Color="Color.Success">configurada</Badge>
+                        }
+                        else
+                        {
+                            <Badge Color="Color.Info">ambiente</Badge>
+                        }
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    <div class="form-check form-switch mb-3">
+                        <input type="checkbox" class="form-check-input" id="graphEnabled"
+                               @bind="_graphForm.Enabled" />
+                        <label class="form-check-label" for="graphEnabled">
+                            Ativar GraphRAG (tools no catálogo + extração na ingestão)
+                        </label>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Max chunks por sync</label>
+                            <input type="number" class="form-control font-monospace" min="1" max="10000"
+                                   @bind="_graphForm.MaxChunksPerSync" />
+                            <small class="text-muted">Budget de extração LLM por sync (1–10000)</small>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Max chars por chunk</label>
+                            <input type="number" class="form-control font-monospace" min="200" max="50000"
+                                   @bind="_graphForm.MaxChunkChars" />
+                            <small class="text-muted">Truncamento no prompt de extração (200–50000)</small>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Max resultados</label>
+                            <input type="number" class="form-control font-monospace" min="10" max="10000"
+                                   @bind="_graphForm.MaxResults" />
+                            <small class="text-muted">Teto de arestas por travessia (10–10000)</small>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
+                                IsAsync="true" IsDisabled="_graphForm.Saving"
+                                OnClick="SaveGraphAsync" />
+                        @if (_graph.Source == "store")
+                        {
+                            <PopConfirmButton Color="Color.Warning" Icon="fa-solid fa-rotate-left"
+                                              Text="Restaurar ambiente" Title="Restaurar ambiente"
+                                              Content="A configuração salva será removida; as variáveis de ambiente voltam a valer."
+                                              OnConfirm="ClearGraphAsync" />
+                        }
+                    </div>
+                </BodyTemplate>
+            </Card>
+        </div>
+    </div>
+}
+
 <h5 class="mb-2 text-muted">Integrações</h5>
 <p class="text-muted">
     API keys de serviços upstream consumidos pelo MCP interno. As chaves são
@@ -218,6 +296,8 @@ else
     private readonly Dictionary<string, FormState> _forms = new();
     private ChatSettingsDto? _chat;
     private readonly ChatFormState _chatForm = new();
+    private GraphSettingsDto? _graph;
+    private readonly GraphFormState _graphForm = new();
 
     private sealed class FormState
     {
@@ -235,11 +315,21 @@ else
         public TestChatConnectionResponse? TestResult { get; set; }
     }
 
-    /// <summary>Inicializa a página carregando integrações e a configuração de chat.</summary>
+    private sealed class GraphFormState
+    {
+        public bool Enabled { get; set; }
+        public int MaxChunksPerSync { get; set; }
+        public int MaxChunkChars { get; set; }
+        public int MaxResults { get; set; }
+        public bool Saving { get; set; }
+    }
+
+    /// <summary>Inicializa a página carregando integrações e as configurações de chat e grafo.</summary>
     protected override async Task OnInitializedAsync()
     {
         await ReloadAsync();
         await ReloadChatAsync();
+        await ReloadGraphAsync();
     }
 
     /// <summary>Recarrega a lista de integrações e garante o estado dos formulários.</summary>
@@ -331,6 +421,64 @@ else
         {
             _chatForm.Testing = false;
         }
+    }
+
+    /// <summary>Recarrega a configuração efetiva do grafo e preenche o formulário do card.</summary>
+    private async Task ReloadGraphAsync()
+    {
+        try
+        {
+            _graph = await Api.GetGraphAsync();
+            _graphForm.Enabled = _graph?.Enabled ?? false;
+            _graphForm.MaxChunksPerSync = _graph?.MaxChunksPerSync ?? 200;
+            _graphForm.MaxChunkChars = _graph?.MaxChunkChars ?? 2000;
+            _graphForm.MaxResults = _graph?.MaxResults ?? 200;
+        }
+        catch (Exception ex)
+        {
+            _graph = null;
+            await Toast.Error("Erro", $"Falha ao carregar configuração do grafo: {ex.Message}");
+        }
+    }
+
+    /// <summary>Valida e salva a configuração do grafo; efeito imediato sem restart.</summary>
+    private async Task SaveGraphAsync()
+    {
+        _graphForm.Saving = true;
+        try
+        {
+            var result = await Api.SaveGraphAsync(new SaveGraphSettingsRequest
+            {
+                Enabled = _graphForm.Enabled,
+                MaxChunksPerSync = _graphForm.MaxChunksPerSync,
+                MaxChunkChars = _graphForm.MaxChunkChars,
+                MaxResults = _graphForm.MaxResults
+            });
+            if (!result.IsSuccess)
+            {
+                await Toast.Error("Erro", result.Error ?? "Falha ao salvar a configuração");
+                return;
+            }
+            await Toast.Success("Salva", "Configuração do grafo aplicada — já está em vigor.");
+            await ReloadGraphAsync();
+        }
+        finally
+        {
+            _graphForm.Saving = false;
+        }
+    }
+
+    /// <summary>Apaga a configuração persistida do grafo, restaurando as variáveis de ambiente.</summary>
+    private async Task ClearGraphAsync()
+    {
+        var result = await Api.ClearGraphAsync();
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao restaurar o ambiente");
+            return;
+        }
+        await Toast.Success("Restaurada", "Configuração do grafo voltou às variáveis de ambiente.");
+        await ReloadGraphAsync();
     }
 
     /// <summary>Remove a key de chat armazenada e recarrega o card.</summary>

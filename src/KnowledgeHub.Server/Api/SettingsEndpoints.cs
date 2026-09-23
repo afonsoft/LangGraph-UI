@@ -119,6 +119,40 @@ public static class SettingsEndpoints
             return Results.Ok(await chat.TestAsync(body ?? new TestChatConnectionRequest(), ct));
         });
 
+        // SPEC-20260923-graph-settings-ui RF-004: GraphRAG switch + tuning knobs,
+        // editable from /settings; effective immediately via the service's
+        // Invalidate() — no restart.
+        group.MapGet("/graph", async (
+            IGraphSettingsService graph,
+            CancellationToken ct) =>
+            Results.Ok(await graph.DescribeAsync(ct)));
+
+        group.MapPut("/graph", async (
+            SaveGraphSettingsRequest? body,
+            IGraphSettingsService graph,
+            CancellationToken ct) =>
+        {
+            if (body is null)
+                return Results.BadRequest(new { error = "body is required" });
+            if (body.MaxChunksPerSync is < 1 or > 10_000)
+                return Results.BadRequest(new { error = "maxChunksPerSync must be 1..10000" });
+            if (body.MaxChunkChars is < 200 or > 50_000)
+                return Results.BadRequest(new { error = "maxChunkChars must be 200..50000" });
+            if (body.MaxResults is < 10 or > 10_000)
+                return Results.BadRequest(new { error = "maxResults must be 10..10000" });
+
+            await graph.SaveAsync(body, ct);
+            return Results.NoContent();
+        });
+
+        group.MapDelete("/graph", async (
+            IGraphSettingsService graph,
+            CancellationToken ct) =>
+        {
+            await graph.ClearAsync(ct);
+            return Results.NoContent();
+        });
+
         return group;
     }
 
