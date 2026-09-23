@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using KnowledgeHub.Server.Caching;
 using KnowledgeHub.Server.Chat;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace KnowledgeHub.Server.Services;
 
@@ -12,6 +15,8 @@ namespace KnowledgeHub.Server.Services;
 public sealed partial class AnswerService(
     IChatClient? chatClient,
     ChatProviderOptions options,
+    IDistributedCache cache,
+    IConfiguration configuration,
     ILogger<AnswerService> logger) : IAnswerService
 {
     private const string NoMatchAnswer =
@@ -38,6 +43,23 @@ public sealed partial class AnswerService(
         var client = chatClient
             ?? throw new ChatProviderException("no chat provider configured (Chat:Provider=none)");
 
+        // SPEC-20260923-agent-runtime-hardening RF-003: opt-in answer cache.
+        // The ordered chunk ids fingerprint the retrieval exactly (source
+        // scope, filters, topK); indexVersion invalidates on every sync.
+        var cacheEnabled = configuration.GetValue("Cache:AnswerCache:Enabled", false);
+        var answerKey = cacheEnabled
+            ? CacheKeys.Answer(
+                options.Model ?? "unknown", question,
+                context.Select(c => c.ChunkId),
+                await IndexVersionToken.GetAsync(cache, logger, cancellationToken))
+            : null;
+        if (answerKey is not null
+            && await SafeCache.GetStringAsync(cache, answerKey, logger, cancellationToken) is { } hit
+            && DeserializeAnswer(hit) is { } cachedAnswer)
+        {
+            return cachedAnswer with { Cached = true, LatencyMs = sw.Elapsed.TotalMilliseconds };
+        }
+
         var response = await client.GetResponseAsync(
             [
                 new ChatMessage(ChatRole.System, SystemPrompt),
@@ -55,9 +77,28 @@ public sealed partial class AnswerService(
             throw new ChatProviderException("chat provider returned an empty answer");
 
         var citations = ExtractCitations(answer, context);
+        var result = Result(answer, citations, response.ModelId ?? options.Model, sw);
+        if (answerKey is not null)
+        {
+            var ttl = TimeSpan.FromSeconds(
+                configuration.GetValue("Cache:AnswerCache:TtlSeconds", 600));
+            await SafeCache.SetJsonAsync(cache, answerKey, result, ttl, logger, cancellationToken);
+        }
         logger.LogDebug("Answer synthesized in {LatencyMs} ms (model {Model}, {Citations} citations)",
             sw.Elapsed.TotalMilliseconds, response.ModelId ?? options.Model, citations.Count);
-        return Result(answer, citations, response.ModelId ?? options.Model, sw);
+        return result;
+    }
+
+    private static AskResponse? DeserializeAnswer(string payload)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<AskResponse>(payload);
+        }
+        catch (JsonException)
+        {
+            return null; // corrupt payload behaves as a miss
+        }
     }
 
     /// <inheritdoc />

@@ -24,7 +24,8 @@ namespace KnowledgeHub.Server.Mcp.Upstream;
 public sealed partial class McpProxyToolsProvider(
     IIntegrationSecretStore secrets,
     ILoggerFactory loggerFactory,
-    ILogger<McpProxyToolsProvider> logger) : IToolProvider, IAsyncDisposable
+    ILogger<McpProxyToolsProvider> logger,
+    IHttpClientFactory? httpClients = null) : IToolProvider, IAsyncDisposable
 {
     private readonly SemaphoreSlim _sessionsGate = new(1, 1);
     private readonly Dictionary<Guid, IMcpProxySession> _sessions = [];
@@ -73,7 +74,8 @@ public sealed partial class McpProxyToolsProvider(
 
             var session = SessionFactory?.Invoke(config)
                 ?? new McpProxySession(config, secrets, loggerFactory,
-                    loggerFactory.CreateLogger<McpProxySession>());
+                    loggerFactory.CreateLogger<McpProxySession>(),
+                    httpClients is null ? null : () => httpClients.CreateClient("mcp-upstream"));
             _sessions[config.SourceId] = session;
             return session;
         }

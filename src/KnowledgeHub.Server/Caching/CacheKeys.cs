@@ -21,6 +21,12 @@ public static class CacheKeys
     public static string Search(string mode, int topK, Guid? sourceId, string filterFingerprint, string scopeFingerprint, string query, string indexVersion) =>
         $"search:v3:{mode}:{topK}:{sourceId?.ToString("N") ?? "all"}:{Sha256(filterFingerprint)}:{scopeFingerprint}:{Sha256(query)}:v{indexVersion}";
 
+    /// <summary>SPEC-20260923-agent-runtime-hardening RF-003: answer cache key.
+    /// The ordered chunk-id list fingerprints the retrieval (filters, topK,
+    /// source scope) exactly; indexVersion invalidates on every sync.</summary>
+    public static string Answer(string model, string question, IEnumerable<Guid?> chunkIds, string indexVersion) =>
+        $"ans:{model}:{Sha256(question)}:{Sha256(string.Join(',', chunkIds))}:v{indexVersion}";
+
     /// <summary>Short stable content hash for cache keys.</summary>
     public static string Hash(string value) => Sha256(value);
 

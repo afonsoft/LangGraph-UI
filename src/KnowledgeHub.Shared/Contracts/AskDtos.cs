@@ -37,6 +37,9 @@ public sealed record AskResponse
     public required string? Model { get; init; }
     /// <summary>True when the answer was synthesized by the configured chat provider.</summary>
     public required bool Generated { get; init; }
+    /// <summary>True when served from the answer cache (SPEC-20260923
+    /// agent-runtime-hardening RF-003 — opt-in via Cache:AnswerCache:Enabled).</summary>
+    public bool Cached { get; init; }
     /// <summary>Raw context used for the answer (when generated=false).</summary>
     public IReadOnlyList<SearchResultItem>? Context { get; init; }
 }

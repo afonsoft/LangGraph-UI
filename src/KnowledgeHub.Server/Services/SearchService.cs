@@ -199,18 +199,10 @@ public sealed class SearchService(
         return vector;
     }
 
-    /// <summary>Current index-version token; a missing/unreadable one simply
-    /// gets a fresh value (all existing keys miss, which is correct).</summary>
-    private async Task<string> GetIndexVersionAsync(CancellationToken ct)
-    {
-        var version = await SafeCache.GetStringAsync(cache, CacheKeys.IndexVersion, logger, ct);
-        if (version is not null)
-            return version;
-        version = Guid.NewGuid().ToString("N");
-        await SafeCache.SetStringAsync(cache, CacheKeys.IndexVersion, version,
-            TimeSpan.FromDays(7), logger, ct);
-        return version;
-    }
+    /// <summary>Current index-version token — shared helper so the answer
+    /// cache keys invalidate on the same signal (RF-003).</summary>
+    private Task<string> GetIndexVersionAsync(CancellationToken ct) =>
+        IndexVersionToken.GetAsync(cache, logger, ct);
 
     private List<SearchResultItem>? JsonSerializerSafely(string payload)
     {
