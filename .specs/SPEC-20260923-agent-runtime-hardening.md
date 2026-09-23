@@ -9,7 +9,7 @@
 | Stack | `.NET 10 / C# 14` + `Microsoft.Extensions.AI` + `System.Threading.Channels` + `Microsoft.Extensions.Http.Resilience` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-agent-runtime-hardening` |
-| Ticket | `[A DEFINIR]` |
+| Ticket | `#162` |
 | Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-implementation-agent-perf (média); carries H7 deferral from SPEC-20260916. |
 

@@ -62,6 +62,7 @@ public static class ToolsEndpoints
                 Arguments = arguments
             };
 
+            var toolSw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var result = await tool.Handler(context, ct);
@@ -76,6 +77,11 @@ public static class ToolsEndpoints
                     Content = [new TextContentBlock { Text = ex.Message }],
                     IsError = true
                 });
+            }
+            finally
+            {
+                Telemetry.KnowledgeHubMetrics.ToolDuration.Record(toolSw.Elapsed.TotalMilliseconds,
+                    new KeyValuePair<string, object?>("tool", name));
             }
         });
 

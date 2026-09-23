@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using KnowledgeHub.Server.Caching;
 using KnowledgeHub.Server.Chat;
+using KnowledgeHub.Server.Telemetry;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Distributed;
@@ -60,17 +61,41 @@ public sealed partial class AnswerService(
             return cachedAnswer with { Cached = true, LatencyMs = sw.Elapsed.TotalMilliseconds };
         }
 
-        var response = await client.GetResponseAsync(
-            [
-                new ChatMessage(ChatRole.System, SystemPrompt),
-                new ChatMessage(ChatRole.User, BuildUserPrompt(question, context))
-            ],
-            new ChatOptions
+        using var activity = KnowledgeHubActivity.Start("ask");
+        ChatResponse response;
+        var llmSw = Stopwatch.StartNew();
+        using (var llmSpan = KnowledgeHubActivity.Start("llm_synthesis"))
+        {
+            llmSpan?.SetTag("llm.model", options.Model);
+            llmSpan?.SetTag("llm.kind", "ask");
+            try
             {
-                Temperature = options.Temperature is null ? null : (float)options.Temperature,
-                MaxOutputTokens = options.MaxTokens
-            },
-            cancellationToken);
+                response = await client.GetResponseAsync(
+                    [
+                        new ChatMessage(ChatRole.System, SystemPrompt),
+                        new ChatMessage(ChatRole.User, BuildUserPrompt(question, context))
+                    ],
+                    new ChatOptions
+                    {
+                        Temperature = options.Temperature is null ? null : (float)options.Temperature,
+                        MaxOutputTokens = options.MaxTokens
+                    },
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                KnowledgeHubActivity.Fail(llmSpan, ex);
+                KnowledgeHubActivity.Fail(activity, ex);
+                throw;
+            }
+            finally
+            {
+                KnowledgeHubMetrics.LlmDuration.Record(llmSw.Elapsed.TotalMilliseconds,
+                    new KeyValuePair<string, object?>("provider", client.GetType().Name),
+                    new KeyValuePair<string, object?>("model", options.Model),
+                    new KeyValuePair<string, object?>("kind", "ask"));
+            }
+        }
 
         var answer = response.Text?.Trim() ?? "";
         if (answer.Length == 0)

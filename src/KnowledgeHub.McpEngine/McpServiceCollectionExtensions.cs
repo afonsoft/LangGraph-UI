@@ -1,6 +1,7 @@
 using KnowledgeHub.McpEngine.Activity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -27,6 +28,9 @@ public static class McpServiceCollectionExtensions
             configuration.GetValue("Mcp:MaxConcurrentCallsPerSession", DefaultMaxConcurrentCallsPerSession)));
 
         services.AddSingleton<McpSessionRegistry>();
+        // No-op default so the engine works standalone; the server registers a
+        // real IMcpRequestMetrics backed by its Meter.
+        services.TryAddSingleton<IMcpRequestMetrics>(NullMcpRequestMetrics.Instance);
 
         var sessionMode = ParseSessionMode(configuration["Mcp:SessionMode"]);
 
@@ -52,7 +56,8 @@ public static class McpServiceCollectionExtensions
             });
 
         services.AddOptions<McpServerOptions>()
-            .Configure<IMcpActivityFeed, SessionCallGate, McpSessionRegistry>((options, feed, gate, registry) =>
+            .Configure<IMcpActivityFeed, SessionCallGate, McpSessionRegistry, IMcpRequestMetrics>(
+                (options, feed, gate, registry, metrics) =>
             {
                 options.ServerInfo = new Implementation { Name = "knowledge", Version = "0.1.0" };
                 options.Capabilities = new ServerCapabilities
@@ -61,8 +66,8 @@ public static class McpServiceCollectionExtensions
                     Resources = new ResourcesCapability { ListChanged = true }
                 };
 
-                options.Filters.Request.CallToolFilters.Add(McpActivityFilters.CreateToolCallFilter(feed, gate));
-                options.Filters.Message.IncomingFilters.Add(McpActivityFilters.CreateRequestTelemetryFilter(feed, registry));
+                options.Filters.Request.CallToolFilters.Add(McpActivityFilters.CreateToolCallFilter(feed, gate, metrics));
+                options.Filters.Message.IncomingFilters.Add(McpActivityFilters.CreateRequestTelemetryFilter(feed, registry, metrics));
             });
 
         return builder;

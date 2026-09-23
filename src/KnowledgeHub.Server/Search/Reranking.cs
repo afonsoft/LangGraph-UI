@@ -58,10 +58,22 @@ public sealed partial class LlmReranker(
             sb.Append('[').Append(i + 1).Append("] ").Append(text).Append("\n\n");
         }
 
-        var response = await chatClient.GetResponseAsync(
-            [new ChatMessage(ChatRole.User, sb.ToString())],
-            new ChatOptions { Temperature = 0, MaxOutputTokens = candidates.Count * 8 + 16 },
-            ct);
+        var llmSw = System.Diagnostics.Stopwatch.StartNew();
+        ChatResponse response;
+        try
+        {
+            response = await chatClient.GetResponseAsync(
+                [new ChatMessage(ChatRole.User, sb.ToString())],
+                new ChatOptions { Temperature = 0, MaxOutputTokens = candidates.Count * 8 + 16 },
+                ct);
+        }
+        finally
+        {
+            Telemetry.KnowledgeHubMetrics.LlmDuration.Record(llmSw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", chatClient.GetType().Name),
+                new KeyValuePair<string, object?>("model", null),
+                new KeyValuePair<string, object?>("kind", "rerank"));
+        }
 
         var scores = new List<RerankScore>(candidates.Count);
         foreach (Match m in ScoreLineRegex().Matches(response.Text ?? ""))

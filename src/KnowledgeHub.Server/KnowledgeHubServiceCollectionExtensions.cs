@@ -12,6 +12,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -350,12 +353,21 @@ public static class KnowledgeHubServiceCollectionExtensions
                         }]
                     };
 
-                return await tool.Handler(
-                    new KnowledgeHub.Server.Mcp.ToolCallContext
-                    {
-                        Services = ctx.Services!,
-                        Arguments = ctx.Params?.Arguments
-                    }, ct);
+                var toolSw = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    return await tool.Handler(
+                        new KnowledgeHub.Server.Mcp.ToolCallContext
+                        {
+                            Services = ctx.Services!,
+                            Arguments = ctx.Params?.Arguments
+                        }, ct);
+                }
+                finally
+                {
+                    Telemetry.KnowledgeHubMetrics.ToolDuration.Record(toolSw.Elapsed.TotalMilliseconds,
+                        new KeyValuePair<string, object?>("tool", name));
+                }
             };
 
             options.Handlers.ListResourcesHandler = async (ctx, ct) =>
@@ -364,6 +376,30 @@ public static class KnowledgeHubServiceCollectionExtensions
             options.Handlers.ReadResourceHandler = async (ctx, ct) =>
                 await KnowledgeResourceProvider.ReadAsync(ctx.Params?.Uri ?? "", ctx.Services!, ct);
         });
+
+        // SPEC-20260923-observability-metrics RF-003: opt-in exporters. With no
+        // Telemetry:* config the Meter/ActivitySource stay no-op listeners —
+        // zero exporter overhead and zero behavioral change.
+        services.AddSingleton<IMcpRequestMetrics, Telemetry.KnowledgeHubMetrics>();
+        var telemetry = Telemetry.TelemetryOptions.FromConfiguration(configuration);
+        if (!string.IsNullOrEmpty(telemetry.OtlpEndpoint) || telemetry.Prometheus)
+        {
+            var otel = services.AddOpenTelemetry()
+                .WithMetrics(m => m
+                    .AddMeter(Telemetry.KnowledgeHubMetrics.MeterName)
+                    .AddAspNetCoreInstrumentation())
+                .WithTracing(t => t
+                    .AddSource(Telemetry.KnowledgeHubMetrics.MeterName)
+                    .AddAspNetCoreInstrumentation());
+            if (!string.IsNullOrEmpty(telemetry.OtlpEndpoint))
+            {
+                var endpoint = new Uri(telemetry.OtlpEndpoint);
+                otel.WithMetrics(m => m.AddOtlpExporter(o => o.Endpoint = endpoint))
+                    .WithTracing(t => t.AddOtlpExporter(o => o.Endpoint = endpoint));
+            }
+            if (telemetry.Prometheus)
+                otel.WithMetrics(m => m.AddPrometheusExporter());
+        }
 
         return services;
     }
