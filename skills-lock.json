@@ -35,7 +35,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/create-issues/SKILL.md",
-      "computedHash": "e4b1c23b684a3941507e8b0726628850e36e726554a4d8f0841cd435c1f1ef89"
+      "computedHash": "ec4a8ea6b2047392443e8d1a096d47e6967d0e558b1c772d6005108c3907fb45"
     },
     "create-readme": {
       "source": "afonsoft/skills",
@@ -65,13 +65,13 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/execute-specs/SKILL.md",
-      "computedHash": "1800fdc16f68db6c4510fca3b590e97b0693fdd5712455836cf712eb185f7c9c"
+      "computedHash": "5856357231de5df6926519366fdd34efd61e7dd8b220633c5b895704fc4bb5b5"
     },
     "gap-analysis": {
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/gap-analysis/SKILL.md",
-      "computedHash": "6d3859359a83963578c6ccada1a0086ee399f849e4d61a58d456ce857bd04892"
+      "computedHash": "6eaae62b9e106b94b778b4e1ff567b54f1772d8c35d12e3ed136dd1b02758e9e"
     },
     "improve-codebase-architecture": {
       "source": "afonsoft/skills",
@@ -107,7 +107,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/orchestrator/SKILL.md",
-      "computedHash": "c82324863c48ce1e33a03cc09a5382a02e21a1a6d133b2c72c6d03955b9c0cd8"
+      "computedHash": "ca8eb32c98b5f56340b39a1f949ab4a80cf0aa018658f049c2d8edce1153caf5"
     },
     "qa-analyst": {
       "source": "afonsoft/skills",
@@ -143,7 +143,7 @@
       "source": "afonsoft/skills",
       "sourceType": "github",
       "skillPath": "skills/write-specs/SKILL.md",
-      "computedHash": "52082fc584d0b3093e5fa912d79dcf90bad801adcc58b8b97c656798df149d7e"
+      "computedHash": "47da003518849ef63c87b7c33abb1270f96022db70de2439b57e885ed166f72b"
     }
   }
 }
