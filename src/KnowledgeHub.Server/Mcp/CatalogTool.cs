@@ -14,5 +14,9 @@ public sealed record CatalogTool
     public required string Description { get; init; }
     public required JsonObject InputSchema { get; init; }
     public bool ReadOnly { get; init; }
+    /// <summary>SPEC-20260923-source-authorization RF-004: owning source for
+    /// per-source tools (<c>query_*</c>, MCP-proxy re-exports) — null for
+    /// source-independent tools. Drives per-key source scoping.</summary>
+    public Guid? SourceId { get; init; }
     public required Func<ToolCallContext, CancellationToken, ValueTask<CallToolResult>> Handler { get; init; }
 }

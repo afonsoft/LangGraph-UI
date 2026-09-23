@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-source-authorization` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-security-source-authorization (média). Proposal §14 ("autorização por ferramenta, fonte e documento"; "propagação das permissões da origem"). |
 
 ## 1. User Story

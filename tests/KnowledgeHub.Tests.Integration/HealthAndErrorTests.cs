@@ -81,7 +81,9 @@ public class HealthAndErrorTests
         await using var factory = new BrokenEmbeddingFixture();
         using var client = await TestAuth.LoginAsync(factory);
 
-        var response = await client.GetAsync("/api/search?query=test");
+        // An explicit sourceId keeps the pipeline running (empty source lists
+        // short-circuit before embedding since SPEC-20260923-source-authorization).
+        var response = await client.GetAsync($"/api/search?query=test&sourceId={Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);

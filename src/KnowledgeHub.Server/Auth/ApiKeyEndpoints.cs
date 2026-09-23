@@ -1,8 +1,10 @@
 using System.Security.Claims;
+using System.Text.Json;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace KnowledgeHub.Server.Auth;
 
@@ -22,6 +24,12 @@ public static class ApiKeyEndpoints
         group.MapDelete("/{id:guid}", RevokeAsync);
         group.MapGet("/{id:guid}/usage", UsageAsync);
 
+        // SPEC-20260923-source-authorization §5: scope admin lives under the
+        // dashed /api/api-keys surface but is cookie-only like this group —
+        // keys can never scope keys.
+        app.MapPut("/api/api-keys/{id:guid}/scopes", SetScopesAsync)
+            .RequireAuthorization(AuthPolicies.CookieSession);
+
         return group;
     }
 
@@ -31,10 +39,19 @@ public static class ApiKeyEndpoints
         var userId = CurrentUserId(http);
         var keys = await db.ApiKeys
             .Where(k => k.UserId == userId)
-            .Select(k => new ApiKeyDto(k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt, k.RevokedAt))
+            .Select(k => new { k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt, k.RevokedAt, k.AllowedSourceIdsJson, k.AllowedToolsJson })
             .ToListAsync(ct);
         // SQLite cannot ORDER BY DateTimeOffset — sort client-side.
-        return Results.Ok(keys.OrderByDescending(k => k.CreatedAt).ToList());
+        return Results.Ok(keys
+            .OrderByDescending(k => k.CreatedAt)
+            .Select(k =>
+            {
+                var scope = CallerScope.FromJson(k.Id, k.AllowedSourceIdsJson, k.AllowedToolsJson);
+                return new ApiKeyDto(
+                    k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt, k.RevokedAt,
+                    scope.AllowedSourceIds?.ToList(), scope.AllowedTools?.ToList());
+            })
+            .ToList());
     }
 
     private static async Task<IResult> CreateAsync(
@@ -107,6 +124,56 @@ public static class ApiKeyEndpoints
 
         key.RevokedAt ??= DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>SPEC-20260923-source-authorization RF-001: replaces the key's
+    /// source/tool allowlists. Unknown source ids or tool names → 400; the
+    /// cached scope is evicted so the next request sees the change.</summary>
+    private static async Task<IResult> SetScopesAsync(
+        Guid id,
+        SetApiKeyScopesRequest? body,
+        HttpContext http,
+        KnowledgeHubDbContext db,
+        Mcp.IDynamicToolCatalog catalog,
+        IMemoryCache memory,
+        CancellationToken ct)
+    {
+        var key = await db.ApiKeys
+            .FirstOrDefaultAsync(k => k.Id == id && k.UserId == CurrentUserId(http), ct);
+        if (key is null)
+            return Results.NotFound(new { error = "api key não encontrada" });
+
+        if (body?.AllowedSourceIds is { } sourceIds && sourceIds.Count > 0)
+        {
+            var known = await db.Sources
+                .Where(s => sourceIds.Contains(s.Id))
+                .Select(s => s.Id)
+                .ToListAsync(ct);
+            var unknown = sourceIds.Except(known).ToList();
+            if (unknown.Count > 0)
+                return Results.BadRequest(new { error = $"unknown source id(s): {string.Join(", ", unknown)}" });
+        }
+
+        if (body?.AllowedTools is { } tools && tools.Count > 0)
+        {
+            var available = (await catalog.GetUnfilteredToolsAsync(http.RequestServices, ct))
+                .Select(t => t.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var unknown = tools.Where(t => !available.Contains(t)).ToList();
+            if (unknown.Count > 0)
+                return Results.BadRequest(new { error = $"unknown tool(s): {string.Join(", ", unknown)}" });
+        }
+
+        key.AllowedSourceIdsJson = body?.AllowedSourceIds is null
+            ? null
+            : JsonSerializer.Serialize(body.AllowedSourceIds);
+        key.AllowedToolsJson = body?.AllowedTools is null
+            ? null
+            : JsonSerializer.Serialize(body.AllowedTools);
+        await db.SaveChangesAsync(ct);
+
+        memory.Remove(CallerScopeProvider.CacheKey(id));
         return Results.NoContent();
     }
 

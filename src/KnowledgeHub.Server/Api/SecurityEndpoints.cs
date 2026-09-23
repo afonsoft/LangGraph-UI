@@ -18,7 +18,7 @@ public static class SecurityEndpoints
             var take = Math.Clamp(limit ?? 50, 1, 500);
             // SQLite cannot ORDER BY DateTimeOffset — sort in memory.
             var events = (await db.SecurityEvents.AsNoTracking()
-                    .Select(e => new { e.Id, e.SourceId, e.DocumentId, e.ChunkIndex, e.Flags, e.CreatedAt })
+                    .Select(e => new { e.Id, e.SourceId, e.DocumentId, e.ChunkIndex, e.Flags, e.ApiKeyId, e.Detail, e.CreatedAt })
                     .ToListAsync(ct))
                 .OrderByDescending(e => e.CreatedAt)
                 .Take(take);

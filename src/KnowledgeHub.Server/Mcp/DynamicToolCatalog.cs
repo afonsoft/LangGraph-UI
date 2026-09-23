@@ -18,7 +18,23 @@ public sealed class DynamicToolCatalog(
     private IReadOnlyList<CatalogTool>? _cached;
     private long _cachedVersion = -1;
 
+    /// <summary>SPEC-20260923-source-authorization RF-004: per-caller filtering
+    /// runs on the shared cached aggregate — no per-key cache invalidation.</summary>
     public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var all = await GetUnfilteredToolsAsync(services, cancellationToken);
+        var scope = services.GetService<Auth.ICallerScopeProvider>() is { } provider
+            ? await provider.GetAsync(cancellationToken)
+            : Auth.CallerScope.Unrestricted;
+        if (scope.IsUnrestricted)
+            return all;
+        return all
+            .Where(t => scope.AllowsTool(t.Name)
+                && (t.SourceId is null || scope.AllowsSource(t.SourceId.Value)))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<CatalogTool>> GetUnfilteredToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         var version = notifier.Version;
         if (_cached is { } hit && _cachedVersion == version)

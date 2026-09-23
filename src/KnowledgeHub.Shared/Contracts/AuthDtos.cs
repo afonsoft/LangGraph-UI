@@ -11,14 +11,24 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 
 public sealed record CreateApiKeyRequest(string Name);
 
-/// <summary>Listed key — never carries the secret.</summary>
+/// <summary>Listed key — never carries the secret. Scope lists are null when
+/// unrestricted; an empty array means deny-all
+/// (SPEC-20260923-source-authorization RF-001).</summary>
 public sealed record ApiKeyDto(
     Guid Id,
     string Name,
     string Prefix,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastUsedAt,
-    DateTimeOffset? RevokedAt);
+    DateTimeOffset? RevokedAt,
+    IReadOnlyList<Guid>? AllowedSourceIds = null,
+    IReadOnlyList<string>? AllowedTools = null);
+
+/// <summary>SPEC-20260923-source-authorization §5: replaces a key's read scope.
+/// Null/absent members mean unrestricted; empty arrays deny everything.</summary>
+public sealed record SetApiKeyScopesRequest(
+    IReadOnlyList<Guid>? AllowedSourceIds,
+    IReadOnlyList<string>? AllowedTools);
 
 /// <summary>Creation response — the only place the full `aft_*` secret appears.</summary>
 public sealed record ApiKeyCreatedDto(Guid Id, string Name, string Prefix, string Key);

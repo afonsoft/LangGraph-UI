@@ -141,6 +141,8 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<IKnowledgeSourceService, KnowledgeSourceService>();
         services.AddScoped<Search.ILexicalSearchService, Search.LexicalSearchService>();
         services.AddScoped<ISearchService, SearchService>();
+        // SPEC-20260923-source-authorization RF-002: per-request caller scope.
+        services.AddScoped<Auth.ICallerScopeProvider, Auth.CallerScopeProvider>();
         // SPEC-20260923-retrieval-quality: opt-in query rewriting + reranker.
         services.AddScoped<Search.IQueryRewriter, Search.LlmQueryRewriter>();
         services.AddScoped<Search.IReranker>(sp =>
@@ -267,8 +269,27 @@ public static class KnowledgeHubServiceCollectionExtensions
                 var catalog = ctx.Services!.GetRequiredService<IDynamicToolCatalog>();
                 var name = ctx.Params?.Name;
                 var tool = (await catalog.GetToolsAsync(ctx.Services!, ct))
-                    .FirstOrDefault(t => t.Name == name)
-                    ?? throw new McpProtocolException($"unknown tool '{name}'", McpErrorCode.MethodNotFound);
+                    .FirstOrDefault(t => t.Name == name);
+                if (tool is null)
+                {
+                    // SPEC-20260923-source-authorization RF-004: a tool hidden
+                    // by the key's scope gets a friendly isError + audit row;
+                    // genuinely unknown names stay MethodNotFound.
+                    var exists = (await catalog.GetUnfilteredToolsAsync(ctx.Services!, ct))
+                        .Any(t => t.Name == name);
+                    if (!exists)
+                        throw new McpProtocolException($"unknown tool '{name}'", McpErrorCode.MethodNotFound);
+
+                    await Auth.ScopeAudit.RecordToolDeniedAsync(ctx.Services!, name!, ct);
+                    return new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new ModelContextProtocol.Protocol.TextContentBlock
+                        {
+                            Text = $"tool '{name}' is not available for this credential"
+                        }]
+                    };
+                }
 
                 // SPEC-20260923-rate-limiting RF-003: LLM-spending / write tools
                 // are charged per caller — over-limit yields a friendly isError

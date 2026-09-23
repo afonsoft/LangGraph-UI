@@ -37,6 +37,7 @@ public sealed class SourceQueryToolsProvider : IToolProvider
                           (string.IsNullOrWhiteSpace(source.Description) ? "." : $" — {source.Description}"),
             InputSchema = Schema,
             ReadOnly = true,
+            SourceId = source.Id,
             Handler = async (ctx, ct) =>
             {
                 var query = ToolArgs.RequiredString(ctx, "query");

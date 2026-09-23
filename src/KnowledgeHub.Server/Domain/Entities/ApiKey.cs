@@ -18,6 +18,12 @@ public sealed class ApiKey
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastUsedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
+    /// <summary>SPEC-20260923-source-authorization RF-001: JSON array of source
+    /// GUIDs the key may read. Null = unrestricted; empty array = deny all.</summary>
+    public string? AllowedSourceIdsJson { get; set; }
+    /// <summary>JSON array of tool names the key may call. Null = unrestricted;
+    /// empty array = deny all.</summary>
+    public string? AllowedToolsJson { get; set; }
     public List<ApiKeyUsageEvent> UsageEvents { get; set; } = [];
     public ApiKeyChatSettings? ChatSettings { get; set; }
 }
