@@ -15,9 +15,22 @@ namespace KnowledgeHub.Server.Ingestion.Connectors;
 /// </summary>
 public sealed partial class DocumentFileConnector(ILogger<DocumentFileConnector> logger) : ISourceConnector
 {
-    /// <summary>Extensions with a text extractor.</summary>
+    /// <summary>Extensions with a text extractor. Plain-text extensions cover
+    /// code and config files (SPEC-20260923-code-aware-chunking).</summary>
     public static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
-        { ".md", ".txt", ".pdf", ".docx" };
+    {
+        ".md", ".txt", ".pdf", ".docx",
+        ".cs", ".java", ".js", ".ts", ".py", ".go", ".rs", ".sql",
+        ".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".config"
+    };
+
+    /// <summary>Extensions read as raw text (no parser).</summary>
+    private static readonly HashSet<string> PlainTextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".md", ".txt",
+        ".cs", ".java", ".js", ".ts", ".py", ".go", ".rs", ".sql",
+        ".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".config"
+    };
 
     private const long DefaultMaxFileBytes = 20L * 1024 * 1024;
 
@@ -88,6 +101,8 @@ public sealed partial class DocumentFileConnector(ILogger<DocumentFileConnector>
         {
             case ".md":
             case ".txt":
+                return await File.ReadAllTextAsync(file, ct);
+            case { } e when PlainTextExtensions.Contains(e):
                 return await File.ReadAllTextAsync(file, ct);
             case ".pdf":
                 return await Task.Run(() => ExtractPdf(file), ct);

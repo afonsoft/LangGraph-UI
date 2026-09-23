@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-code-aware-chunking` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-implementation-code-chunking (baixa). Proposal §9.1 (chunking orientado à estrutura). |
 
 ## 1. User Story

@@ -103,7 +103,9 @@ public sealed class IngestionService(
                 }
 
                 var note = MarkdownNoteParser.Parse(content, Path.GetFileName(file));
-                var chunks = MarkdownChunker.Chunk(
+                // SPEC-20260923-code-aware-chunking: kind from the file extension.
+                var (kind, pieces) = Chunking.ChunkerSelector.Chunk(
+                    relative,
                     note.Body,
                     configuration.GetValue("Ingestion:MaxTokens", 500),
                     configuration.GetValue("Ingestion:OverlapTokens", 50));
@@ -133,11 +135,13 @@ public sealed class IngestionService(
 
                 // AddRange via DbSet — reassigning doc.Chunks after RemoveRange makes EF Core
                 // emit an UPDATE for the deleted rows inside the same batch (concurrency error).
-                var newChunks = chunks.Select((text, i) => new DocumentChunk
+                var newChunks = pieces.Select((piece, i) => new DocumentChunk
                 {
                     KnowledgeDocumentId = doc.Id,
                     ChunkIndex = i,
-                    TextContent = text
+                    TextContent = piece.Text,
+                    ChunkKind = kind.ToString().ToLowerInvariant(),
+                    SymbolPath = piece.SymbolPath
                 }).ToList();
                 db.Chunks.AddRange(newChunks);
 
@@ -259,15 +263,19 @@ public sealed class IngestionService(
 
             // AddRange via DbSet — see vault path above; nav reassignment after
             // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
-            var newChunks = MarkdownChunker.Chunk(
+            var (kind, pieces) = Chunking.ChunkerSelector.Chunk(
+                raw.UriReference,
                 raw.TextContent,
                 configuration.GetValue("Ingestion:MaxTokens", 500),
-                configuration.GetValue("Ingestion:OverlapTokens", 50))
-                .Select((text, i) => new DocumentChunk
+                configuration.GetValue("Ingestion:OverlapTokens", 50));
+            var newChunks = pieces
+                .Select((piece, i) => new DocumentChunk
                 {
                     KnowledgeDocumentId = doc.Id,
                     ChunkIndex = i,
-                    TextContent = text
+                    TextContent = piece.Text,
+                    ChunkKind = kind.ToString().ToLowerInvariant(),
+                    SymbolPath = piece.SymbolPath
                 }).ToList();
             db.Chunks.AddRange(newChunks);
 

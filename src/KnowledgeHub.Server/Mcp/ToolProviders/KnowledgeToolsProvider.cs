@@ -296,12 +296,15 @@ public sealed class KnowledgeToolsProvider : IToolProvider
 
         var embeddings = ctx.Services!.GetRequiredService<Embeddings.IEmbeddingProvider>();
         var vectors = ctx.Services!.GetRequiredService<VectorStore.IVectorStore>();
-        var chunkTexts = MarkdownChunker.Chunk(body, 500, 50);
-        var newChunks = chunkTexts.Select((t, i) => new Domain.Entities.DocumentChunk
+        // SPEC-20260923-code-aware-chunking: kind from the document URI.
+        var (kind, pieces) = Ingestion.Chunking.ChunkerSelector.Chunk(doc2.UriReference, body, 500, 50);
+        var newChunks = pieces.Select((p, i) => new Domain.Entities.DocumentChunk
         {
             KnowledgeDocumentId = doc2.Id,
             ChunkIndex = i,
-            TextContent = t
+            TextContent = p.Text,
+            ChunkKind = kind.ToString().ToLowerInvariant(),
+            SymbolPath = p.SymbolPath
         }).ToList();
         db.Chunks.AddRange(newChunks);
         await db.SaveChangesAsync(ct);

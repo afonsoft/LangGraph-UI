@@ -76,3 +76,7 @@ nunit-*.xml
 # externally, never committed (~90 MB).
 models/
 *.onnx
+
+
+# Backup/restore runtime artifacts (integration tests + backup.sh)
+backups/

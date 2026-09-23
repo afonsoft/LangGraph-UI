@@ -78,6 +78,8 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.HasKey(c => c.Id);
             e.Property(c => c.TextContent).IsRequired();
             e.Property(c => c.Embedding).HasColumnType("BLOB");
+            e.Property(c => c.ChunkKind).IsRequired().HasMaxLength(16);
+            e.Property(c => c.SymbolPath).HasMaxLength(300);
         });
 
         modelBuilder.Entity<AppUser>(e =>
