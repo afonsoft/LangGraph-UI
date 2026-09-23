@@ -29,4 +29,12 @@ public sealed class AgentOptions
     /// (SPEC-20260914-conversation-threads RF-002)
     /// </summary>
     public int MaxContextTokens { get; set; } = 8000;
+
+    /// <summary>
+    /// SSE event buffer capacity for <c>agent_chat</c> streaming
+    /// (SPEC-20260923-agent-runtime-hardening RF-001): bounded with
+    /// <see cref="BoundedChannelFullMode.Wait"/> — a slow client back-pressures
+    /// the run instead of growing memory unboundedly; events are never dropped.
+    /// </summary>
+    public int SseChannelCapacity { get; set; } = 256;
 }

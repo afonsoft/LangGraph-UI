@@ -53,7 +53,7 @@ public sealed class AgentService(
         var prep = await PrepareAsync(request, cancellationToken);
         var loop = await BuildLoopAsync(request, prep.Messages, cancellationToken);
 
-        var channel = Channel.CreateUnbounded<SseEvent>();
+        var channel = CreateEventChannel(options.SseChannelCapacity);
         var run = RunLoopAsync(prep.Client, loop, cancellationToken, channel.Writer);
 
         await foreach (var e in channel.Reader.ReadAllAsync(cancellationToken))
@@ -87,6 +87,21 @@ public sealed class AgentService(
         }
         yield return new SseEvent("done", final);
     }
+
+    /// <summary>SPEC-20260923-agent-runtime-hardening RF-001: bounded buffer —
+    /// a slow SSE consumer back-pressures the producer (Wait mode, never
+    /// drops). Exposed for the capacity-ceiling unit test.</summary>
+    internal static Channel<SseEvent> CreateEventChannel(int capacity) =>
+        Channel.CreateBounded<SseEvent>(new BoundedChannelOptions(capacity)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = true
+        });
+
+    private static ValueTask WriteEventAsync(
+        ChannelWriter<SseEvent>? sink, SseEvent e, CancellationToken ct) =>
+        sink is null ? ValueTask.CompletedTask : sink.WriteAsync(e, ct);
 
     private sealed record Preparation(
         IChatClient Client,
@@ -358,12 +373,17 @@ public sealed class AgentService(
             .Where(t => request.AllowWrite || t.ReadOnly)
             .ToList();
 
+        var functions = visible
+            .Select(t => (AIFunction)new CatalogToolAIFunction(t, services, options.MaxToolResultChars))
+            .ToList();
+
         return new LoopState
         {
             Messages = messages,
-            Functions = visible
-                .Select(t => (AIFunction)new CatalogToolAIFunction(t, services, options.MaxToolResultChars))
-                .ToList(),
+            Functions = functions,
+            // RF-002: tool list is fixed at build time — one ChatOptions per run
+            // instead of reserializing schemas every iteration.
+            ChatOptions = new ChatOptions { Tools = [.. functions] },
             ToolsByName = visible.ToDictionary(t => t.Name),
             MaxIterations = maxIterations,
             Request = request
@@ -428,8 +448,8 @@ public sealed class AgentService(
                     }
 
                     var fn = loop.Functions.FirstOrDefault(f => f.Name == call.Name);
-                    sink?.TryWrite(new SseEvent("tool_start",
-                        new { tool = call.Name, args = Summarize(call.Arguments) }));
+                    await WriteEventAsync(sink, new SseEvent("tool_start",
+                        new { tool = call.Name, args = Summarize(call.Arguments) }), cancellationToken);
                     var stepSw = Stopwatch.StartNew();
                     object? result;
                     var isError = false;
@@ -446,8 +466,8 @@ public sealed class AgentService(
                         result = $"ERROR: {ex.Message}";
                     }
 
-                    sink?.TryWrite(new SseEvent("tool_end",
-                        new { tool = call.Name, isError, elapsedMs = stepSw.Elapsed.TotalMilliseconds }));
+                    await WriteEventAsync(sink, new SseEvent("tool_end",
+                        new { tool = call.Name, isError, elapsedMs = stepSw.Elapsed.TotalMilliseconds }), cancellationToken);
                     loop.Steps.Add(new AgentStep
                     {
                         Iteration = loop.Iterations,
@@ -500,7 +520,7 @@ public sealed class AgentService(
     private static async Task<ChatResponse> GetModelResponseAsync(
         IChatClient client, LoopState loop, ChannelWriter<SseEvent>? sink, CancellationToken ct)
     {
-        var chatOptions = new ChatOptions { Tools = [.. loop.Functions] };
+        var chatOptions = loop.ChatOptions; // RF-002: built once per loop, reused verbatim
         IAsyncEnumerable<ChatResponseUpdate>? updates = null;
         if (sink is not null)
         {
@@ -515,7 +535,7 @@ public sealed class AgentService(
         {
             var buffered = await client.GetResponseAsync(loop.Messages, chatOptions, ct);
             if (sink is not null && buffered.Text is { Length: > 0 } text)
-                sink.TryWrite(new SseEvent("token", new { delta = text }));
+                await WriteEventAsync(sink, new SseEvent("token", new { delta = text }), ct);
             return buffered;
         }
 
@@ -528,7 +548,7 @@ public sealed class AgentService(
             {
                 contents.Add(content);
                 if (content is TextContent { Text.Length: > 0 } delta)
-                    sink?.TryWrite(new SseEvent("token", new { delta = delta.Text }));
+                    await WriteEventAsync(sink, new SseEvent("token", new { delta = delta.Text }), ct);
             }
         }
         var message = new ChatMessage(ChatRole.Assistant, contents);
@@ -616,6 +636,8 @@ public sealed class AgentService(
     {
         public required List<ChatMessage> Messages { get; init; }
         public required List<AIFunction> Functions { get; init; }
+        /// <summary>RF-002: same instance across all iterations of the loop.</summary>
+        public required ChatOptions ChatOptions { get; init; }
         public required Dictionary<string, CatalogTool> ToolsByName { get; init; }
         public required int MaxIterations { get; init; }
         public required AgentRequest Request { get; init; }

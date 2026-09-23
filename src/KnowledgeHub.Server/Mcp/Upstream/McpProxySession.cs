@@ -41,7 +41,8 @@ internal sealed class McpProxySession(
     McpProxyConfig config,
     IIntegrationSecretStore secrets,
     ILoggerFactory loggerFactory,
-    ILogger<McpProxySession> logger) : IMcpProxySession
+    ILogger<McpProxySession> logger,
+    Func<HttpClient>? httpClientFactory = null) : IMcpProxySession
 {
     public const int CallTimeoutSeconds = 60;
 
@@ -159,8 +160,12 @@ internal sealed class McpProxySession(
                     ["Authorization"] = $"Bearer {apiKey}"
                 };
 
+            // SPEC-20260923-agent-runtime-hardening RF-004: HTTP transports use
+            // the resilient "mcp-upstream" named client (caller keeps ownership).
             var transport = TransportFactory?.Invoke(transportOptions)
-                ?? new HttpClientTransport(transportOptions, loggerFactory);
+                ?? (httpClientFactory?.Invoke() is { } httpClient
+                    ? new HttpClientTransport(transportOptions, httpClient, loggerFactory, ownsHttpClient: false)
+                    : new HttpClientTransport(transportOptions, loggerFactory));
 
             _client = await McpClient.CreateAsync(
                 transport,

@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-agent-runtime-hardening` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-implementation-agent-perf (média); carries H7 deferral from SPEC-20260916. |
 
 ## 1. User Story

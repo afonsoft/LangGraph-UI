@@ -9,6 +9,7 @@ using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Server.Services;
 using KnowledgeHub.Server.VectorStore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -37,9 +38,41 @@ public static class KnowledgeHubServiceCollectionExtensions
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(EmbeddingOptions.SectionName).Bind(options));
 
-        services.AddHttpClient("embeddings");
-        services.AddHttpClient("webpage", c => c.Timeout = TimeSpan.FromSeconds(30));
-        services.AddHttpClient("notion", c => c.Timeout = TimeSpan.FromSeconds(30));
+        // SPEC-20260923-agent-runtime-hardening RF-004: standard resilience
+        // pipeline (retry 3× exp+jitter on transient failures, per-attempt +
+        // total timeouts, circuit breaker). Client.Timeout moves to Infinite so
+        // the pipeline owns timing — the per-attempt timeout preserves the old
+        // client-level bound. All upstream calls are idempotent reads/inference.
+        services.AddHttpClient("embeddings", c => c.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(o =>
+            {
+                o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(100);
+                o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(6);
+                // Sampling window must be ≥ 2× the attempt timeout.
+                o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(4);
+            });
+        services.AddHttpClient("webpage", c => c.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(o =>
+            {
+                o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+                o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(2);
+                o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(2);
+            });
+        services.AddHttpClient("notion", c => c.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(o =>
+            {
+                o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+                o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(2);
+                o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(2);
+            });
+        // MCP upstream proxies (SPEC-20260917) share the same policy.
+        services.AddHttpClient("mcp-upstream", c => c.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(o =>
+            {
+                o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(60);
+                o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(4);
+                o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(3);
+            });
 
         // SPEC-20260914-webpage-docfile-connectors: connector registry.
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.WebPageConnector>();
@@ -55,7 +88,14 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddOptions<Chat.ChatProviderOptions>()
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(Chat.ChatProviderOptions.SectionName).Bind(options));
-        services.AddHttpClient("chat");
+        services.AddHttpClient("chat", c => c.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(o =>
+            {
+                // LLM answers can legitimately take minutes on local providers.
+                o.AttemptTimeout.Timeout = TimeSpan.FromMinutes(3);
+                o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(10);
+                o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(8);
+            });
         // SPEC-20260916-settings-chat-config RF-003: effective config comes from
         // the Settings store when a ChatSettings row exists, else env — the client
         // is resolved per scope (nullable) so /settings edits apply without restart.
@@ -92,11 +132,15 @@ public static class KnowledgeHubServiceCollectionExtensions
                 return new AnswerService(
                     sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
                     sp.GetRequiredService<Settings.IApiKeyChatSettingsService>().GetEffectiveOptions(keyId),
+                    sp.GetRequiredService<IDistributedCache>(),
+                    sp.GetRequiredService<IConfiguration>(),
                     sp.GetRequiredService<ILogger<AnswerService>>());
             }
             return new AnswerService(
                 sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
                 sp.GetRequiredService<Settings.IChatSettingsService>().GetEffectiveOptions(),
+                sp.GetRequiredService<IDistributedCache>(),
+                sp.GetRequiredService<IConfiguration>(),
                 sp.GetRequiredService<ILogger<AnswerService>>());
         });
 
