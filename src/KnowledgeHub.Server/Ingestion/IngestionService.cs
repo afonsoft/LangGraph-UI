@@ -127,6 +127,7 @@ public sealed class IngestionService(
             var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
             var warnings = new List<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var graphBudget = configuration.GetValue("Graph:MaxChunksPerSync", 200);
 
             foreach (var file in files)
             {
@@ -189,6 +190,8 @@ public sealed class IngestionService(
 
                 await db.SaveChangesAsync(cancellationToken);
                 chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);
+                graphBudget -= await ExtractGraphAsync(
+                    source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
                 processed++;
             }
 
@@ -267,6 +270,7 @@ public sealed class IngestionService(
         var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
         var warnings = new List<string>(fetch.Warnings);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var graphBudget = configuration.GetValue("Graph:MaxChunksPerSync", 200);
 
         foreach (var raw in fetch.Documents)
         {
@@ -326,6 +330,8 @@ public sealed class IngestionService(
 
             await db.SaveChangesAsync(cancellationToken);
             chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, source.Id, vectors, cancellationToken);
+            graphBudget -= await ExtractGraphAsync(
+                source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
             processed++;
         }
 
@@ -456,6 +462,112 @@ public sealed class IngestionService(
             }
         }
         return created;
+    }
+
+    /// <summary>
+    /// SPEC-20260923-graphrag RF-001: opt-in entity/relation extraction for
+    /// sources with <c>graph:true</c>. Best-effort — a failure is a warning,
+    /// never a sync failure. Returns chunks consumed from the sync budget.
+    /// </summary>
+    private async Task<int> ExtractGraphAsync(
+        KnowledgeSource source, KnowledgeDocument doc, IReadOnlyList<DocumentChunk> chunks,
+        AsyncServiceScope scope, List<string> warnings, int budgetRemaining,
+        CancellationToken cancellationToken)
+    {
+        if (chunks.Count == 0 || budgetRemaining <= 0 || !GraphEnabledFor(source))
+            return 0;
+
+        var extractor = scope.ServiceProvider.GetService<Graph.EntityExtractor>();
+        var store = scope.ServiceProvider.GetService<Graph.IKnowledgeGraphStore>();
+        if (extractor is null || store is null)
+            return 0;
+
+        try
+        {
+            var batch = chunks.Take(budgetRemaining).ToList();
+            var result = await extractor.ExtractAsync(batch, cancellationToken);
+            if (result is null || (result.Entities.Count == 0 && result.Relations.Count == 0))
+                return batch.Count;
+
+            // Entity resolution: normalized-name merge per RF-003.
+            var nodes = new Dictionary<string, Domain.Entities.KgNode>(StringComparer.Ordinal);
+            foreach (var e in result.Entities)
+            {
+                var norm = Graph.EntityResolver.Normalize(e.Name);
+                if (norm.Length == 0 || nodes.ContainsKey(norm))
+                    continue;
+                nodes[norm] = await store.ResolveNodeAsync(e.Name, e.Type, source.Id, cancellationToken);
+            }
+
+            var edges = new List<Domain.Entities.KgEdge>();
+            foreach (var r in result.Relations)
+            {
+                var from = await ResolveRelationNodeAsync(store, nodes, r.From, source.Id, cancellationToken);
+                var to = await ResolveRelationNodeAsync(store, nodes, r.To, source.Id, cancellationToken);
+                if (from is null || to is null || from.Id == to.Id)
+                    continue;
+                var evidence = r.EvidenceIndex >= 1 && r.EvidenceIndex <= batch.Count
+                    ? batch[r.EvidenceIndex - 1].Id
+                    : batch[0].Id;
+                edges.Add(new Domain.Entities.KgEdge
+                {
+                    FromNodeId = from.Id,
+                    ToNodeId = to.Id,
+                    Kind = Graph.EntityResolver.NormalizeKind(r.Kind),
+                    EvidenceChunkId = evidence,
+                    KnowledgeDocumentId = doc.Id,
+                    KnowledgeSourceId = source.Id,
+                    PromptVersion = Graph.EntityExtractor.PromptVersion
+                });
+            }
+            var added = await store.AddEdgesAsync(edges, cancellationToken);
+            if (added > 0)
+                logger.LogInformation(
+                    "graph extraction for {Uri}: {Edges} edge(s), {Nodes} node(s)",
+                    doc.UriReference, added, nodes.Count);
+            return batch.Count;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "graph extraction failed for {Uri} — continuing sync", doc.UriReference);
+            warnings.Add($"graph extraction failed for '{doc.UriReference}'");
+            return Math.Min(chunks.Count, budgetRemaining);
+        }
+    }
+
+    /// <summary>Relations may reference entities absent from the entities list —
+    /// resolve them the same way (normalized merge), else skip.</summary>
+    private static async Task<Domain.Entities.KgNode?> ResolveRelationNodeAsync(
+        Graph.IKnowledgeGraphStore store, Dictionary<string, Domain.Entities.KgNode> nodes,
+        string name, Guid sourceId, CancellationToken ct)
+    {
+        var norm = Graph.EntityResolver.Normalize(name);
+        if (norm.Length == 0)
+            return null;
+        if (nodes.TryGetValue(norm, out var node))
+            return node;
+        node = await store.ResolveNodeAsync(name, null, sourceId, ct);
+        nodes[norm] = node;
+        return node;
+    }
+
+    /// <summary>RF-005: graph work requires both the global flag and the
+    /// per-source <c>"graph": true</c> in ConfigurationJson.</summary>
+    private bool GraphEnabledFor(KnowledgeSource source)
+    {
+        if (!configuration.GetValue("Graph:Enabled", false))
+            return false;
+        try
+        {
+            using var json = JsonDocument.Parse(source.ConfigurationJson ?? "{}");
+            return json.RootElement.TryGetProperty("graph", out var g)
+                && g.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Index (or remove) a single file — used by the vault watcher.</summary>

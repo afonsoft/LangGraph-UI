@@ -199,6 +199,12 @@ public static class KnowledgeHubServiceCollectionExtensions
                 : Search.NoOpReranker.Instance);
         // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
         services.AddScoped<Eval.EvalRunner>();
+
+        // SPEC-20260923-graphrag: adjacency-table store + LLM extractor.
+        services.AddScoped<Graph.IKnowledgeGraphStore, Graph.SqliteKnowledgeGraphStore>();
+        services.AddScoped<Graph.EntityExtractor>(sp => new Graph.EntityExtractor(
+            sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
+            sp.GetRequiredService<IConfiguration>()));
         // SPEC-20260923-prompt-injection-guard: deterministic heuristic scanner.
         services.AddSingleton<Security.IContentSanitizer, Security.ContentSanitizer>();
 
@@ -292,6 +298,9 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<KnowledgeHub.Server.Mcp.ToolProviders.SettingsToolsProvider>();
         services.AddSingleton<IToolProvider>(sp =>
             sp.GetRequiredService<KnowledgeHub.Server.Mcp.ToolProviders.SettingsToolsProvider>());
+        services.AddSingleton<IToolProvider>(sp =>
+            new KnowledgeHub.Server.Mcp.ToolProviders.GraphToolsProvider(
+                sp.GetRequiredService<IConfiguration>()));
 
         services.AddOptions<McpServerOptions>().Configure(options =>
         {
