@@ -1,0 +1,31 @@
+[
+  {
+    "id": "sample-literal-1",
+    "question": "What is KnowledgeHub?",
+    "expectedUris": [],
+    "expectedTextMarkers": ["knowledge", "source"],
+    "tags": ["literal", "smoke"]
+  },
+  {
+    "id": "sample-semantic-1",
+    "question": "How does the platform index documents?",
+    "expectedUris": [],
+    "expectedTextMarkers": ["chunk", "embedding"],
+    "mode": "hybrid",
+    "tags": ["semantic"]
+  },
+  {
+    "id": "sample-noanswer-1",
+    "question": "What is the airspeed velocity of an unladen swallow?",
+    "expectNoAnswer": true,
+    "tags": ["no-answer"]
+  },
+  {
+    "id": "sample-topk-1",
+    "question": "List the available MCP tools.",
+    "expectedUris": [],
+    "expectedTextMarkers": ["tool"],
+    "topK": 5,
+    "tags": ["literal"]
+  }
+]

@@ -17,6 +17,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<IntegrationSecret> IntegrationSecrets => Set<IntegrationSecret>();
     public DbSet<ChatSettings> ChatSettings => Set<ChatSettings>();
     public DbSet<ApiKeyChatSettings> ApiKeyChatSettings => Set<ApiKeyChatSettings>();
+    public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
 
     /// <summary>Configura as entidades do modelo: chaves, índices, tamanhos e relacionamentos.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -139,6 +140,13 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
                 .HasForeignKey<ApiKeyChatSettings>(s => s.ApiKeyId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(s => s.ApiKeyId).IsUnique();
+        });
+
+        modelBuilder.Entity<EvalRun>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.DatasetHash).IsRequired().HasMaxLength(64);
+            e.HasIndex(r => r.StartedAt);
         });
     }
 }

@@ -141,6 +141,8 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<IKnowledgeSourceService, KnowledgeSourceService>();
         services.AddScoped<Search.ILexicalSearchService, Search.LexicalSearchService>();
         services.AddScoped<ISearchService, SearchService>();
+        // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
+        services.AddScoped<Eval.EvalRunner>();
 
         services.AddSingleton<IngestionService>();
         services.AddSingleton<IIngestionService>(sp => sp.GetRequiredService<IngestionService>());
