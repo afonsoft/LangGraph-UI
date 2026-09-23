@@ -40,9 +40,16 @@ public static class StreamingEndpoints
                 return;
             }
 
+            if (!Search.ResolvedSearchFilter.TryResolve(request.Filters, out var streamFilter, out var streamFilterError))
+            {
+                http.Response.StatusCode = 400;
+                await http.Response.WriteAsJsonAsync(new { error = streamFilterError });
+                return;
+            }
+
             var ct = http.RequestAborted;
             var k = request.TopK is null or <= 0 ? SearchEndpoints.DefaultTopK : Math.Min(request.TopK.Value, SearchEndpoints.MaxTopK);
-            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, ct);
+            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, streamFilter, ct);
             await WriteSseAsync(http, answers.StreamAsync(request.Question, context, ct), ct);
         }).RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
 

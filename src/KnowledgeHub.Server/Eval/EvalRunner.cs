@@ -110,7 +110,7 @@ public sealed class EvalRunner(
     {
         var mode = ParseMode(evalCase.Mode) ?? defaultMode;
         var k = evalCase.TopK is > 0 ? evalCase.TopK.Value : defaultK;
-        var results = await search.SearchAsync(evalCase.Question, k, null, mode, ct);
+        var results = await search.SearchAsync(evalCase.Question, k, null, mode, filter: null, ct);
 
         var recall = EvalMetrics.RecallAtK(results, evalCase);
         var precision = EvalMetrics.PrecisionAtK(results, evalCase);

@@ -10,7 +10,7 @@
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-retrieval-quality` |
 | Ticket | `[A DEFINIR]` |
-| Status | `Draft` |
+| Status | `Done` |
 | Origin | `gap-analysis-20260923` — GAP-requirements-reranker + GAP-requirements-query-rewriting + GAP-requirements-metadata-filters + GAP-requirements-result-contract-metadata |
 
 ## 1. User Story

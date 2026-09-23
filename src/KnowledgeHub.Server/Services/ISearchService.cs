@@ -7,7 +7,9 @@ public interface ISearchService
 {
     /// <param name="sourceId">Restricts the search to one source; null searches all active sources.</param>
     /// <param name="mode">Hybrid (default), Semantic (pre-hybrid behavior) or Lexical.</param>
+    /// <param name="filter">Validated metadata filters (SPEC-20260923-retrieval-quality RF-003).</param>
     Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query, int topK, Guid? sourceId = null,
-        SearchMode mode = SearchMode.Hybrid, CancellationToken ct = default);
+        SearchMode mode = SearchMode.Hybrid, Search.ResolvedSearchFilter? filter = null,
+        CancellationToken ct = default);
 }
