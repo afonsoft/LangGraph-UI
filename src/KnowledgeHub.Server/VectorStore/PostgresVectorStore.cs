@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Npgsql;
+using NpgsqlTypes;
 using Pgvector;
 
 namespace KnowledgeHub.Server.VectorStore;
@@ -31,22 +33,29 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         _options = options ?? new PostgresOptions();
     }
 
-    public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default)
+    /// <summary>Serializes the metadata map for the jsonb column — null/empty →
+    /// <c>{}</c> (SPEC-20260923-pgvector-metadata-upsert RF-002).</summary>
+    internal static string SerializeMetadata(IReadOnlyDictionary<string, string>? metadata) =>
+        metadata is null || metadata.Count == 0 ? "{}" : JsonSerializer.Serialize(metadata);
+
+    public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model,
+        IReadOnlyDictionary<string, string>? metadata = null, CancellationToken cancellationToken = default)
     {
         CheckDimensions(vector);
         await EnsureInitializedAsync(cancellationToken);
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO kh_embeddings (chunk_id, document_id, source_id, model, embedding)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (chunk_id) DO UPDATE SET model = $4, embedding = $5
+            INSERT INTO kh_embeddings (chunk_id, document_id, source_id, model, embedding, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (chunk_id) DO UPDATE SET model = $4, embedding = $5, metadata = $6
             """;
         cmd.Parameters.AddWithValue(chunkId);
         cmd.Parameters.AddWithValue(documentId);
         cmd.Parameters.AddWithValue(sourceId);
         cmd.Parameters.AddWithValue(model);
         cmd.Parameters.AddWithValue(new Vector(vector));
+        cmd.Parameters.AddWithValue(NpgsqlDbType.Jsonb, SerializeMetadata(metadata));
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -80,6 +89,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                     cmd.Parameters.AddWithValue(item.SourceId);
                     cmd.Parameters.AddWithValue(model);
                     cmd.Parameters.AddWithValue(new Vector(item.Vector));
+                    cmd.Parameters.AddWithValue(NpgsqlDbType.Jsonb, SerializeMetadata(item.Metadata));
                 }
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
@@ -92,21 +102,21 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         }
     }
 
-    /// <summary>Multi-row INSERT with 5 positional parameters per row.</summary>
+    /// <summary>Multi-row INSERT with 6 positional parameters per row.</summary>
     internal static string BuildBatchUpsertSql(int rowCount)
     {
         var sb = new System.Text.StringBuilder(
-            "INSERT INTO kh_embeddings (chunk_id, document_id, source_id, model, embedding) VALUES ");
+            "INSERT INTO kh_embeddings (chunk_id, document_id, source_id, model, embedding, metadata) VALUES ");
         for (var i = 0; i < rowCount; i++)
         {
             if (i > 0)
                 sb.Append(',');
-            var b = i * 5;
-            sb.Append($"(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5})");
+            var b = i * 6;
+            sb.Append($"(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5},${b + 6})");
         }
         sb.Append(
             " ON CONFLICT (chunk_id) DO UPDATE SET model = EXCLUDED.model, embedding = EXCLUDED.embedding," +
-            " document_id = EXCLUDED.document_id, source_id = EXCLUDED.source_id");
+            " document_id = EXCLUDED.document_id, source_id = EXCLUDED.source_id, metadata = EXCLUDED.metadata");
         return sb.ToString();
     }
 

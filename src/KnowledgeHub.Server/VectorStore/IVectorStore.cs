@@ -3,8 +3,13 @@ namespace KnowledgeHub.Server.VectorStore;
 /// <summary>One ranked hit from vector search.</summary>
 public sealed record VectorHit(Guid ChunkId, double Score);
 
-/// <summary>One vector to persist in a batch upsert.</summary>
-public sealed record VectorUpsert(Guid ChunkId, Guid DocumentId, Guid SourceId, float[] Vector);
+/// <summary>One vector to persist in a batch upsert. <paramref name="Metadata"/>
+/// is an optional key/value map persisted by stores that support it (pgvector
+/// <c>metadata jsonb</c>); other stores ignore it
+/// (SPEC-20260923-pgvector-metadata-upsert RF-001).</summary>
+public sealed record VectorUpsert(
+    Guid ChunkId, Guid DocumentId, Guid SourceId, float[] Vector,
+    IReadOnlyDictionary<string, string>? Metadata = null);
 
 /// <summary>
 /// Abstraction over chunk-embedding storage and similarity search (SPEC-02 RF-006).
@@ -13,8 +18,10 @@ public sealed record VectorUpsert(Guid ChunkId, Guid DocumentId, Guid SourceId, 
 /// </summary>
 public interface IVectorStore
 {
-    /// <summary>Store or replace the vector for a chunk, stamped with the producing model id.</summary>
-    Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default);
+    /// <summary>Store or replace the vector for a chunk, stamped with the producing model id.
+    /// <paramref name="metadata"/> is persisted where supported (pgvector jsonb); ignored elsewhere.</summary>
+    Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model,
+        IReadOnlyDictionary<string, string>? metadata = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Batch upsert (SPEC-20260916-performance-memory-cache RF-004) — default
@@ -24,7 +31,7 @@ public interface IVectorStore
         IReadOnlyList<VectorUpsert> items, string model, CancellationToken cancellationToken = default)
     {
         foreach (var item in items)
-            await UpsertAsync(item.ChunkId, item.DocumentId, item.SourceId, item.Vector, model, cancellationToken);
+            await UpsertAsync(item.ChunkId, item.DocumentId, item.SourceId, item.Vector, model, item.Metadata, cancellationToken);
     }
 
     /// <summary>Purge all vectors owned by a document.</summary>

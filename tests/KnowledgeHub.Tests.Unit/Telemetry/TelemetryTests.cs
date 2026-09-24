@@ -278,7 +278,8 @@ public sealed class TelemetryTests
     private sealed class StubVectorStore(VectorHit hit) : IVectorStore
     {
         public Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector,
-            string model, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            string model, IReadOnlyDictionary<string, string>? metadata = null,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
         public Task<IReadOnlyList<VectorHit>> SearchAsync(float[] queryVector, string model, int topK,

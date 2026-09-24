@@ -357,10 +357,18 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         }
         await db.SaveChangesAsync(ct);
 
+        // SPEC-20260923-pgvector-metadata-upsert RF-003: same provenance map as
+        // the ingestion path — keeps the pgvector metadata column meaningful.
+        var upsertMetadata = new Dictionary<string, string>
+        {
+            ["sourceType"] = target.SourceType.ToString(),
+            ["indexedAt"] = doc2.IndexedAt.ToString("o")
+        };
         foreach (var chunk in newChunks)
         {
             var vector = await embeddings.EmbedAsync(chunk.TextContent, ct);
-            await vectors.UpsertAsync(chunk.Id, doc2.Id, target.Id, vector, embeddings.ModelId, ct);
+            await vectors.UpsertAsync(chunk.Id, doc2.Id, target.Id, vector, embeddings.ModelId,
+                upsertMetadata, ct);
         }
 
         // RF-004: keep the FTS index consistent with Chunks.

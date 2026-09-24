@@ -190,7 +190,7 @@ public sealed class IngestionService(
                 ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
 
                 await db.SaveChangesAsync(cancellationToken);
-                chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);
+                chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
                 graphBudget -= await ExtractGraphAsync(
                     source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
                 processed++;
@@ -330,7 +330,7 @@ public sealed class IngestionService(
             ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
 
             await db.SaveChangesAsync(cancellationToken);
-            chunksCreated += await EmbedChunksAsync(newChunks, doc.Id, source.Id, vectors, cancellationToken);
+            chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
             graphBudget -= await ExtractGraphAsync(
                 source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
             processed++;
@@ -412,9 +412,16 @@ public sealed class IngestionService(
     /// RF-004). Batch failure falls back to per-chunk so one bad text doesn't
     /// sink the document.</summary>
     private async Task<int> EmbedChunksAsync(
-        List<DocumentChunk> chunks, Guid documentId, Guid sourceId,
+        List<DocumentChunk> chunks, KnowledgeDocument doc, KnowledgeSource source,
         IVectorStore vectors, CancellationToken cancellationToken)
     {
+        // SPEC-20260923-pgvector-metadata-upsert RF-003: provenance metadata
+        // rides every upsert (pgvector persists it; other stores ignore it).
+        var metadata = new Dictionary<string, string>
+        {
+            ["sourceType"] = source.SourceType.ToString(),
+            ["indexedAt"] = doc.IndexedAt.ToString("o")
+        };
         IReadOnlyList<float[]> batchVectors;
         try
         {
@@ -424,14 +431,14 @@ public sealed class IngestionService(
         catch (EmbeddingProviderException ex)
         {
             logger.LogWarning("Batch embedding failed for document {DocumentId}, falling back to per-chunk: {Message}",
-                documentId, ex.Message);
-            return await EmbedChunksIndividuallyAsync(chunks, documentId, sourceId, vectors, cancellationToken);
+                doc.Id, ex.Message);
+            return await EmbedChunksIndividuallyAsync(chunks, doc.Id, source.Id, vectors, metadata, cancellationToken);
         }
 
         try
         {
             var items = chunks.Zip(batchVectors)
-                .Select(pair => new VectorUpsert(pair.First.Id, documentId, sourceId, pair.Second))
+                .Select(pair => new VectorUpsert(pair.First.Id, doc.Id, source.Id, pair.Second, metadata))
                 .ToList();
             await vectors.UpsertBatchAsync(items, embeddings.ModelId, cancellationToken);
             return items.Count;
@@ -439,14 +446,15 @@ public sealed class IngestionService(
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning("Batch vector upsert failed for document {DocumentId}, falling back to per-chunk: {Message}",
-                documentId, ex.Message);
-            return await EmbedChunksIndividuallyAsync(chunks, documentId, sourceId, vectors, cancellationToken);
+                doc.Id, ex.Message);
+            return await EmbedChunksIndividuallyAsync(chunks, doc.Id, source.Id, vectors, metadata, cancellationToken);
         }
     }
 
     private async Task<int> EmbedChunksIndividuallyAsync(
         List<DocumentChunk> chunks, Guid documentId, Guid sourceId,
-        IVectorStore vectors, CancellationToken cancellationToken)
+        IVectorStore vectors, IReadOnlyDictionary<string, string>? metadata,
+        CancellationToken cancellationToken)
     {
         var created = 0;
         foreach (var chunk in chunks)
@@ -454,7 +462,8 @@ public sealed class IngestionService(
             try
             {
                 var vector = await embeddings.EmbedAsync(chunk.TextContent, cancellationToken);
-                await vectors.UpsertAsync(chunk.Id, documentId, sourceId, vector, embeddings.ModelId, cancellationToken);
+                await vectors.UpsertAsync(chunk.Id, documentId, sourceId, vector, embeddings.ModelId,
+                    metadata, cancellationToken);
                 created++;
             }
             catch (EmbeddingProviderException ex)
@@ -697,7 +706,7 @@ public sealed class IngestionService(
             ScanChunks(newChunks, doc.Id, sourceId, title, db, watcherWarnings);
 
             await db.SaveChangesAsync(cancellationToken);
-            await EmbedChunksAsync(newChunks, doc.Id, sourceId, vectors, cancellationToken);
+            await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await scope.ServiceProvider.GetRequiredService<ILexicalSearchService>()
                 .ReconcileAsync(cancellationToken);
