@@ -29,6 +29,7 @@ public sealed class SearchService(
     IQueryRewriter rewriter,
     IReranker reranker,
     Auth.ICallerScopeProvider callerScope,
+    Settings.IGraphSettingsService graphSettings,
     ILogger<SearchService> logger) : ISearchService
 {
     private const int CandidateWindowFactor = 4;
@@ -382,7 +383,44 @@ public sealed class SearchService(
 
         if (excluded > 0)
             logger.LogInformation("Excluded {Count} flagged chunk(s) from search context", excluded);
+        await AttachComponentsAsync(items, ct);
         return items;
+    }
+
+    /// <summary>SPEC-20260924-graph-tool-discovery RF-001: attaches the
+    /// knowledge-graph entity names evidenced by each returned chunk so callers
+    /// can feed them straight into the find_* tools. One batched query on the
+    /// indexed EvidenceChunkId column; skipped entirely when GraphRAG is off.</summary>
+    private async Task AttachComponentsAsync(List<SearchResultItem> items, CancellationToken ct)
+    {
+        if (!graphSettings.GetEffective().Enabled)
+            return;
+        var chunkIds = items.Where(i => i.ChunkId is not null)
+            .Select(i => i.ChunkId!.Value).ToList();
+        if (chunkIds.Count == 0)
+            return;
+
+        var edges = await db.KgEdges.AsNoTracking()
+            .Where(e => chunkIds.Contains(e.EvidenceChunkId))
+            .Select(e => new { e.EvidenceChunkId, FromName = e.From.Name, ToName = e.To.Name })
+            .ToListAsync(ct);
+        if (edges.Count == 0)
+            return;
+
+        var byChunk = edges
+            .GroupBy(e => e.EvidenceChunkId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.SelectMany(e => new[] { e.FromName, e.ToName })
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                    .ToList());
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i].ChunkId is { } id && byChunk.TryGetValue(id, out var names))
+                items[i] = items[i] with { Components = names };
+        }
     }
 
     /// <summary>RF-004: provenance metadata derived from stored columns.</summary>

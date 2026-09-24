@@ -24,6 +24,7 @@ namespace KnowledgeHub.Tests.Unit.Server;
 // CA-002), fail-soft distributed cache (RNF-003 / CA-004), search-result and
 // query-embedding caching with index-version invalidation (RF-005), and the
 // batch vector upsert (RF-004 / CA-003).
+[Collection("SearchTelemetry")]
 public sealed class PerformanceCacheTests
 {
     // ---- T1: catalog cache -------------------------------------------------
@@ -137,7 +138,7 @@ public sealed class PerformanceCacheTests
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, embeddings, vectors, new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(),
-            NoOpReranker.Instance, new UnrestrictedScope(), NullLogger<SearchService>.Instance);
+            NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var first = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(first);
@@ -181,7 +182,7 @@ public sealed class PerformanceCacheTests
         var search = new SearchService(db, new CountingEmbeddingProvider(),
             new CountingVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(),
             new ThrowingCache(), new ConfigurationBuilder().Build(), new PassthroughRewriter(),
-            NoOpReranker.Instance, new UnrestrictedScope(), NullLogger<SearchService>.Instance);
+            NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var results = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
         Assert.Single(results);

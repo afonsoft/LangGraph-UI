@@ -203,6 +203,8 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                         .Append(c.Path ?? c.Uri).Append(')');
                     if (c.SuspicionFlags is not null)
                         text.Append(" [flagged: ").Append(c.SuspicionFlags).Append(']');
+                    if (c.Components is { Count: > 0 } comps)
+                        text.Append(" [components: ").Append(string.Join(", ", comps)).Append(']');
                 }
             }
             return await ToolResults.Structured(text.ToString(), answer);
@@ -394,6 +396,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             // must be distinguishable in the text surface too.
             if (r.SuspicionFlags is not null)
                 sb.Append(" | flagged: ").Append(r.SuspicionFlags);
+            // SPEC-20260924-graph-tool-discovery RF-003: graph entity names
+            // usable as `component` args for the find_* tools.
+            if (r.Components is { Count: > 0 } comps)
+                sb.Append(" | components: ").Append(string.Join(", ", comps));
             sb.Append('\n')
               .Append(Security.PromptBoundary.Escape(r.ChunkText)).Append("\n\n");
         }
@@ -411,7 +417,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         var i = 1;
         foreach (var r in results)
         {
-            var header = $"[{i}] {r.DocumentTitle} — {r.SourceName} (score {r.Score:F3}, {r.UriReference})";
+            var header = $"[{i}] {r.DocumentTitle} — {r.SourceName} (score {r.Score:F3}, {r.UriReference})"
+                + (r.Components is { Count: > 0 } comps
+                    ? $" — components: {string.Join(", ", comps)}"
+                    : "");
             sb.Append(Security.PromptBoundary.WrapChunk(
                       i++, $"{r.SourceName}/{r.UriReference}",
                       header + "\n" + r.ChunkText,
