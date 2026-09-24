@@ -59,19 +59,23 @@
                 }
             </Template>
         </TableColumn>
-        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="300">
+        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="150">
             <Template Context="v">
                 <div class="kh-actions">
-                    <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" Text="Editar"
+                    <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" TooltipText="Editar"
+                            TooltipPlacement="Placement.Top"
                             OnClick="() => ShowEdit(v.Row)" />
-                    <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" Text="Sync"
+                    <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" TooltipText="Sync"
+                            TooltipPlacement="Placement.Top"
                             OnClick="() => SyncNow(v.Row)" />
                     <Button Size="Size.ExtraSmall" Color="Color.Warning"
                             Icon="@(v.Row.IsActive ? "fa-solid fa-pause" : "fa-solid fa-play")"
-                            Text="@(v.Row.IsActive ? "Desativar" : "Ativar")"
+                            TooltipText="@(v.Row.IsActive ? "Desativar" : "Ativar")"
+                            TooltipPlacement="Placement.Top"
                             OnClick="() => ToggleActive(v.Row)" />
                     <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger" Icon="fa-solid fa-trash"
-                                      Text="Excluir" Title="Confirmar exclusão"
+                                      TooltipText="Excluir" TooltipPlacement="Placement.Top"
+                                      Title="Confirmar exclusão"
                                       Content="Documentos e chunks indexados serão removidos."
                                       OnConfirm="() => DeleteSource(v.Row)" />
                 </div>
