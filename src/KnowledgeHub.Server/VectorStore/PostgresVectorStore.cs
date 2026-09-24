@@ -22,15 +22,23 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
     private readonly int _dimensions;
     private readonly PostgresOptions _options;
     private bool _initialized;
+    private volatile bool _hnswIndexCreated;
     private readonly SemaphoreSlim _initGate = new(1, 1);
 
     public PostgresVectorStore(string connectionString, int dimensions = 384, PostgresOptions? options = null)
     {
-        var builder = new NpgsqlDataSourceBuilder(connectionString);
+        _options = options ?? new PostgresOptions();
+        var csb = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            MinPoolSize = _options.MinPoolSize,
+            MaxPoolSize = _options.MaxPoolSize,
+            ConnectionIdleLifetime = _options.ConnectionIdleLifetimeSeconds,
+            CommandTimeout = _options.CommandTimeoutSeconds
+        };
+        var builder = new NpgsqlDataSourceBuilder(csb.ConnectionString);
         builder.UseVector();
         _dataSource = builder.Build();
         _dimensions = dimensions;
-        _options = options ?? new PostgresOptions();
     }
 
     /// <summary>Serializes the metadata map for the jsonb column — null/empty →
@@ -57,6 +65,10 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         cmd.Parameters.AddWithValue(new Vector(vector));
         cmd.Parameters.AddWithValue(NpgsqlDbType.Jsonb, SerializeMetadata(metadata));
         await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // SPEC-20260924-pgvector-rag-performance RF-002: auto-create HNSW index once threshold is reached
+        if (!_hnswIndexCreated)
+            await MaybeCreateHnswIndexAsync(conn, cancellationToken);
     }
 
     /// <summary>
@@ -94,6 +106,10 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
             await tx.CommitAsync(cancellationToken);
+
+            // SPEC-20260924-pgvector-rag-performance RF-002: auto-create HNSW index once threshold is reached
+            if (!_hnswIndexCreated)
+                await MaybeCreateHnswIndexAsync(conn, cancellationToken);
         }
         catch
         {
@@ -141,27 +157,55 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             return [];
 
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
-        await using var cmd = conn.CreateCommand();
+        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            // SPEC-20260924-pgvector-rag-performance RF-003: tune hnsw.ef_search for query speed vs recall
+            if (_options.HnswEfSearch > 0)
+            {
+                try
+                {
+                    await using var setCmd = conn.CreateCommand();
+                    setCmd.Transaction = (NpgsqlTransaction)tx;
+                    setCmd.CommandText = $"SET LOCAL hnsw.ef_search = {_options.HnswEfSearch}";
+                    await setCmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+                catch (PostgresException)
+                {
+                    // Extension version might not support hnsw.ef_search or index absent — safe ignore
+                }
+            }
 
-        var whereSource = sourceIds is null ? "" : " AND source_id = ANY($4)";
-        cmd.CommandText = $"""
-            SELECT chunk_id, 1 - (embedding <=> $1) AS score
-            FROM kh_embeddings
-            WHERE model = $2{whereSource}
-            ORDER BY embedding <=> $1
-            LIMIT $3
-            """;
-        cmd.Parameters.AddWithValue(new Vector(queryVector));
-        cmd.Parameters.AddWithValue(model);
-        cmd.Parameters.AddWithValue(topK);
-        if (sourceIds is not null)
-            cmd.Parameters.AddWithValue(sourceIds.ToArray());
+            await using var cmd = conn.CreateCommand();
+            cmd.Transaction = (NpgsqlTransaction)tx;
 
-        var hits = new List<VectorHit>();
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-            hits.Add(new VectorHit(reader.GetGuid(0), reader.GetDouble(1)));
-        return hits;
+            var whereSource = sourceIds is null ? "" : " AND source_id = ANY($4)";
+            cmd.CommandText = $"""
+                SELECT chunk_id, 1 - (embedding <=> $1) AS score
+                FROM kh_embeddings
+                WHERE model = $2{whereSource}
+                ORDER BY embedding <=> $1
+                LIMIT $3
+                """;
+            cmd.Parameters.AddWithValue(new Vector(queryVector));
+            cmd.Parameters.AddWithValue(model);
+            cmd.Parameters.AddWithValue(topK);
+            if (sourceIds is not null)
+                cmd.Parameters.AddWithValue(sourceIds.ToArray());
+
+            var hits = new List<VectorHit>();
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                hits.Add(new VectorHit(reader.GetGuid(0), reader.GetDouble(1)));
+
+            await tx.CommitAsync(cancellationToken);
+            return hits;
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     /// <summary>
@@ -173,6 +217,17 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         CREATE INDEX IF NOT EXISTS {HnswIndexName}
         ON kh_embeddings USING hnsw (embedding vector_cosine_ops)
         WITH (m = {_options.HnswM}, ef_construction = {_options.HnswEfConstruction})
+        """;
+
+    /// <summary>
+    /// SPEC-20260924-pgvector-rag-performance RF-001: Secondary support indexes on
+    /// source_id, document_id, compound (source_id, model) and metadata jsonb (GIN).
+    /// </summary>
+    internal static string BuildSecondaryIndexesSql() => """
+        CREATE INDEX IF NOT EXISTS kh_embeddings_source_idx ON kh_embeddings (source_id);
+        CREATE INDEX IF NOT EXISTS kh_embeddings_document_idx ON kh_embeddings (document_id);
+        CREATE INDEX IF NOT EXISTS kh_embeddings_source_model_idx ON kh_embeddings (source_id, model);
+        CREATE INDEX IF NOT EXISTS kh_embeddings_metadata_gin_idx ON kh_embeddings USING gin (metadata);
         """;
 
     private void CheckDimensions(float[] vector)
@@ -206,6 +261,10 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 );
                 ALTER TABLE kh_embeddings ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
                 CREATE INDEX IF NOT EXISTS kh_embeddings_model_idx ON kh_embeddings (model);
+                CREATE INDEX IF NOT EXISTS kh_embeddings_source_idx ON kh_embeddings (source_id);
+                CREATE INDEX IF NOT EXISTS kh_embeddings_document_idx ON kh_embeddings (document_id);
+                CREATE INDEX IF NOT EXISTS kh_embeddings_source_model_idx ON kh_embeddings (source_id, model);
+                CREATE INDEX IF NOT EXISTS kh_embeddings_metadata_gin_idx ON kh_embeddings USING gin (metadata);
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
             await MaybeCreateHnswIndexAsync(conn, cancellationToken);
@@ -224,6 +283,9 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
     /// </summary>
     private async Task MaybeCreateHnswIndexAsync(NpgsqlConnection conn, CancellationToken ct)
     {
+        if (_hnswIndexCreated)
+            return;
+
         await using var count = conn.CreateCommand();
         count.CommandText = "SELECT count(*) FROM kh_embeddings";
         var rows = (long)(await count.ExecuteScalarAsync(ct))!;
@@ -235,6 +297,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             await using var idx = conn.CreateCommand();
             idx.CommandText = BuildHnswIndexSql();
             await idx.ExecuteNonQueryAsync(ct);
+            _hnswIndexCreated = true;
         }
         catch (PostgresException)
         {
