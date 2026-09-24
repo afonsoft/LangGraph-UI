@@ -28,6 +28,10 @@ public sealed record CitationDto
     /// <summary>Suspicion flags on the cited chunk when it survived exclusion
     /// (SPEC-20260923-flagged-chunk-badge RF-002); null = clean.</summary>
     public string? SuspicionFlags { get; init; }
+    /// <summary>Knowledge-graph entity names evidenced by the cited chunk —
+    /// usable as `component`/`a`/`b` args of the find_* tools
+    /// (SPEC-20260924-graph-tool-discovery RF-002).</summary>
+    public IReadOnlyList<string>? Components { get; init; }
 }
 
 /// <summary>Synthesized answer (or raw context when generation is off/unavailable).</summary>

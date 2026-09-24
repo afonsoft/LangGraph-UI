@@ -92,7 +92,7 @@ public sealed class TelemetryTests
         var search = new SearchService(db, new StubEmbeddings(),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(),
-            NoOpReranker.Instance, new UnrestrictedScope(), NullLogger<SearchService>.Instance);
+            NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var samples = CollectMetrics(() =>
         {
@@ -233,7 +233,7 @@ public sealed class TelemetryTests
         var search = new SearchService(db, new StubEmbeddings(),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(),
-            NoOpReranker.Instance, new UnrestrictedScope(), NullLogger<SearchService>.Instance);
+            NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var samples = CollectMetrics(() =>
             search.SearchAsync("sensitive user query", 5, mode: SearchMode.Semantic)

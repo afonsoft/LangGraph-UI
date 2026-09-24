@@ -20,28 +20,32 @@ public sealed class GraphToolsProvider(IGraphSettingsService graphSettings) : IT
 {
     private const int MaxDepth = 3;
 
+    // SPEC-20260924-graph-tool-discovery RF-004: descriptions explain when to
+    // use each tool vs search_knowledge, and every example uses entity names
+    // that real extraction produces (services, concepts — the same strings the
+    // `components` field of search results returns).
     private static readonly JsonObject ComponentSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "component":{"type":"string","description":"Entity name (service, database, API, team…)","examples":["payments-api"]},
+          "component":{"type":"string","description":"Entity name as extracted from indexed text — case/variant-insensitive. Discover real names via search_knowledge: every hit carries a `components` field with the entity names found in that chunk.","examples":["OmniRoute","AgentRouter"]},
           "depth":{"type":"integer","description":"Traversal depth 1-3 (default 1, clamped to 3)"}
         },"required":["component"],
-        "examples":[{"component":"payments-api","depth":2}]}
+        "examples":[{"component":"OmniRoute","depth":2}]}
         """)!.AsObject();
 
     private static readonly JsonObject PathSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "a":{"type":"string","description":"Source entity name"},
-          "b":{"type":"string","description":"Target entity name"},
+          "a":{"type":"string","description":"Source entity name","examples":["OpenClaw"]},
+          "b":{"type":"string","description":"Target entity name","examples":["OmniRoute"]},
           "depth":{"type":"integer","description":"Max path length 1-3 (default 3, clamped)"}
         },"required":["a","b"],
-        "examples":[{"a":"web-frontend","b":"orders-db","depth":3}]}
+        "examples":[{"a":"OpenClaw","b":"OmniRoute","depth":3}]}
         """)!.AsObject();
 
     private static readonly JsonObject ImpactSchema = JsonNode.Parse("""
         {"type":"object","properties":{
-          "component":{"type":"string","description":"Entity name whose dependents are analyzed"}
+          "component":{"type":"string","description":"Entity name whose dependents are analyzed — discover names via the `components` field of search_knowledge results","examples":["OmniRoute"]}
         },"required":["component"],
-        "examples":[{"component":"payments-api"}]}
+        "examples":[{"component":"OmniRoute"}]}
         """)!.AsObject();
 
     public Task<IReadOnlyList<CatalogTool>> GetToolsAsync(
@@ -55,7 +59,7 @@ public sealed class GraphToolsProvider(IGraphSettingsService graphSettings) : IT
             new CatalogTool
             {
                 Name = "find_dependencies",
-                Description = "What does this component depend on? Bounded outbound traversal of the knowledge graph — every edge carries evidence (chunk + document + source) from the indexed text.",
+                Description = "What does this component depend on? Outbound traversal of the knowledge graph built from indexed sources — every edge carries evidence (chunk + document + source). Use when the question is about RELATIONSHIPS ('what does X call/use/need?', 'which services touch Y?'), not text content — for content use search_knowledge first; its results return a `components` field with entity names you can pass here. Unknown names get 'did you mean' suggestions.",
                 InputSchema = ComponentSchema,
                 ReadOnly = true,
                 Handler = (ctx, ct) => TraverseAsync(ctx, ct, GraphDirection.Outbound)
@@ -63,7 +67,7 @@ public sealed class GraphToolsProvider(IGraphSettingsService graphSettings) : IT
             new CatalogTool
             {
                 Name = "find_dependents",
-                Description = "What depends on this component? Bounded inbound traversal of the knowledge graph — every edge carries evidence (chunk + document + source).",
+                Description = "What depends on this component? Inbound traversal — answers 'who calls/uses/relies on X?' and 'what breaks if X changes?'. Use for reverse-impact questions on entities extracted from indexed sources; every edge carries evidence (chunk + document + source). Discover entity names via search_knowledge results (`components` field); unknown names get 'did you mean' suggestions.",
                 InputSchema = ComponentSchema,
                 ReadOnly = true,
                 Handler = (ctx, ct) => TraverseAsync(ctx, ct, GraphDirection.Inbound)
@@ -71,7 +75,7 @@ public sealed class GraphToolsProvider(IGraphSettingsService graphSettings) : IT
             new CatalogTool
             {
                 Name = "find_path",
-                Description = "Shortest path between two entities in the knowledge graph (depth-capped BFS).",
+                Description = "Shortest path between two entities in the knowledge graph (depth-capped BFS, up to 5 paths). Use for connectivity questions — 'how is A related to B?', 'is there a chain from X to Y?' — where both endpoints are known entity names (from search_knowledge `components` or prior graph results). Returns 'no path' when the entities are not connected within the depth cap.",
                 InputSchema = PathSchema,
                 ReadOnly = true,
                 Handler = FindPathAsync
@@ -79,7 +83,7 @@ public sealed class GraphToolsProvider(IGraphSettingsService graphSettings) : IT
             new CatalogTool
             {
                 Name = "analyze_impact",
-                Description = "Impact analysis: 1-hop dependents plus the affected documents behind each relation's evidence.",
+                Description = "Impact analysis for a component: 1-hop dependents plus the documents behind each relation's evidence — answers 'if X changes/fails, what is affected and where is it documented?'. Use for change-impact and blast-radius questions. Entity names come from search_knowledge results (`components` field) or graph traversal output; unknown names get 'did you mean' suggestions.",
                 InputSchema = ImpactSchema,
                 ReadOnly = true,
                 Handler = AnalyzeImpactAsync
