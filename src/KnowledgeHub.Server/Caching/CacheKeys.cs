@@ -27,6 +27,11 @@ public static class CacheKeys
     public static string Answer(string model, string question, IEnumerable<Guid?> chunkIds, string indexVersion) =>
         $"ans:{model}:{Sha256(question)}:{Sha256(string.Join(',', chunkIds))}:v{indexVersion}";
 
+    /// <summary>SPEC-20260924-redis-cache-and-tool-caching: tool invocation cache key.
+    /// Hashes tool name + arguments + indexVersion so ingestion bumps invalidate tool results.</summary>
+    public static string Tool(string toolName, string argumentsJson, string indexVersion) =>
+        $"mcp:tool:{toolName}:{Sha256(argumentsJson)}:v{indexVersion}";
+
     /// <summary>Short stable content hash for cache keys.</summary>
     public static string Hash(string value) => Sha256(value);
 

@@ -269,12 +269,28 @@ public static class KnowledgeHubServiceCollectionExtensions
                 .GetValue<string>($"{Configuration.CacheOptions.SectionName}:Redis:ConnectionString")
                 ?? throw new InvalidOperationException(
                     "Cache:Redis:ConnectionString is required when Cache:Provider=redis");
-            services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
+            services.AddStackExchangeRedisCache(o =>
+            {
+                o.Configuration = redisConnection;
+                try
+                {
+                    var parsed = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
+                    parsed.AbortOnConnectFail = false;
+                    parsed.ConnectTimeout = 3000;
+                    o.ConfigurationOptions = parsed;
+                }
+                catch
+                {
+                    // If parsing fails fall back to connection string only
+                }
+            });
         }
         else
         {
             services.AddDistributedMemoryCache();
         }
+        services.AddSingleton<Caching.ICacheManagerService, Caching.CacheManagerService>();
+        services.AddSingleton<Caching.IToolCacheService, Caching.ToolCacheService>();
 
         // SPEC-20260916-tavily-mcp-proxy: Tavily proxy tools (tavily_*).
         services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.TavilyOptions>()
@@ -365,15 +381,30 @@ public static class KnowledgeHubServiceCollectionExtensions
                         }]
                     };
 
+                var toolCache = ctx.Services!.GetService<Caching.IToolCacheService>();
+                if (toolCache is not null && toolCache.IsCacheable(name!, tool.ReadOnly))
+                {
+                    var cached = await toolCache.GetCachedResultAsync(name!, ctx.Params?.Arguments, ct);
+                    if (cached is not null)
+                        return cached;
+                }
+
                 var toolSw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
-                    return await tool.Handler(
+                    var result = await tool.Handler(
                         new KnowledgeHub.Server.Mcp.ToolCallContext
                         {
                             Services = ctx.Services!,
                             Arguments = ctx.Params?.Arguments
                         }, ct);
+
+                    if (toolCache is not null && toolCache.IsCacheable(name!, tool.ReadOnly))
+                    {
+                        await toolCache.SetCachedResultAsync(name!, ctx.Params?.Arguments, result, ct);
+                    }
+
+                    return result;
                 }
                 finally
                 {

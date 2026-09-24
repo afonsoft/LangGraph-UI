@@ -221,11 +221,21 @@ Access at http://localhost:5000.
 ## Tests & Coverage
 
 ```bash
-dotnet test                                       # unit + integration tests
+dotnet test                                          # unit + integration tests
+dotnet test --collect:"XPlat Code Coverage"          # with Coverlet coverage
 dotnet format KnowledgeHub.slnx --verify-no-changes  # formatting gate
 ```
 
-CI gates: Build, Unit Tests, Integration Tests (SQLite), Blazor WASM Client Validation, Docker Image Build, Code Quality (SonarQube), Security Scan.
+| Metric | Value |
+|---|---|
+| **Total tests** | 231 (197 prior + 20 new `ToolCacheServiceTests` + 14 existing cache tests) |
+| **Pass rate** | 100% |
+| **Line coverage** | 78% (23 961 / 30 697 coverable lines) |
+| **Branch coverage** | 58.1% (5 192 / 8 934 branches) |
+| **Method coverage** | 79.8% (1 752 / 2 194 methods) |
+| **Coverage date** | 2026-09-24 |
+
+CI gates: Build (0 warnings), Unit Tests, Integration Tests (SQLite), Blazor WASM Client Validation, Docker Image Build, Code Quality (SonarQube), Security Scan, `dotnet format --verify-no-changes` (0 files changed of 371).
 
 ## Architecture
 

@@ -153,6 +153,17 @@ public static class SettingsEndpoints
             return Results.NoContent();
         });
 
+        // SPEC-20260924-redis-cache-and-tool-caching RF-003/RF-004: Cache inspection and clear
+        group.MapGet("/cache", async (
+            Caching.ICacheManagerService cacheMgr,
+            CancellationToken ct) =>
+            Results.Ok(await cacheMgr.GetStatsAsync(ct)));
+
+        group.MapPost("/cache/clear", async (
+            Caching.ICacheManagerService cacheMgr,
+            CancellationToken ct) =>
+            Results.Ok(await cacheMgr.ClearAllAsync(ct)));
+
         return group;
     }
 

@@ -31,20 +31,34 @@ public sealed class CatalogToolAIFunction(
 
         var started = System.Diagnostics.Stopwatch.StartNew();
         string? error = null;
+        var toolCache = services.GetService<Caching.IToolCacheService>();
         CallToolResult result;
-        try
+        if (toolCache is not null && toolCache.IsCacheable(tool.Name, tool.ReadOnly)
+            && await toolCache.GetCachedResultAsync(tool.Name, args, cancellationToken) is { } cached)
         {
-            result = await tool.Handler(
-                new ToolCallContext { Services = services, Arguments = args }, cancellationToken);
+            result = cached;
         }
-        catch (Exception ex)
+        else
         {
-            error = ex.Message;
-            result = new CallToolResult
+            try
             {
-                Content = [new TextContentBlock { Text = $"ERROR: {ex.Message}" }],
-                IsError = true
-            };
+                result = await tool.Handler(
+                    new ToolCallContext { Services = services, Arguments = args }, cancellationToken);
+
+                if (toolCache is not null && toolCache.IsCacheable(tool.Name, tool.ReadOnly))
+                {
+                    await toolCache.SetCachedResultAsync(tool.Name, args, result, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                result = new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"ERROR: {ex.Message}" }],
+                    IsError = true
+                };
+            }
         }
 
         // RF-003: every internal tool call is observable on the MCP Monitor feed.

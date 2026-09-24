@@ -31,6 +31,7 @@ public static class TelemetryTags
         var k when k.StartsWith("rewrite:", StringComparison.Ordinal) => "rewrite",
         var k when k.StartsWith("index:", StringComparison.Ordinal) => "indexVersion",
         var k when k.StartsWith("secret:", StringComparison.Ordinal) => "secret",
+        var k when k.StartsWith("mcp:tool:", StringComparison.Ordinal) => "tool",
         _ => "other"
     };
 }

@@ -62,10 +62,22 @@ public static class ToolsEndpoints
                 Arguments = arguments
             };
 
+            var toolCache = http.RequestServices.GetService<Caching.IToolCacheService>();
+            if (toolCache is not null && toolCache.IsCacheable(name, tool.ReadOnly))
+            {
+                var cached = await toolCache.GetCachedResultAsync(name, arguments, ct);
+                if (cached is not null)
+                    return Results.Ok(cached);
+            }
+
             var toolSw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var result = await tool.Handler(context, ct);
+                if (toolCache is not null && toolCache.IsCacheable(name, tool.ReadOnly))
+                {
+                    await toolCache.SetCachedResultAsync(name, arguments, result, ct);
+                }
                 return Results.Ok(result);
             }
             catch (McpProtocolException ex)

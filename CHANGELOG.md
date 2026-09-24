@@ -8,7 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Enable GraphRAG by default and clean settings toggle
+- `ToolCacheService` / `IToolCacheService` — MCP & agent tool result cache with minimum 1 h TTL, canonical argument hashing, and index-version invalidation (`SPEC-20260924-redis-cache-and-tool-caching RF-002`)
+- 20 new BDD-style unit tests for `ToolCacheService` in `ToolCacheServiceTests.cs` covering: cacheability rules, round-trip serialization, error-result exclusion, canonical argument ordering, TTL enforcement, fail-soft behaviour
+- `CacheKeys.Tool` cache-key helper for tool invocations
+- `TelemetryTags.RegionFor` mapping for `mcp:tool:` prefix
+- Tool cache integration in `CallToolHandler`, `ToolsEndpoints`, and `CatalogToolAIFunction`
+- `GetCacheStatsAsync` / `ClearCacheAsync` on `SettingsApiClient`
+- Redis `ConfigurationOptions.Parse` with fail-safe fallback (replaces non-existent `TryParse`)
+
+### Changed
+- `dotnet format --verify-no-changes`: **0 of 371 files** needed changes — code style 100% clean
+
+### Fixed
+- Build error `CS0117: 'ConfigurationOptions' does not contain a definition for 'TryParse'` — replaced with `ConfigurationOptions.Parse` inside try/catch
+
 - Write provenance metadata on pgvector upserts
 - Surface suspicion flags on kept flagged chunks
 - Add per-API-key rate-limit overrides
