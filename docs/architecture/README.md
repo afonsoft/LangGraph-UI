@@ -1,0 +1,32 @@
+# docs/architecture — index
+
+Architecture deliverables for KnowledgeHub. Source of truth for decisions:
+`AD-*.md`; rendered diagrams: `system-architecture.md` (embedded Mermaid),
+`runtime-architecture.html` (interactive, archify).
+
+## ADRs
+
+| AD | Decision |
+|---|---|
+| [AD-0001](AD-0001-single-process-modular-monolith.md) | Single-process modular monolith (SPA + REST + MCP + SignalR) |
+| [AD-0002](AD-0002-sqlite-first-pluggable-vector-stores.md) | SQLite-first persistence, pluggable `IVectorStore` (sqlite/sqlite-vec/pgvector) |
+| [AD-0003](AD-0003-mcp-hybrid-session-mode.md) | MCP hybrid session mode (`StatefulForInitializeClients`) |
+| [AD-0004](AD-0004-dual-auth-cookie-api-keys.md) | Cookie sessions + hashed `aft_*` API keys with per-key scopes |
+| [AD-0005](AD-0005-hybrid-retrieval-pipeline.md) | Hybrid retrieval FTS5+vector RRF, optional rewrite/rerank |
+| [AD-0006](AD-0006-graphrag-sqlite-adjacency.md) | GraphRAG on SQLite adjacency tables (dedicated graph DB deferred) |
+| [AD-0007](AD-0007-partitioned-rate-limiting.md) | Partitioned rate limiting + per-API-key overrides |
+| [AD-0008](AD-0008-prompt-injection-guard.md) | Prompt-injection guard (flag, exclude, provenance) |
+| [AD-0009](AD-0009-opentelemetry-observability.md) | OpenTelemetry metrics/traces, opt-in OTLP/Prometheus |
+| [AD-0010](AD-0010-upstream-mcp-proxies.md) | Upstream MCP proxies with encrypted per-scope secrets |
+
+## Diagrams
+
+| File | Format | Content |
+|---|---|---|
+| [system-architecture.md](system-architecture.md) | Markdown + Mermaid | Context/container, tool-call sequence, deployment, config surface |
+| [knowledge-hub_context_container.mmd](knowledge-hub_context_container.mmd) | Mermaid | C4-style context + container view |
+| [knowledge-hub_toolcall_sequence.mmd](knowledge-hub_toolcall_sequence.mmd) | Mermaid | `tools/call` sequence (local / graph / upstream) |
+| [knowledge-hub_deployment.mmd](knowledge-hub_deployment.mmd) | Mermaid | Deployment view (binary/container, one port) |
+| [knowledge-hub-architecture.drawio](knowledge-hub-architecture.drawio) | draw.io XML | Editable mirror of the context/container view |
+| [runtime-architecture.json](runtime-architecture.json) | archify spec | Interactive runtime diagram definition |
+| [runtime-architecture.html](runtime-architecture.html) | HTML | Standalone explorable runtime diagram |

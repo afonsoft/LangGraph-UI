@@ -1,14 +1,16 @@
 # Arquitetura do KnowledgeHub
 
-## Visão Geral
+## Visão geral
 
-O KnowledgeHub é uma plataforma de conhecimento all-in-one standalone construída em .NET 10. Ela combina uma SPA administrativa Blazor WebAssembly, uma API REST de gerenciamento e um servidor nativo do Model Context Protocol (MCP) em um único processo hospedado no Kestrel.
+O KnowledgeHub é uma plataforma de conhecimento standalone tudo-em-um em .NET 10. Combina uma SPA administrativa Blazor WebAssembly, uma API REST de gerenciamento, um servidor MCP (Model Context Protocol) nativo e um hub de atividade SignalR em um único processo Kestrel.
 
-## Camadas do Sistema
+> Diagramas completos, ADRs e a visão de runtime interativa ficam em [`docs/architecture/`](../architecture/) — veja `system-architecture.md` e o `README.md` de lá.
+
+## Camadas do sistema
 
 ```
                                   +---------------------------+
-                                  |    Clientes MCP Externos  |
+                                  |    External MCP Clients   |
                                   | (Cursor, Claude Desktop)  |
                                   +--------------+------------+
                                                  | Streamable HTTP / SSE
@@ -21,7 +23,7 @@ O KnowledgeHub é uma plataforma de conhecimento all-in-one standalone construí
          v                                       v
 +------------------+             +---------------+-----------+
 | KnowledgeHub.    |             | KnowledgeHub.McpEngine    |
-|   Client         |             | (Dispatcher JSON-RPC 2.0) |
+|   Client         |             | (JSON-RPC 2.0 Dispatcher) |
 +------------------+             +---------------+-----------+
          |                                       |
          +-------------------+-------------------+
@@ -29,7 +31,7 @@ O KnowledgeHub é uma plataforma de conhecimento all-in-one standalone construí
                              v
                  +-----------+-----------+
                  | KnowledgeHub.Shared   |
-                 | (Contratos, DTOs)     |
+                 | (Contracts, DTOs)     |
                  +-----------+-----------+
                              |
                              v
@@ -39,16 +41,21 @@ O KnowledgeHub é uma plataforma de conhecimento all-in-one standalone construí
                  +-----------------------+
 ```
 
-## Projetos Principais
+## Projetos
 
-1. **KnowledgeHub.Shared**: Contém DTOs compartilhados, contratos JSON-RPC 2.0 / MCP e enums.
-2. **KnowledgeHub.Client**: SPA Blazor WebAssembly utilizando componentes BootstrapBlazor, fornecendo administração, monitoramento MCP, playgrounds e gerenciamento de fontes.
-3. **KnowledgeHub.Server**: Host Kestrel executando Minimal APIs, Entity Framework Core com SQLite (ou PostgreSQL/pgvector), motor de sincronização de conectores, autenticação (cookie + chaves de API) e proxies MCP upstream.
-4. **KnowledgeHub.McpEngine**: Servidor MCP nativo gerenciando sessões SSE, transporte Streamable HTTP e despacho JSON-RPC.
+1. **KnowledgeHub.Shared**: DTOs compartilhados, contratos JSON-RPC 2.0 / MCP, enums.
+2. **KnowledgeHub.Client**: SPA Blazor WebAssembly (BootstrapBlazor) — administração, monitor MCP, playground, chat, aprovações, eval, settings.
+3. **KnowledgeHub.Server**: host Kestrel — Minimal APIs, EF Core SQLite, engine de conectores/sync, busca híbrida, loops de resposta/agente, GraphRAG, auth (cookie + API keys), rate limiting, proxies MCP upstream, OpenTelemetry.
+4. **KnowledgeHub.McpEngine**: servidor MCP nativo — sessões SSE, transporte Streamable HTTP, dispatch JSON-RPC.
 
-## Fluxo de Dados & Retrieval
+## Fluxo de dados e retrieval
 
-- **Ingestão**: Conectores ingerem de vaults Obsidian (local ou WebDAV), páginas web, documentos, Notion e bancos de dados SQL.
-- **Chunking & Indexação**: Chunking sensível à estrutura para código e configuração, com embeddings locais via ONNX Runtime (all-MiniLM-L6-v2) ou provedores externos.
-- **Retrieval Híbrido**: Combina busca full-text FTS5 do SQLite com busca de similaridade vetorial (sqlite-vec ou pgvector HNSW), fundidas via Reciprocal Rank Fusion (RRF).
-- **Síntese & Loop de Agente**: Respostas sintetizadas via `IChatClient` (Ollama/OpenAI), suportando conversações multi-turno, tool calling e aprovações Human-in-the-Loop (HITL).
+- **Ingestão**: conectores ingerem vaults Obsidian (local/WebDAV), páginas web, arquivos, Notion, APIs REST e bancos SQL; chunking consciente de estrutura para markdown/código/config; todo chunk passa pelo sanitizador de prompt-injection (`SuspicionFlags` + auditoria `security_events`) antes do embedding.
+- **GraphRAG**: com `Graph:Enabled` (default **ligado**) e opt-in por source (`"graph": true`), um LLM extrai entidades/relações em `KgNodes`/`KgEdges`/`KgAliases` com provenance completa — percorridas por `find_dependencies`, `find_dependents`, `find_path`, `analyze_impact`.
+- **Retrieval híbrido**: FTS5 lexical + KNN vetorial (sqlite-vec ou pgvector HNSW) fundidos via RRF (k=60); reescrita e reranking por LLM opcionais; filtros de metadados; autorização por API key; exclusão de chunks flagados.
+- **Síntese e agente**: `IChatClient` (Ollama/OpenAI) responde com citações `[n]`; loop de agente com tool-calling, aprovações HITL, streaming SSE limitado e threads com sumarização.
+- **Observabilidade**: `Meter`/`ActivitySource` instrumentam estágios de busca, chamadas LLM, iterações de agente, syncs e regiões de cache — exportados via OTLP ou Prometheus (`/metrics`) opt-in.
+
+## Decisões de arquitetura
+
+As decisões-chave estão registradas como ADRs em [`docs/architecture/`](../architecture/README.md) — monólito de processo único, SQLite-first, sessões MCP híbridas, auth dupla, retrieval híbrido, GraphRAG em tabelas de adjacência, rate limiting particionado, guarda de injeção, observabilidade OTel, proxies upstream.

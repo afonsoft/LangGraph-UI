@@ -7,16 +7,17 @@
 [![Blazor WASM](https://img.shields.io/badge/Blazor-WASM%20PWA-512BD4)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![Licença: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Plataforma de conhecimento standalone tudo-em-um: UI administrativa Blazor WebAssembly, API REST, servidor MCP nativo (Streamable HTTP + SSE legado), persistência SQLite, provedores de embeddings e vector stores plugáveis, ingestão do Obsidian e proxy MCP DeepWiki — tudo em um único processo Kestrel hospedado .NET 10.
+Plataforma de conhecimento standalone tudo-em-um: UI administrativa Blazor WebAssembly, API REST, servidor MCP nativo (Streamable HTTP + SSE legado), persistência SQLite, embeddings e vector stores plugáveis, retrieval híbrido (FTS5 + RRF vetorial), extração de entidades/relações GraphRAG, chat agêntico com aprovações HITL, defesa contra prompt-injection, rate limiting particionado e observabilidade OpenTelemetry — tudo em um único processo Kestrel hospedado .NET 10.
 
 ## Endpoints
 
 | Rota | Propósito |
 |---|---|
-| `/` | UI administrativa Blazor WASM (`/sources`, `/mcp-monitor`, `/playground`, `/settings`, `/api-keys`) — PWA instalável, sidebar colapsável com icon-rail, layout responsivo para mobile |
+| `/` | UI administrativa Blazor WASM (`/sources`, `/mcp-monitor`, `/playground`, `/chat`, `/approvals`, `/settings`, `/api-keys`) — PWA instalável, sidebar colapsável com icon-rail, layout responsivo para mobile |
 | `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | API REST |
-| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/integrations*` | Configuração persistente de provedor de chat (endpoint/modelo/key, teste de conexão) e chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7) |
-| `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}` | Sobrescrições por chave de API: endpoint/modelo/chave de chat e chaves de integração |
+| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/graph`, `/api/settings/integrations*` | Config de chat persistida, settings de runtime do GraphRAG (ativar, budgets) e chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7) |
+| `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}`, `/api/api-keys/{id}/rate-limit`, `/api/api-keys/{id}/scopes` | Sobrescrições por chave de API: chat, integrações, rate limits, sources/tools permitidos |
+| `/api/security/events`, `/api/eval/run`, `/api/eval/runs` | Auditoria de prompt-injection e harness de eval de retrieval (Recall@K/P@K/MRR/faithfulness) |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — eventos `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error`, heartbeat 15s, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP, sessões híbridas: clients com handshake `initialize` (≤2025-11-25) obtêm sessões stateful completas incluindo push `tools/list_changed`; clients `2026-07-28` são atendidos statelessly (sem sessão, re-list sob demanda). Configuração `Mcp:SessionMode`: `Stateless`/`Stateful`/`StatefulForInitializeClients` (padrão) |
 | `/mcp/sse` + `/mcp/message` | MCP — HTTP/SSE legado (Cursor, Claude Desktop) |
@@ -51,7 +52,7 @@ Aceito em `/mcp`, `/mcp/sse`, `/api/*` e `/hubs/mcp` (clients SignalR que não p
 
 ## Ferramentas MCP
 
-`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (configurações de chat e integração por chave), `query_{source_slug}` por fonte ativa, mais proxies upstream — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`) e Context7 (`resolve-library-id`, `query-docs`).
+`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (configurações de chat e integração por chave), `query_{source_slug}` por fonte ativa, travessia GraphRAG (`find_dependencies`, `find_dependents`, `find_path`, `analyze_impact` — quando `Graph:Enabled`, default ligado), mais proxies upstream — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`), Context7 (`resolve-library-id`, `query-docs`) e sources arbitrários `McpProxy`.
 
 ## Configuração
 
@@ -72,7 +73,34 @@ Aceito em `/mcp`, `/mcp/sse`, `/api/*` e `/hubs/mcp` (clients SignalR que não p
   },
   "Cache": {
     "Provider": "memory",                      // memory | redis
-    "Redis": { "ConnectionString": "" }        // host.docker.internal:6379 ao usar Redis
+    "Redis": { "ConnectionString": "" },       // host.docker.internal:6379 ao usar Redis
+    "AnswerCache": { "Enabled": false, "TtlSeconds": 600 }
+  },
+  "Search": {
+    "Lexical": { "Enabled": true },            // perna FTS5 do retrieval híbrido
+    "QueryRewrite": { "Enabled": false, "LexicalToo": false },
+    "Rerank": { "Enabled": false, "MaxCandidates": 50 }
+  },
+  "RateLimiting": {                            // por partição: api key → usuário → IP
+    "Enabled": true,
+    "LlmPermitLimit": 20, "LlmWindowSeconds": 60,
+    "AnonymousLlmPermitLimit": 5,
+    "SyncPermitLimit": 10, "SyncWindowSeconds": 3600,
+    "GeneralPermitLimit": 300, "GeneralWindowSeconds": 60,
+    "TrustForwardedHeaders": false
+  },
+  "Security": {
+    "Injection": { "ExcludeFlagged": true }    // remove chunks flagados dos resultados
+  },
+  "Graph": {                                   // GraphRAG — também editável em /settings
+    "Enabled": true,
+    "MaxChunksPerSync": 200,
+    "MaxChunkChars": 2000,
+    "MaxResults": 200
+  },
+  "Telemetry": {
+    "Otlp": { "Endpoint": "" },                // exporter OTLP de traces/metrics
+    "Metrics": { "Prometheus": false }         // endpoint de scrape /metrics
   },
   "Chat": {                                    // opcional global default
     "Endpoint": "http://localhost:11434",
@@ -139,7 +167,7 @@ KnowledgeHub/
 
 | Camada | Tecnologia | Versão |
 |-------|-----------|---------|
-| Linguagem | C# | 12 (.NET 10) |
+| Linguagem | C# | 14 (.NET 10) |
 | Framework | ASP.NET Core (Kestrel) | 10.x |
 | Frontend | Blazor WebAssembly (BootstrapBlazor) | 10.x |
 | Banco de Dados | SQLite (EF Core) + sqlite-vec | 10.x |
@@ -213,12 +241,16 @@ Decisões arquiteturais chave:
 - Deploy single-process: SPA + API + servidor MCP em um único processo Kestrel
 - Modo de sessão MCP híbrido: stateful para clients com handshake initialize, stateless para clients modernos
 - Embeddings plugáveis: determinístico, Ollama, OpenAI, ou ONNX Runtime local
-- Múltiplos backends de vector store: sqlite-vec (KNN) ou PostgreSQL com pgvector (HNSW)
+- Múltiplos backends de vector store: sqlite-vec (KNN) ou PostgreSQL com pgvector (HNSW, upserts em lote, metadados de provenance)
+- Retrieval híbrido: FTS5 + RRF vetorial com reescrita e reranking opcionais; medido pelo harness de eval embutido
+- GraphRAG em tabelas de adjacência SQLite: extração LLM na ingestão (opt-in por source), tools de travessia com provenance
+- Segurança: guarda de prompt-injection (flag → excluir → auditar), escopo de sources/tools por chave, rate limiting particionado com overrides por chave
 - Cache distribuído opt-in: in-memory (padrão) ou Redis
-- Proxies MCP upstream: DeepWiki, Firecrawl, Tavily, Context7 com secrets criptografados
-- Customização por chave de API: configurações de chat e chaves de integração escopadas por chave
+- OpenTelemetry: traces + métricas com exporters OTLP/Prometheus opt-in
+- Proxies MCP upstream: DeepWiki, Firecrawl, Tavily, Context7, mais sources `McpProxy` arbitrários com secrets criptografados
+- Customização por chave de API: chat, integrações, escopos e rate limits por chave
 
-Veja [docs/pt/ARCHITECTURE.md](docs/pt/ARCHITECTURE.md) para design detalhado do sistema e [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) para diagramas.
+Veja [docs/architecture/](docs/architecture/README.md) para ADRs, o diagrama editável e a visão de runtime interativa — e [docs/pt/ARCHITECTURE.md](docs/pt/ARCHITECTURE.md) para o design detalhado.
 
 ## Visões de Negócio e Técnica
 

@@ -1,24 +1,26 @@
 %%{init: {'theme':'neutral'}}%%
 flowchart LR
-    subgraph Host["🖥️ User machine (no .NET runtime needed)"]
-        EXE["🚀 KnowledgeHub<br/>single-file binary<br/>(self-contained, per-RID)"]
-        DB[("💾 knowledgehub.db<br/>beside the executable")]
-        EXT["📂 %TMP%/.net extraction<br/>native libs (e_sqlite3)"]
-        CFG["⚙️ appsettings.json + env vars<br/>DeepWiki__* Embeddings__* ..."]
+    subgraph Host["🖥️ Single host (container or bare binary)"]
+        EXE["🚀 KnowledgeHub<br/>single-file binary or<br/>knowledgehub:latest image"]
+        DB[("💾 ./data volume<br/>knowledgehub.db + uploads")]
+        EXT["📂 %TMP%/.net extraction<br/>native libs (e_sqlite3, onnx)"]
+        CFG["⚙️ appsettings.json + env vars<br/>(__ nesting) + .env<br/>runtime settings in SQLite"]
         EXE --> DB
         EXE -.->|self-extract| EXT
         CFG -.->|config| EXE
     end
 
-    DEV["👨‍💻 dotnet publish -r linux-x64|win-x64|osx-arm64"] -->|produces| EXE
+    DEV["👨‍💻 docker compose build<br/>or dotnet publish -r linux-x64|win-x64|osx-arm64"] -->|produces| EXE
 
-    subgraph Net["🌐 Same port (ASPNETCORE_URLS, default :5000)"]
+    subgraph Net["🌐 One port (:8080 container / :5000 dev)"]
         R1["/            → SPA + deep links"]
-        R2["/api/*       → REST"]
+        R2["/api/*       → REST (auth + rate limits)"]
         R3["/mcp         → Streamable HTTP"]
         R4["/mcp/sse|msg → legacy SSE"]
         R5["/hubs/mcp    → SignalR"]
-        R6["/framework-assets/{stem}/{ext}[?enc=b64] → _framework mirror<br/>(no blocked suffix in URL, proxy-safe boot)"]
+        R6["/metrics     → Prometheus (opt-in)"]
+        R7["/healthz     → liveness probe"]
+        R8["/framework-assets/{stem}/{ext} → _framework mirror<br/>(proxy-safe boot)"]
     end
     EXE --- Net
 
@@ -27,4 +29,4 @@ flowchart LR
     classDef net fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     class EXE bin
     class DB,EXT,CFG data
-    class R1,R2,R3,R4,R5,R6 net
+    class R1,R2,R3,R4,R5,R6,R7,R8 net

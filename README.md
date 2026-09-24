@@ -7,16 +7,17 @@
 [![Blazor WASM](https://img.shields.io/badge/Blazor-WASM%20PWA-512BD4)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API, native MCP server (Streamable HTTP + legacy SSE), SQLite persistence, pluggable embeddings and vector stores, Obsidian ingestion and a DeepWiki MCP proxy — all in a single Kestrel-hosted .NET 10 process.
+All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API, native MCP server (Streamable HTTP + legacy SSE), SQLite persistence, pluggable embeddings and vector stores, hybrid retrieval (FTS5 + vector RRF), GraphRAG entity/relation extraction, agentic chat with HITL approvals, prompt-injection defense, partitioned rate limiting, and OpenTelemetry observability — all in a single Kestrel-hosted .NET 10 process.
 
 ## Endpoints
 
 | Route | Purpose |
 |---|---|
-| `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`, `/settings`, `/api-keys`) — installable PWA, collapsible icon-rail sidebar, mobile-responsive layout |
+| `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`, `/chat`, `/approvals`, `/settings`, `/api-keys`) — installable PWA, collapsible icon-rail sidebar, mobile-responsive layout |
 | `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API |
-| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/integrations*` | Persisted chat-provider config (endpoint/model/key, test connection) and masked integration keys (firecrawl, deepwiki, tavily, context7) |
-| `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}` | Per-API-key overrides: chat endpoint/model/key and integration keys |
+| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/graph`, `/api/settings/integrations*` | Persisted chat-provider config, GraphRAG runtime settings (enable, budgets), and masked integration keys (firecrawl, deepwiki, tavily, context7) |
+| `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}`, `/api/api-keys/{id}/rate-limit`, `/api/api-keys/{id}/scopes` | Per-API-key overrides: chat endpoint/model/key, integration keys, rate limits, allowed sources/tools |
+| `/api/security/events`, `/api/eval/run`, `/api/eval/runs` | Prompt-injection audit feed and retrieval-quality eval harness (Recall@K/P@K/MRR/faithfulness) |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP, hybrid sessions: `initialize`-handshake clients (≤2025-11-25) get full stateful sessions incl. `tools/list_changed` push; `2026-07-28` clients are served statelessly (no session, re-list on demand). `Mcp:SessionMode` knob: `Stateless`/`Stateful`/`StatefulForInitializeClients` (default) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
@@ -51,7 +52,7 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
 
 ## MCP tools
 
-`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (per-key chat and integration settings), `query_{source_slug}` per active source, plus upstream proxies — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`) and Context7 (`resolve-library-id`, `query-docs`).
+`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (per-key chat and integration settings), `query_{source_slug}` per active source, GraphRAG traversal (`find_dependencies`, `find_dependents`, `find_path`, `analyze_impact` — when `Graph:Enabled`, default on), plus upstream proxies — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`), Context7 (`resolve-library-id`, `query-docs`) and arbitrary `McpProxy` sources.
 
 ## Configuration
 
@@ -72,7 +73,34 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
   },
   "Cache": {
     "Provider": "memory",                      // memory | redis
-    "Redis": { "ConnectionString": "" }        // host.docker.internal:6379 when using Redis
+    "Redis": { "ConnectionString": "" },       // host.docker.internal:6379 when using Redis
+    "AnswerCache": { "Enabled": false, "TtlSeconds": 600 }
+  },
+  "Search": {
+    "Lexical": { "Enabled": true },            // FTS5 leg of hybrid retrieval
+    "QueryRewrite": { "Enabled": false, "LexicalToo": false },
+    "Rerank": { "Enabled": false, "MaxCandidates": 50 }
+  },
+  "RateLimiting": {                            // per-partition: api key → user → IP
+    "Enabled": true,
+    "LlmPermitLimit": 20, "LlmWindowSeconds": 60,
+    "AnonymousLlmPermitLimit": 5,
+    "SyncPermitLimit": 10, "SyncWindowSeconds": 3600,
+    "GeneralPermitLimit": 300, "GeneralWindowSeconds": 60,
+    "TrustForwardedHeaders": false
+  },
+  "Security": {
+    "Injection": { "ExcludeFlagged": true }    // drop flagged chunks from results
+  },
+  "Graph": {                                   // GraphRAG — also editable in /settings
+    "Enabled": true,
+    "MaxChunksPerSync": 200,
+    "MaxChunkChars": 2000,
+    "MaxResults": 200
+  },
+  "Telemetry": {
+    "Otlp": { "Endpoint": "" },                // OTLP traces/metrics exporter
+    "Metrics": { "Prometheus": false }         // /metrics scrape endpoint
   },
   "Chat": {                                    // optional global default
     "Endpoint": "http://localhost:11434",
@@ -139,7 +167,7 @@ KnowledgeHub/
 
 | Layer | Technology | Version |
 |-------|-----------|---------|
-| Language | C# | 12 (.NET 10) |
+| Language | C# | 14 (.NET 10) |
 | Framework | ASP.NET Core (Kestrel) | 10.x |
 | Frontend | Blazor WebAssembly (BootstrapBlazor) | 10.x |
 | Database | SQLite (EF Core) + sqlite-vec | 10.x |
@@ -213,12 +241,16 @@ Key architectural decisions:
 - Single-process deployment: SPA + API + MCP server in one Kestrel process
 - Hybrid MCP session mode: stateful for initialize-handshake clients, stateless for modern clients
 - Pluggable embeddings: deterministic, Ollama, OpenAI, or local ONNX Runtime
-- Multiple vector store backends: sqlite-vec (KNN) or PostgreSQL with pgvector (HNSW)
+- Multiple vector store backends: sqlite-vec (KNN) or PostgreSQL with pgvector (HNSW, batched upserts, provenance metadata)
+- Hybrid retrieval: FTS5 + vector RRF with optional query rewriting and reranking; measured by the built-in eval harness
+- GraphRAG on SQLite adjacency tables: LLM extraction at ingestion (per-source opt-in), provenance-tracked traversal tools
+- Security: prompt-injection guard (flag → exclude → audit), per-key source/tool scoping, partitioned rate limiting with per-key overrides
 - Distributed cache opt-in: in-memory (default) or Redis
-- Upstream MCP proxies: DeepWiki, Firecrawl, Tavily, Context7 with encrypted secrets
-- Per-API-key customization: chat settings and integration keys scoped to each key
+- OpenTelemetry: traces + metrics with opt-in OTLP/Prometheus exporters
+- Upstream MCP proxies: DeepWiki, Firecrawl, Tavily, Context7, plus arbitrary `McpProxy` sources with encrypted secrets
+- Per-API-key customization: chat settings, integration keys, scopes, and rate limits scoped to each key
 
-See [docs/en/ARCHITECTURE.md](docs/en/ARCHITECTURE.md) for detailed system design and [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) for diagrams.
+See [docs/architecture/](docs/architecture/README.md) for ADRs, the editable system diagram, and the interactive runtime view — and [docs/en/ARCHITECTURE.md](docs/en/ARCHITECTURE.md) for the written system design.
 
 ## Business & Technical Views
 
