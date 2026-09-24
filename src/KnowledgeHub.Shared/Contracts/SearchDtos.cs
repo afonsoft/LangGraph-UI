@@ -54,6 +54,10 @@ public sealed record SearchResultItem
     /// <summary>Suspicion flags carried into the prompt when exclusion is
     /// disabled (SPEC-20260923-prompt-injection-guard RF-004); null = clean.</summary>
     public string? SuspicionFlags { get; init; }
+    /// <summary>True when the chunk was flagged by the security scan and kept
+    /// (only possible with ExcludeFlagged=false) — SPEC-20260923-flagged-chunk-badge
+    /// RF-001. Computed from <see cref="SuspicionFlags"/> so the two never drift.</summary>
+    public bool SecurityFlagged => SuspicionFlags is not null;
     /// <summary>Stable chunk id (SPEC-20260923-retrieval-quality RF-004).</summary>
     public Guid? ChunkId { get; init; }
     /// <summary>Owning document id.</summary>

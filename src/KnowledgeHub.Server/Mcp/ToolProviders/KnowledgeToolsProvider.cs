@@ -196,10 +196,14 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             {
                 text.Append("\n\nCitations:");
                 foreach (var c in answer.Citations)
+                {
                     text.Append("\n[").Append(c.Index).Append("] ")
                         .Append(c.Title).Append(" — ").Append(c.Source)
                         .Append(c.Path is not null ? " (path: " : " (")
                         .Append(c.Path ?? c.Uri).Append(')');
+                    if (c.SuspicionFlags is not null)
+                        text.Append(" [flagged: ").Append(c.SuspicionFlags).Append(']');
+                }
             }
             return await ToolResults.Structured(text.ToString(), answer);
         }
@@ -377,7 +381,12 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             sb.Append("### ").Append(r.DocumentTitle).Append('\n')
               .Append("- source: ").Append(r.SourceName)
               .Append(" | score: ").Append(r.Score.ToString("F3"))
-              .Append(" | uri: ").Append(r.UriReference).Append('\n')
+              .Append(" | uri: ").Append(r.UriReference);
+            // SPEC-20260923-flagged-chunk-badge RF-002: a kept flagged chunk
+            // must be distinguishable in the text surface too.
+            if (r.SuspicionFlags is not null)
+                sb.Append(" | flagged: ").Append(r.SuspicionFlags);
+            sb.Append('\n')
               .Append(Security.PromptBoundary.Escape(r.ChunkText)).Append("\n\n");
         }
         return sb.ToString();

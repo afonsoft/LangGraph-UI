@@ -25,6 +25,9 @@ public sealed record CitationDto
     /// non-file-backed sources (SPEC-20260922-tool-descriptions-en-us RF-003).</summary>
     public string? Path { get; init; }
     public required double Score { get; init; }
+    /// <summary>Suspicion flags on the cited chunk when it survived exclusion
+    /// (SPEC-20260923-flagged-chunk-badge RF-002); null = clean.</summary>
+    public string? SuspicionFlags { get; init; }
 }
 
 /// <summary>Synthesized answer (or raw context when generation is off/unavailable).</summary>

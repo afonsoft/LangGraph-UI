@@ -203,6 +203,12 @@
                                                 <code>[@c.Index]</code> @c.Title —
                                                 <span class="text-muted">@c.Source</span>
                                                 <small class="text-muted">(@c.Uri)</small>
+                                                @if (c.SuspicionFlags is not null)
+                                                {
+                                                    <Badge Color="Color.Warning" title="@c.SuspicionFlags">
+                                                        <i class="fa-solid fa-triangle-exclamation"></i> flagged
+                                                    </Badge>
+                                                }
                                             </li>
                                         }
                                     </ul>
@@ -502,7 +508,9 @@
                     Index = c.TryGetProperty("index", out var i) ? i.GetInt32() : 0,
                     Source = c.TryGetProperty("source", out var s) ? s.GetString() ?? "" : "",
                     Title = c.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
-                    Uri = c.TryGetProperty("uri", out var u) ? u.GetString() ?? "" : ""
+                    Uri = c.TryGetProperty("uri", out var u) ? u.GetString() ?? "" : "",
+                    SuspicionFlags = c.TryGetProperty("suspicionFlags", out var sf)
+                        && sf.ValueKind == JsonValueKind.String ? sf.GetString() : null
                 });
             }
         }
@@ -524,6 +532,8 @@
         public string Source { get; init; } = "";
         public string Title { get; init; } = "";
         public string Uri { get; init; } = "";
+        /// <summary>SPEC-20260923-flagged-chunk-badge RF-003 — warning badge.</summary>
+        public string? SuspicionFlags { get; init; }
     }
 
 }

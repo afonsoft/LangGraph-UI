@@ -158,6 +158,15 @@ public class PromptInjectionTests : IClassFixture<PromptInjectionTests.Fixture>,
         var hit = Assert.Single(hits!.Results, r => r.ChunkText.Contains(token));
         Assert.NotNull(hit.SuspicionFlags);
         Assert.Contains("InstructionOverride", hit.SuspicionFlags);
+        // SPEC-20260923-flagged-chunk-badge RF-001: explicit flag surfaced.
+        Assert.True(hit.SecurityFlagged);
+
+        // AC: search_knowledge text output marks the kept flagged chunk.
+        var call = await client.PostAsJsonAsync("/api/tools/search_knowledge",
+            new { query = token, mode = "lexical" });
+        call.EnsureSuccessStatusCode();
+        var body = await call.Content.ReadAsStringAsync();
+        Assert.Contains("flagged: InstructionOverride", body);
     }
 
     [Fact]

@@ -8,7 +8,7 @@
 | Stack | `.NET 10` + Blazor WASM |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-flagged-chunk-badge` |
-| Status | `In implementation` — approved by owner 2026-09-23 ("Implementar deferrals") |
+| Status | `Done` — merged via PR |
 | Origin | `SPEC-20260923-prompt-injection-guard` §Open-questions — "flagged-but-included chunks should get a UI badge in the playground — deferred to a UI follow-up". |
 
 ## 1. User Story

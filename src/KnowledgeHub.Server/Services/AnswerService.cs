@@ -241,7 +241,8 @@ public sealed partial class AnswerService(
                 Title = r.DocumentTitle,
                 Uri = r.UriReference,
                 Path = r.SourceType == SourceType.ObsidianVault ? r.UriReference : null,
-                Score = r.Score
+                Score = r.Score,
+                SuspicionFlags = r.SuspicionFlags
             };
         }).ToList();
     }
