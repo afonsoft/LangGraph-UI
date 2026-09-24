@@ -115,6 +115,7 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.Property(k => k.KeyHash).IsRequired().HasMaxLength(64);
             e.HasIndex(k => k.KeyHash).IsUnique();
             e.Property(k => k.Prefix).IsRequired().HasMaxLength(16);
+            e.Property(k => k.ProtectedKey).IsRequired(false);
             e.HasMany(k => k.UsageEvents)
                 .WithOne(u => u.ApiKey!)
                 .HasForeignKey(u => u.ApiKeyId)

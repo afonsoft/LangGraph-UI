@@ -13,6 +13,9 @@ public sealed class ApiKey
     public required string KeyHash { get; set; }
     /// <summary>First 12 chars (`aft_xxxxxxxx`) for display/identification.</summary>
     public required string Prefix { get; set; }
+    /// <summary>SPEC-20260924-api-key-reveal-and-copy RF-001: encrypted full secret
+    /// protected by DataProtection ("api-keys"). Null for legacy keys.</summary>
+    public string? ProtectedKey { get; set; }
     public Guid UserId { get; set; }
     public AppUser? User { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
