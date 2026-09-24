@@ -91,4 +91,48 @@ public sealed class PostgresVectorStoreTests
         Assert.Contains(PostgresVectorStore.HnswIndexName, sql);
         Assert.DoesNotContain("CONCURRENTLY", sql);
     }
+
+    [Fact]
+    public void BuildSecondaryIndexesSql_ContainsRequiredIndexes()
+    {
+        // Covers SPEC-20260924-pgvector-rag-performance RF-001:
+        // secondary indexes on source_id, document_id, compound and metadata GIN
+        var sql = PostgresVectorStore.BuildSecondaryIndexesSql();
+        Assert.Contains("kh_embeddings_source_idx", sql);
+        Assert.Contains("kh_embeddings_document_idx", sql);
+        Assert.Contains("kh_embeddings_source_model_idx", sql);
+        Assert.Contains("kh_embeddings_metadata_gin_idx", sql);
+        Assert.Contains("USING gin (metadata)", sql);
+    }
+
+    [Fact]
+    public void PostgresOptions_HasOptimizedDefaults()
+    {
+        // Covers SPEC-20260924-pgvector-rag-performance RF-002, RF-003, RF-004
+        var opts = new PostgresOptions();
+        Assert.Equal(1000, opts.HnswThreshold);
+        Assert.Equal(16, opts.HnswM);
+        Assert.Equal(64, opts.HnswEfConstruction);
+        Assert.Equal(40, opts.HnswEfSearch);
+        Assert.Equal(5, opts.MinPoolSize);
+        Assert.Equal(50, opts.MaxPoolSize);
+        Assert.Equal(30, opts.CommandTimeoutSeconds);
+        Assert.Equal(300, opts.ConnectionIdleLifetimeSeconds);
+    }
+
+    [Fact]
+    public async Task PostgresVectorStore_InstantiatesWithCustomPoolOptions()
+    {
+        // Covers SPEC-20260924-pgvector-rag-performance RF-004
+        var customOpts = new PostgresOptions
+        {
+            MinPoolSize = 10,
+            MaxPoolSize = 100,
+            CommandTimeoutSeconds = 45,
+            ConnectionIdleLifetimeSeconds = 600,
+            HnswEfSearch = 80
+        };
+        await using var store = NewStore(options: customOpts);
+        Assert.NotNull(store);
+    }
 }
