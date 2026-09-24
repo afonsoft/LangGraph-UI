@@ -30,6 +30,13 @@ public static class ApiKeyEndpoints
         app.MapPut("/api/api-keys/{id:guid}/scopes", SetScopesAsync)
             .RequireAuthorization(AuthPolicies.CookieSession);
 
+        // SPEC-20260923-per-key-rate-limits RF-004: per-key rate-limit
+        // override admin — cookie-only like the rest of key management.
+        app.MapPut("/api/api-keys/{id:guid}/rate-limit", SetRateLimitAsync)
+            .RequireAuthorization(AuthPolicies.CookieSession);
+        app.MapDelete("/api/api-keys/{id:guid}/rate-limit", ClearRateLimitAsync)
+            .RequireAuthorization(AuthPolicies.CookieSession);
+
         return group;
     }
 
@@ -39,7 +46,21 @@ public static class ApiKeyEndpoints
         var userId = CurrentUserId(http);
         var keys = await db.ApiKeys
             .Where(k => k.UserId == userId)
-            .Select(k => new { k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt, k.RevokedAt, k.AllowedSourceIdsJson, k.AllowedToolsJson })
+            .Select(k => new
+            {
+                k.Id,
+                k.Name,
+                k.Prefix,
+                k.CreatedAt,
+                k.LastUsedAt,
+                k.RevokedAt,
+                k.AllowedSourceIdsJson,
+                k.AllowedToolsJson,
+                k.LlmRateLimitPermits,
+                k.LlmRateLimitWindowSeconds,
+                k.SyncRateLimitPermits,
+                k.SyncRateLimitWindowSeconds
+            })
             .ToListAsync(ct);
         // SQLite cannot ORDER BY DateTimeOffset — sort client-side.
         return Results.Ok(keys
@@ -49,7 +70,9 @@ public static class ApiKeyEndpoints
                 var scope = CallerScope.FromJson(k.Id, k.AllowedSourceIdsJson, k.AllowedToolsJson);
                 return new ApiKeyDto(
                     k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt, k.RevokedAt,
-                    scope.AllowedSourceIds?.ToList(), scope.AllowedTools?.ToList());
+                    scope.AllowedSourceIds?.ToList(), scope.AllowedTools?.ToList(),
+                    k.LlmRateLimitPermits, k.LlmRateLimitWindowSeconds,
+                    k.SyncRateLimitPermits, k.SyncRateLimitWindowSeconds);
             })
             .ToList());
     }
@@ -174,6 +197,63 @@ public static class ApiKeyEndpoints
         await db.SaveChangesAsync(ct);
 
         memory.Remove(CallerScopeProvider.CacheKey(id));
+        return Results.NoContent();
+    }
+
+    /// <summary>SPEC-20260923-per-key-rate-limits RF-004: sets the key's
+    /// rate-limit override. Every field nullable — null inherits the global
+    /// RateLimiting:* value. The resolver cache is invalidated so the next
+    /// partition sees the change.</summary>
+    private static async Task<IResult> SetRateLimitAsync(
+        Guid id,
+        SetApiKeyRateLimitRequest? body,
+        HttpContext http,
+        KnowledgeHubDbContext db,
+        RateLimiting.IApiKeyRateLimitResolver resolver,
+        CancellationToken ct)
+    {
+        var key = await db.ApiKeys
+            .FirstOrDefaultAsync(k => k.Id == id && k.UserId == CurrentUserId(http), ct);
+        if (key is null)
+            return Results.NotFound(new { error = "api key não encontrada" });
+
+        foreach (var v in new[] { body?.LlmPermits, body?.SyncPermits })
+            if (v is < 1 or > 100_000)
+                return Results.BadRequest(new { error = "permits must be 1..100000" });
+        foreach (var v in new[] { body?.LlmWindowSeconds, body?.SyncWindowSeconds })
+            if (v is < 1 or > 86_400)
+                return Results.BadRequest(new { error = "windowSeconds must be 1..86400" });
+
+        key.LlmRateLimitPermits = body?.LlmPermits;
+        key.LlmRateLimitWindowSeconds = body?.LlmWindowSeconds;
+        key.SyncRateLimitPermits = body?.SyncPermits;
+        key.SyncRateLimitWindowSeconds = body?.SyncWindowSeconds;
+        await db.SaveChangesAsync(ct);
+
+        resolver.Invalidate();
+        return Results.NoContent();
+    }
+
+    /// <summary>Limpa o override — a key volta aos limites globais.</summary>
+    private static async Task<IResult> ClearRateLimitAsync(
+        Guid id,
+        HttpContext http,
+        KnowledgeHubDbContext db,
+        RateLimiting.IApiKeyRateLimitResolver resolver,
+        CancellationToken ct)
+    {
+        var key = await db.ApiKeys
+            .FirstOrDefaultAsync(k => k.Id == id && k.UserId == CurrentUserId(http), ct);
+        if (key is null)
+            return Results.NotFound(new { error = "api key não encontrada" });
+
+        key.LlmRateLimitPermits = null;
+        key.LlmRateLimitWindowSeconds = null;
+        key.SyncRateLimitPermits = null;
+        key.SyncRateLimitWindowSeconds = null;
+        await db.SaveChangesAsync(ct);
+
+        resolver.Invalidate();
         return Results.NoContent();
     }
 

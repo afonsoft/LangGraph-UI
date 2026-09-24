@@ -22,7 +22,20 @@ public sealed record ApiKeyDto(
     DateTimeOffset? LastUsedAt,
     DateTimeOffset? RevokedAt,
     IReadOnlyList<Guid>? AllowedSourceIds = null,
-    IReadOnlyList<string>? AllowedTools = null);
+    IReadOnlyList<string>? AllowedTools = null,
+    int? LlmRateLimitPermits = null,
+    int? LlmRateLimitWindowSeconds = null,
+    int? SyncRateLimitPermits = null,
+    int? SyncRateLimitWindowSeconds = null);
+
+/// <summary>SPEC-20260923-per-key-rate-limits RF-004: per-key rate-limit
+/// override. Every field nullable — null inherits the global
+/// <c>RateLimiting:*</c> value for that knob.</summary>
+public sealed record SetApiKeyRateLimitRequest(
+    int? LlmPermits,
+    int? LlmWindowSeconds,
+    int? SyncPermits,
+    int? SyncWindowSeconds);
 
 /// <summary>SPEC-20260923-source-authorization §5: replaces a key's read scope.
 /// Null/absent members mean unrestricted; empty arrays deny everything.</summary>

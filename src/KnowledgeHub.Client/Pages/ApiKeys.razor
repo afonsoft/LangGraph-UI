@@ -114,6 +114,47 @@
                         <small>O segredo completo só é exibido uma vez, na criação da chave.</small>
                     </div>
                 </div>
+
+                @* SPEC-20260923-per-key-rate-limits RF-004: per-key override —
+                   blank fields inherit the global RateLimiting:* values. *@
+                <div class="mb-3">
+                    <h6 class="text-muted mb-2">Rate limit (override por chave)</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label"><small>LLM permits</small></label>
+                            <input type="number" class="form-control form-control-sm" min="1" max="100000"
+                                   @bind="_rl.LlmPermits" placeholder="global" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label"><small>LLM janela (s)</small></label>
+                            <input type="number" class="form-control form-control-sm" min="1" max="86400"
+                                   @bind="_rl.LlmWindowSeconds" placeholder="global" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label"><small>Sync permits</small></label>
+                            <input type="number" class="form-control form-control-sm" min="1" max="100000"
+                                   @bind="_rl.SyncPermits" placeholder="global" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label"><small>Sync janela (s)</small></label>
+                            <input type="number" class="form-control form-control-sm" min="1" max="86400"
+                                   @bind="_rl.SyncWindowSeconds" placeholder="global" />
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <Button Size="Size.ExtraSmall" Color="Color.Primary" Icon="fa-solid fa-floppy-disk"
+                                Text="Salvar limites" IsAsync="true" IsDisabled="_rl.Saving"
+                                OnClick="SaveRateLimitAsync" />
+                        @if (_usageKey.LlmRateLimitPermits is not null || _usageKey.LlmRateLimitWindowSeconds is not null
+                            || _usageKey.SyncRateLimitPermits is not null || _usageKey.SyncRateLimitWindowSeconds is not null)
+                        {
+                            <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Warning" Icon="fa-solid fa-rotate-left"
+                                              Text="Limpar override" Title="Limpar override"
+                                              Content="A chave volta aos limites globais."
+                                              OnConfirm="ClearRateLimitAsync" />
+                        }
+                    </div>
+                </div>
             }
             @if (_usageLoading)
             {
@@ -252,6 +293,16 @@
     private ApiKeyDto? _usageKey;
     private ApiKeyUsageDto? _usage;
     private bool _usageLoading;
+    private readonly RateLimitForm _rl = new();
+
+    private sealed class RateLimitForm
+    {
+        public int? LlmPermits { get; set; }
+        public int? LlmWindowSeconds { get; set; }
+        public int? SyncPermits { get; set; }
+        public int? SyncWindowSeconds { get; set; }
+        public bool Saving { get; set; }
+    }
     private string _newName = "";
     private string? _createError;
     private string? _createdKey;
@@ -325,6 +376,10 @@
         _usageKey = key;
         _usage = null;
         _usageLoading = true;
+        _rl.LlmPermits = key.LlmRateLimitPermits;
+        _rl.LlmWindowSeconds = key.LlmRateLimitWindowSeconds;
+        _rl.SyncPermits = key.SyncRateLimitPermits;
+        _rl.SyncWindowSeconds = key.SyncRateLimitWindowSeconds;
         await _usageModal!.Toggle();
         try
         {
@@ -338,6 +393,47 @@
         {
             _usageLoading = false;
         }
+    }
+
+    // SPEC-20260923-per-key-rate-limits RF-004: save/clear the per-key override.
+    private async Task SaveRateLimitAsync()
+    {
+        if (_usageKey is null)
+            return;
+        _rl.Saving = true;
+        try
+        {
+            var result = await Api.SetKeyRateLimitAsync(_usageKey.Id,
+                new SetApiKeyRateLimitRequest(_rl.LlmPermits, _rl.LlmWindowSeconds, _rl.SyncPermits, _rl.SyncWindowSeconds));
+            if (!result.IsSuccess)
+            {
+                await Toast.Error("Erro", result.Error ?? "Falha ao salvar os limites");
+                return;
+            }
+            await Toast.Success("Salvo", "Rate limit da chave atualizado.");
+            await ReloadAsync();
+            _usageKey = _keys?.FirstOrDefault(k => k.Id == _usageKey.Id);
+        }
+        finally
+        {
+            _rl.Saving = false;
+        }
+    }
+
+    private async Task ClearRateLimitAsync()
+    {
+        if (_usageKey is null)
+            return;
+        var result = await Api.ClearKeyRateLimitAsync(_usageKey.Id);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao limpar o override");
+            return;
+        }
+        _rl.LlmPermits = _rl.LlmWindowSeconds = _rl.SyncPermits = _rl.SyncWindowSeconds = null;
+        await Toast.Success("Limpo", "A chave voltou aos limites globais.");
+        await ReloadAsync();
+        _usageKey = _keys?.FirstOrDefault(k => k.Id == _usageKey.Id);
     }
 
     private async Task CopyText(string text)

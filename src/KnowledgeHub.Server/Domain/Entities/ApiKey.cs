@@ -24,6 +24,12 @@ public sealed class ApiKey
     /// <summary>JSON array of tool names the key may call. Null = unrestricted;
     /// empty array = deny all.</summary>
     public string? AllowedToolsJson { get; set; }
+    /// <summary>SPEC-20260923-per-key-rate-limits RF-001: optional per-key
+    /// overrides. NULL = inherit the global RateLimiting:* values.</summary>
+    public int? LlmRateLimitPermits { get; set; }
+    public int? LlmRateLimitWindowSeconds { get; set; }
+    public int? SyncRateLimitPermits { get; set; }
+    public int? SyncRateLimitWindowSeconds { get; set; }
     public List<ApiKeyUsageEvent> UsageEvents { get; set; } = [];
     public ApiKeyChatSettings? ChatSettings { get; set; }
 }

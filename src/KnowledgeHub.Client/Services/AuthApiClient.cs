@@ -52,6 +52,22 @@ public sealed class AuthApiClient(HttpClient http)
     public Task<ApiKeyUsageDto?> GetKeyUsageAsync(Guid id, CancellationToken ct = default) =>
         http.GetFromJsonAsync<ApiKeyUsageDto>($"api/apikeys/{id}/usage", ct);
 
+    // SPEC-20260923-per-key-rate-limits RF-004: per-key rate-limit override.
+
+    /// <summary>Salva o override de rate limit da chave (null herda o global).</summary>
+    public async Task<ApiResult<object>> SetKeyRateLimitAsync(Guid id, SetApiKeyRateLimitRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/api-keys/{id}/rate-limit", request, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    /// <summary>Remove o override — a chave volta aos limites globais.</summary>
+    public async Task<ApiResult<object>> ClearKeyRateLimitAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/api-keys/{id}/rate-limit", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     private static async Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)
