@@ -19,16 +19,26 @@ public sealed class McpToolRateLimiter : IDisposable
         { "write_knowledge", "write_note" };
 
     private readonly RateLimitOptions _options;
+    private readonly IApiKeyRateLimitResolver _overrides;
     private readonly ILogger<McpToolRateLimiter> _logger;
     private readonly PartitionedRateLimiter<string> _llm;
     private readonly PartitionedRateLimiter<string> _sync;
 
     public McpToolRateLimiter(RateLimitOptions options, ILogger<McpToolRateLimiter> logger)
+        : this(options, new NoOpApiKeyRateLimitResolver(), logger)
+    {
+    }
+
+    public McpToolRateLimiter(
+        RateLimitOptions options, IApiKeyRateLimitResolver overrides, ILogger<McpToolRateLimiter> logger)
     {
         _options = options;
+        _overrides = overrides;
         _logger = logger;
-        _llm = Build(options.LlmPermitLimit, options.AnonymousLlmPermitLimit, options.LlmWindowSeconds, sliding: true);
-        _sync = Build(options.SyncPermitLimit, options.SyncPermitLimit, options.SyncWindowSeconds, sliding: false);
+        _llm = Build(options.LlmPermitLimit, options.AnonymousLlmPermitLimit, options.LlmWindowSeconds, sliding: true,
+            o => (o.LlmPermits, o.LlmWindowSeconds));
+        _sync = Build(options.SyncPermitLimit, options.SyncPermitLimit, options.SyncWindowSeconds, sliding: false,
+            o => (o.SyncPermits, o.SyncWindowSeconds));
     }
 
     /// <summary>
@@ -48,6 +58,10 @@ public sealed class McpToolRateLimiter : IDisposable
             return true;
 
         var (key, kind, _) = CallerPartitioner.Resolve(http, _options.TrustForwardedHeaders);
+        // RF-003/RF-005: the partition key carries an override fingerprint so
+        // editing/clearing an override yields a fresh limiter — partitioned
+        // limiters never rebuild an existing partition's options.
+        key = WithOverrideFingerprint(key);
         using var lease = limiter.AttemptAcquire(key);
         if (lease.IsAcquired)
             return true;
@@ -62,24 +76,61 @@ public sealed class McpToolRateLimiter : IDisposable
         return false;
     }
 
-    private static PartitionedRateLimiter<string> Build(int permit, int anonPermit, int windowSeconds, bool sliding) =>
+    /// <summary>Acrescenta um fingerprint dos valores de override à partition key
+    /// — mesma key + override diferente = bucket diferente.</summary>
+    private string WithOverrideFingerprint(string key)
+    {
+        if (!key.StartsWith("key:", StringComparison.Ordinal)
+            || !Guid.TryParse(key.AsSpan(4), out var keyId)
+            || !_overrides.TryGetOverride(keyId, out var ov) || ov is null)
+            return key;
+        return $"{key}:{ov.LlmPermits}/{ov.LlmWindowSeconds}/{ov.SyncPermits}/{ov.SyncWindowSeconds}";
+    }
+
+    /// <summary>Resolver vazio usado pelo construtor legado (testes, hosts sem o serviço).</summary>
+    private sealed class NoOpApiKeyRateLimitResolver : IApiKeyRateLimitResolver
+    {
+        public bool TryGetOverride(Guid keyId, out ApiKeyRateLimitOverride? value)
+        {
+            value = null;
+            return false;
+        }
+        public void Invalidate() { }
+    }
+
+    private PartitionedRateLimiter<string> Build(
+        int permit, int anonPermit, int windowSeconds, bool sliding,
+        Func<ApiKeyRateLimitOverride, (int? Permits, int? WindowSeconds)> selector) =>
         PartitionedRateLimiter.Create<string, string>(key =>
         {
             var limit = key.StartsWith(CallerPartitioner.AnonymousPrefix, StringComparison.Ordinal)
                 ? anonPermit
                 : permit;
+            var window = windowSeconds;
+            // SPEC-20260923-per-key-rate-limits RF-003: per-key override mixes
+            // per-field with the global values. The partition key may carry a
+            // `:{fingerprint}` suffix — the Guid is always chars 4..39.
+            if (key.StartsWith("key:", StringComparison.Ordinal)
+                && key.Length >= 40
+                && Guid.TryParse(key.AsSpan(4, 36), out var keyId)
+                && _overrides.TryGetOverride(keyId, out var ov) && ov is not null)
+            {
+                var (p, w) = selector(ov);
+                limit = p ?? limit;
+                window = w ?? window;
+            }
             return sliding
                 ? RateLimitPartition.GetSlidingWindowLimiter(key, _ => new SlidingWindowRateLimiterOptions
                 {
                     PermitLimit = limit,
-                    Window = TimeSpan.FromSeconds(windowSeconds),
+                    Window = TimeSpan.FromSeconds(window),
                     SegmentsPerWindow = 6,
                     QueueLimit = 0
                 })
                 : RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = limit,
-                    Window = TimeSpan.FromSeconds(windowSeconds),
+                    Window = TimeSpan.FromSeconds(window),
                     QueueLimit = 0
                 });
         });

@@ -45,7 +45,13 @@ builder.Services.AddSingleton(sp =>
         .GetSection(KnowledgeHub.Server.RateLimiting.RateLimitOptions.SectionName)
         .Get<KnowledgeHub.Server.RateLimiting.RateLimitOptions>()
         ?? new KnowledgeHub.Server.RateLimiting.RateLimitOptions());
-builder.Services.AddSingleton<KnowledgeHub.Server.RateLimiting.McpToolRateLimiter>();
+builder.Services.AddSingleton<KnowledgeHub.Server.RateLimiting.IApiKeyRateLimitResolver,
+    KnowledgeHub.Server.RateLimiting.ApiKeyRateLimitResolver>();
+builder.Services.AddSingleton<KnowledgeHub.Server.RateLimiting.McpToolRateLimiter>(sp =>
+    new KnowledgeHub.Server.RateLimiting.McpToolRateLimiter(
+        sp.GetRequiredService<KnowledgeHub.Server.RateLimiting.RateLimitOptions>(),
+        sp.GetRequiredService<KnowledgeHub.Server.RateLimiting.IApiKeyRateLimitResolver>(),
+        sp.GetRequiredService<ILogger<KnowledgeHub.Server.RateLimiting.McpToolRateLimiter>>()));
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -82,6 +88,18 @@ static System.Threading.RateLimiting.RateLimitPartition<string> RateLimiting(
     HttpContext http, KnowledgeHub.Server.RateLimiting.RateLimitOptions o, bool llm, bool sync = false)
 {
     var (key, _, _) = KnowledgeHub.Server.RateLimiting.CallerPartitioner.Resolve(http, o.TrustForwardedHeaders);
+    // SPEC-20260923-per-key-rate-limits RF-003: a key: partition may carry a
+    // per-key override — each field mixes with the global value.
+    KnowledgeHub.Server.RateLimiting.ApiKeyRateLimitOverride? ov = null;
+    if (key.StartsWith("key:", StringComparison.Ordinal)
+        && Guid.TryParse(key.AsSpan(4), out var keyId))
+        http.RequestServices
+            .GetRequiredService<KnowledgeHub.Server.RateLimiting.IApiKeyRateLimitResolver>()
+            .TryGetOverride(keyId, out ov);
+    // RF-005: fingerprint on the partition key — editing/clearing an override
+    // yields a fresh limiter (partitions never rebuild their options).
+    if (ov is not null)
+        key = $"{key}:{ov.LlmPermits}/{ov.LlmWindowSeconds}/{ov.SyncPermits}/{ov.SyncWindowSeconds}";
     if (llm)
     {
         var permit = key.StartsWith(KnowledgeHub.Server.RateLimiting.CallerPartitioner.AnonymousPrefix, StringComparison.Ordinal)
@@ -89,8 +107,8 @@ static System.Threading.RateLimiting.RateLimitPartition<string> RateLimiting(
         return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(key, _ =>
             new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
             {
-                PermitLimit = permit,
-                Window = TimeSpan.FromSeconds(o.LlmWindowSeconds),
+                PermitLimit = ov?.LlmPermits ?? permit,
+                Window = TimeSpan.FromSeconds(ov?.LlmWindowSeconds ?? o.LlmWindowSeconds),
                 SegmentsPerWindow = 6,
                 QueueLimit = 0
             });
@@ -98,8 +116,8 @@ static System.Threading.RateLimiting.RateLimitPartition<string> RateLimiting(
     return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(key, _ =>
         new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
         {
-            PermitLimit = sync ? o.SyncPermitLimit : o.GeneralPermitLimit,
-            Window = TimeSpan.FromSeconds(sync ? o.SyncWindowSeconds : o.GeneralWindowSeconds),
+            PermitLimit = sync ? (ov?.SyncPermits ?? o.SyncPermitLimit) : o.GeneralPermitLimit,
+            Window = TimeSpan.FromSeconds(sync ? (ov?.SyncWindowSeconds ?? o.SyncWindowSeconds) : o.GeneralWindowSeconds),
             QueueLimit = 0
         });
 }
