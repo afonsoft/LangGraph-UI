@@ -32,7 +32,8 @@ public sealed class SqliteVecVectorStore : IVectorStore
         _dimensions = dimensions;
     }
 
-    public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default)
+    public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model,
+        IReadOnlyDictionary<string, string>? metadata = null, CancellationToken cancellationToken = default)
     {
         CheckDimensions(vector);
         var conn = await VecConnectionAsync(cancellationToken);

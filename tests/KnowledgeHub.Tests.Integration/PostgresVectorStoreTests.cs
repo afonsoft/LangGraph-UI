@@ -23,7 +23,12 @@ public sealed class PostgresVectorStoreTests
 
         var docId = Guid.NewGuid();
         var items = Enumerable.Range(0, 5).Select(i => new VectorUpsert(
-            Guid.NewGuid(), docId, Guid.NewGuid(), new[] { 1f, i, 0f, 0f })).ToList();
+            Guid.NewGuid(), docId, Guid.NewGuid(), new[] { 1f, i, 0f, 0f },
+            new Dictionary<string, string>
+            {
+                ["sourceType"] = "WebPage",
+                ["indexedAt"] = "2026-09-24T00:00:00.0000000Z"
+            })).ToList();
 
         await store.UpsertBatchAsync(items, "test-model");
 
@@ -34,6 +39,14 @@ public sealed class PostgresVectorStoreTests
         check.CommandText = "SELECT count(*) FROM pg_indexes WHERE indexname = $1";
         check.Parameters.AddWithValue("kh_embeddings_embedding_hnsw_idx");
         Assert.Equal(1L, (long)(await check.ExecuteScalarAsync())!);
+
+        // SPEC-20260923-pgvector-metadata-upsert AC: rows carry the map.
+        await using var metaCheck = conn.CreateCommand();
+        metaCheck.CommandText =
+            "SELECT count(*) FROM kh_embeddings WHERE document_id = $1" +
+            " AND metadata->>'sourceType' = 'WebPage'";
+        metaCheck.Parameters.AddWithValue(docId);
+        Assert.Equal(5L, (long)(await metaCheck.ExecuteScalarAsync())!);
 
         var hits = await store.SearchAsync(new[] { 1f, 0f, 0f, 0f }, "test-model", 3);
         Assert.NotEmpty(hits);

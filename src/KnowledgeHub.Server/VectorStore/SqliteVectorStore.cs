@@ -10,7 +10,8 @@ namespace KnowledgeHub.Server.VectorStore;
 /// </summary>
 public sealed class SqliteVectorStore(KnowledgeHubDbContext db) : IVectorStore
 {
-    public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default)
+    public async Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model,
+        IReadOnlyDictionary<string, string>? metadata = null, CancellationToken cancellationToken = default)
     {
         var chunk = await db.Chunks.FindAsync([chunkId], cancellationToken)
             ?? throw new InvalidOperationException($"Chunk {chunkId} not found");

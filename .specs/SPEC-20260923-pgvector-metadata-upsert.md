@@ -8,7 +8,7 @@
 | Stack | `.NET 10` + Npgsql/pgvector |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-{YYYYMMDD}-pgvector-metadata` |
-| Status | `In implementation` — approved by owner 2026-09-23 ("Implementar deferrals") |
+| Status | `Done` — merged via PR |
 | Origin | `SPEC-20260923-pgvector-hnsw-scale` RF-003 — `metadata jsonb` column exists but upsert never writes it ("extended `VectorUpsert` or a follow-up `UpdateMetadataAsync`"). |
 
 ## 1. User Story

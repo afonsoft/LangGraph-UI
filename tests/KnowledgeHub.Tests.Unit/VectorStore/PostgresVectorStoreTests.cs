@@ -43,13 +43,40 @@ public sealed class PostgresVectorStoreTests
     }
 
     [Fact]
-    public void BuildBatchUpsertSql_GeneratesNRowsOf5Params()
+    public void BuildBatchUpsertSql_GeneratesNRowsOf6Params()
     {
-        // Covers RF-002: one multi-row INSERT, 5 positional params per row.
+        // Covers RF-002: one multi-row INSERT, 6 positional params per row
+        // (metadata jsonb rides the upsert and the conflict update).
         var sql = PostgresVectorStore.BuildBatchUpsertSql(2);
-        Assert.Contains("($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)", sql);
+        Assert.Contains("($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)", sql);
         Assert.Contains("ON CONFLICT (chunk_id) DO UPDATE", sql);
         Assert.Contains("EXCLUDED.model", sql);
+        Assert.Contains("metadata = EXCLUDED.metadata", sql);
+    }
+
+    [Fact]
+    public void SerializeMetadata_NullAndEmpty_ProduceEmptyJsonObject()
+    {
+        // SPEC-20260923-pgvector-metadata-upsert AC: null/empty → '{}'.
+        Assert.Equal("{}", PostgresVectorStore.SerializeMetadata(null));
+        Assert.Equal("{}",
+            PostgresVectorStore.SerializeMetadata(
+                new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void SerializeMetadata_Map_ProducesValidJsonObject()
+    {
+        var json = PostgresVectorStore.SerializeMetadata(new Dictionary<string, string>
+        {
+            ["sourceType"] = "ObsidianVault",
+            ["indexedAt"] = "2026-09-24T01:02:03.0000000Z"
+        });
+        var parsed = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal("ObsidianVault",
+            parsed.RootElement.GetProperty("sourceType").GetString());
+        Assert.Equal("2026-09-24T01:02:03.0000000Z",
+            parsed.RootElement.GetProperty("indexedAt").GetString());
     }
 
     [Fact]

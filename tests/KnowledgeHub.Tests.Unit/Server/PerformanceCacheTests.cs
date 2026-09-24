@@ -204,7 +204,8 @@ public sealed class PerformanceCacheTests
     {
         public int SearchCalls { get; private set; }
 
-        public Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model, CancellationToken cancellationToken = default) =>
+        public Task UpsertAsync(Guid chunkId, Guid documentId, Guid sourceId, float[] vector, string model,
+            IReadOnlyDictionary<string, string>? metadata = null, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
         public Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default) =>
