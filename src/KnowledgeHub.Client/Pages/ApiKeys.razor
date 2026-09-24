@@ -102,17 +102,44 @@
             @if (_usageKey is not null)
             {
                 <div class="mb-3">
-                    <div><strong>@_usageKey.Name</strong> <code>@_usageKey.Prefix…</code>
-                        <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
-                                OnClick="() => CopyText(_usageKey.Prefix)" />
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <div>
+                            <span class="fs-5 fw-bold me-2">@_usageKey.Name</span>
+                            <small class="text-muted">id <code>@_usageKey.Id</code></small>
+                        </div>
                     </div>
-                    <small class="text-muted">
-                        id <code>@_usageKey.Id</code> · criada @_usageKey.CreatedAt.LocalDateTime.ToString("g") ·
+                    <div class="text-muted small mb-2">
+                        criada @_usageKey.CreatedAt.LocalDateTime.ToString("g") ·
                         último uso @(_usageKey.LastUsedAt?.LocalDateTime.ToString("g") ?? "—")
-                    </small>
-                    <div class="alert alert-info py-1 mt-2 mb-0">
-                        <small>O segredo completo só é exibido uma vez, na criação da chave.</small>
                     </div>
+
+                    @* SPEC-20260924-api-key-reveal-and-copy RF-003: Secret reveal & copy *@
+                    @if (_usageKeySecretLoading)
+                    {
+                        <div class="text-muted small"><i class="fa-solid fa-spinner fa-spin"></i> Carregando chave…</div>
+                    }
+                    else if (_usageKeySecret is { IsAvailable: true, Secret: not null })
+                    {
+                        <div class="input-group input-group-sm mb-1" style="max-width: 520px;">
+                            <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
+                            <input type="@(_revealSecret ? "text" : "password")" class="form-control font-monospace"
+                                   readonly value="@_usageKeySecret.Secret" />
+                            <Button Size="Size.Small" Color="Color.Secondary"
+                                    Icon="@(_revealSecret ? "fa-solid fa-eye-slash" : "fa-solid fa-eye")"
+                                    Title="@(_revealSecret ? "Ocultar segredo" : "Revelar segredo")"
+                                    OnClick="() => _revealSecret = !_revealSecret" />
+                            <Button Size="Size.Small" Color="Color.Primary" Icon="fa-solid fa-copy"
+                                    Text="Copiar chave" Title="Copiar chave completa"
+                                    OnClick="CopySecretAsync" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning py-1 px-2 mb-1 d-flex align-items-center gap-2" style="max-width: 520px;">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <small>Chave legada (<code>@_usageKey.Prefix…</code>): o segredo completo não está disponível para chaves criadas antes do armazenamento protegido.</small>
+                        </div>
+                    }
                 </div>
 
                 @* SPEC-20260923-per-key-rate-limits RF-004: per-key override —
@@ -293,6 +320,10 @@
     private ApiKeyDto? _usageKey;
     private ApiKeyUsageDto? _usage;
     private bool _usageLoading;
+    // SPEC-20260924-api-key-reveal-and-copy RF-003: secret reveal & copy state
+    private ApiKeySecretDto? _usageKeySecret;
+    private bool _usageKeySecretLoading;
+    private bool _revealSecret;
     private readonly RateLimitForm _rl = new();
 
     private sealed class RateLimitForm
@@ -370,12 +401,16 @@
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", _createdKey);
     }
 
-    // SPEC-20260915-apikey-usage-audit RF-006: details + metrics + audit dialog.
+    // SPEC-20260915-apikey-usage-audit RF-006 & SPEC-20260924-api-key-reveal-and-copy RF-003:
+    // details + metrics + secret reveal dialog.
     private async Task ShowUsage(ApiKeyDto key)
     {
         _usageKey = key;
         _usage = null;
         _usageLoading = true;
+        _usageKeySecret = null;
+        _usageKeySecretLoading = true;
+        _revealSecret = false;
         _rl.LlmPermits = key.LlmRateLimitPermits;
         _rl.LlmWindowSeconds = key.LlmRateLimitWindowSeconds;
         _rl.SyncPermits = key.SyncRateLimitPermits;
@@ -383,15 +418,38 @@
         await _usageModal!.Toggle();
         try
         {
-            _usage = await Api.GetKeyUsageAsync(key.Id);
+            var usageTask = Api.GetKeyUsageAsync(key.Id);
+            var secretTask = Api.GetKeySecretAsync(key.Id);
+            await Task.WhenAll(usageTask, secretTask);
+            _usage = await usageTask;
+            _usageKeySecret = await secretTask;
         }
         catch (Exception ex)
         {
-            await Toast.Error("Erro", $"Falha ao carregar métricas: {ex.Message}");
+            await Toast.Error("Erro", $"Falha ao carregar detalhes: {ex.Message}");
         }
         finally
         {
             _usageLoading = false;
+            _usageKeySecretLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // SPEC-20260924-api-key-reveal-and-copy RF-003: copy complete secret to clipboard.
+    private async Task CopySecretAsync()
+    {
+        if (_usageKeySecret?.Secret is { } secret)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("navigator.clipboard.writeText", secret);
+                await Toast.Success("Copiado", "Chave completa copiada para a área de transferência.");
+            }
+            catch
+            {
+                await Toast.Warning("Aviso", "Não foi possível acessar a área de transferência.");
+            }
         }
     }
 

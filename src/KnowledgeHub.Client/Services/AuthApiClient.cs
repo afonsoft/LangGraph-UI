@@ -52,6 +52,10 @@ public sealed class AuthApiClient(HttpClient http)
     public Task<ApiKeyUsageDto?> GetKeyUsageAsync(Guid id, CancellationToken ct = default) =>
         http.GetFromJsonAsync<ApiKeyUsageDto>($"api/apikeys/{id}/usage", ct);
 
+    // SPEC-20260924-api-key-reveal-and-copy RF-002: get revealed secret for a key.
+    public Task<ApiKeySecretDto?> GetKeySecretAsync(Guid id, CancellationToken ct = default) =>
+        http.GetFromJsonAsync<ApiKeySecretDto>($"api/apikeys/{id}/secret", ct);
+
     // SPEC-20260923-per-key-rate-limits RF-004: per-key rate-limit override.
 
     /// <summary>Salva o override de rate limit da chave (null herda o global).</summary>

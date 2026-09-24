@@ -3,6 +3,7 @@ using System.Text.Json;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Shared.Contracts;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -23,6 +24,7 @@ public static class ApiKeyEndpoints
         group.MapPost("/", CreateAsync);
         group.MapDelete("/{id:guid}", RevokeAsync);
         group.MapGet("/{id:guid}/usage", UsageAsync);
+        group.MapGet("/{id:guid}/secret", RevealSecretAsync);
 
         // SPEC-20260923-source-authorization §5: scope admin lives under the
         // dashed /api/api-keys surface but is cookie-only like this group —
@@ -81,6 +83,7 @@ public static class ApiKeyEndpoints
         CreateApiKeyRequest request,
         HttpContext http,
         KnowledgeHubDbContext db,
+        IDataProtectionProvider dataProtection,
         CancellationToken ct)
     {
         var name = request.Name?.Trim() ?? "";
@@ -88,11 +91,13 @@ public static class ApiKeyEndpoints
             return Results.BadRequest(new { error = "nome é obrigatório (máx. 100 caracteres)" });
 
         var secret = ApiKeyService.GenerateKey();
+        var protector = dataProtection.CreateProtector("api-keys");
         var key = new ApiKey
         {
             Name = name,
             KeyHash = ApiKeyService.HashKey(secret),
             Prefix = ApiKeyService.PrefixOf(secret),
+            ProtectedKey = protector.Protect(secret),
             UserId = CurrentUserId(http)
         };
         db.ApiKeys.Add(key);
@@ -148,6 +153,38 @@ public static class ApiKeyEndpoints
         key.RevokedAt ??= DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
+    }
+
+    /// <summary>SPEC-20260924-api-key-reveal-and-copy RF-002: owner-only key secret reveal endpoint.</summary>
+    private static async Task<IResult> RevealSecretAsync(
+        Guid id,
+        HttpContext http,
+        KnowledgeHubDbContext db,
+        IDataProtectionProvider dataProtection,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var userId = CurrentUserId(http);
+        var key = await db.ApiKeys
+            .FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId, ct);
+        if (key is null)
+            return Results.NotFound(new { error = "api key não encontrada" });
+
+        if (string.IsNullOrEmpty(key.ProtectedKey))
+            return Results.Ok(new ApiKeySecretDto(key.Id, null, false));
+
+        try
+        {
+            var protector = dataProtection.CreateProtector("api-keys");
+            var secret = protector.Unprotect(key.ProtectedKey);
+            return Results.Ok(new ApiKeySecretDto(key.Id, secret, true));
+        }
+        catch (Exception ex)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(ApiKeyEndpoints));
+            logger.LogWarning(ex, "Failed to unprotect API key {KeyId}", id);
+            return Results.Ok(new ApiKeySecretDto(key.Id, null, false));
+        }
     }
 
     /// <summary>SPEC-20260923-source-authorization RF-001: replaces the key's
