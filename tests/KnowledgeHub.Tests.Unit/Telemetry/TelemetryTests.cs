@@ -31,6 +31,7 @@ namespace KnowledgeHub.Tests.Unit.Telemetry;
 /// ActivityListener, cache hit/miss counters, agent span tree, error status on
 /// LLM failure, and the tag allowlist audit (no PII/query text in telemetry).
 /// </summary>
+[Collection("SearchTelemetry")]
 public sealed class TelemetryTests
 {
     private sealed record MetricSample(string Instrument, double Value, Dictionary<string, object?> Tags);

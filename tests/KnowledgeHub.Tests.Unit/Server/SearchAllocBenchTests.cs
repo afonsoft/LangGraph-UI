@@ -12,6 +12,7 @@ namespace KnowledgeHub.Tests.Unit.Server;
 
 // CA-001 evidence for SPEC-20260916-performance-memory-cache: allocation of the
 // old materialize-everything path vs the streaming+heap path over the same data.
+[Collection("SearchTelemetry")]
 public sealed class SearchAllocBenchTests(ITestOutputHelper output)
 {
     [Fact]

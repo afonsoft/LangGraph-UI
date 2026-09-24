@@ -20,6 +20,7 @@ namespace KnowledgeHub.Tests.Unit.Search;
 /// SPEC-20260924-graph-tool-discovery: chunk→component enrichment on the
 /// search path, disabled gate, citation propagation, and text surfaces.
 /// </summary>
+[Collection("SearchTelemetry")]
 public class GraphComponentDiscoveryTests
 {
     private static async Task<(SqliteConnection conn, KnowledgeHubDbContext db, DocumentChunk chunk)>

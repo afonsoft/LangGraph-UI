@@ -24,6 +24,7 @@ namespace KnowledgeHub.Tests.Unit.Server;
 // CA-002), fail-soft distributed cache (RNF-003 / CA-004), search-result and
 // query-embedding caching with index-version invalidation (RF-005), and the
 // batch vector upsert (RF-004 / CA-003).
+[Collection("SearchTelemetry")]
 public sealed class PerformanceCacheTests
 {
     // ---- T1: catalog cache -------------------------------------------------
