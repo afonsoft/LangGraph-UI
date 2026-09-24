@@ -4,6 +4,7 @@ using KnowledgeHub.Shared.Contracts;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KnowledgeHub.Tests.Integration;
 
@@ -221,6 +222,73 @@ public class AuthFlowTests
             new ChangePasswordRequest("nope-nope", "valid-new-1"));
         Assert.Equal(HttpStatusCode.BadRequest, wrongCurrent.StatusCode);
     }
+
+    [Fact]
+    public async Task ApiKey_RevealSecret_Covers_RF001_RF002()
+    {
+        // Covers SPEC-20260924-api-key-reveal-and-copy RF-001 & RF-002:
+        // Owner can retrieve the full secret; anonymous gets 401; non-owner/missing gets 404.
+        await using var factory = new Fixture();
+        using var admin = await TestAuth.LoginAsync(factory);
+
+        var createRes = await admin.PostAsJsonAsync("/api/apikeys", new CreateApiKeyRequest("reveal-test"));
+        createRes.EnsureSuccessStatusCode();
+        var created = await createRes.Content.ReadFromJsonAsync<ApiKeyCreatedDto>();
+        Assert.NotNull(created);
+        Assert.Matches("^aft_[0-9a-f]{32}$", created.Key);
+
+        // Anonymous → 401
+        using var anon = factory.CreateClient();
+        var anonRes = await anon.GetAsync($"/api/apikeys/{created.Id}/secret");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonRes.StatusCode);
+
+        // Non-existent key → 404
+        var notFoundRes = await admin.GetAsync($"/api/apikeys/{Guid.NewGuid()}/secret");
+        Assert.Equal(HttpStatusCode.NotFound, notFoundRes.StatusCode);
+
+        // Owner gets the decrypted secret
+        var secretRes = await admin.GetAsync($"/api/apikeys/{created.Id}/secret");
+        Assert.Equal(HttpStatusCode.OK, secretRes.StatusCode);
+        var secretDto = await secretRes.Content.ReadFromJsonAsync<ApiKeySecretDto>();
+        Assert.NotNull(secretDto);
+        Assert.Equal(created.Id, secretDto.Id);
+        Assert.True(secretDto.IsAvailable);
+        Assert.Equal(created.Key, secretDto.Secret);
+    }
+
+    [Fact]
+    public async Task ApiKey_RevealSecret_LegacyKey_ReturnsUnavailable()
+    {
+        // Covers SPEC-20260924-api-key-reveal-and-copy RF-002:
+        // Legacy keys created without ProtectedKey return IsAvailable: false and Secret: null.
+        await using var factory = new Fixture();
+        using var admin = await TestAuth.LoginAsync(factory);
+
+        var createRes = await admin.PostAsJsonAsync("/api/apikeys", new CreateApiKeyRequest("legacy-test"));
+        createRes.EnsureSuccessStatusCode();
+        var created = await createRes.Content.ReadFromJsonAsync<ApiKeyCreatedDto>();
+        Assert.NotNull(created);
+
+        // Simulate legacy key by setting ProtectedKey = null in the database
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                .GetRequiredService<KnowledgeHub.Server.Data.KnowledgeHubDbContext>(scope.ServiceProvider);
+            var key = await db.ApiKeys.FindAsync(created.Id);
+            Assert.NotNull(key);
+            key.ProtectedKey = null;
+            await db.SaveChangesAsync();
+        }
+
+        var secretRes = await admin.GetAsync($"/api/apikeys/{created.Id}/secret");
+        Assert.Equal(HttpStatusCode.OK, secretRes.StatusCode);
+        var secretDto = await secretRes.Content.ReadFromJsonAsync<ApiKeySecretDto>();
+        Assert.NotNull(secretDto);
+        Assert.Equal(created.Id, secretDto.Id);
+        Assert.False(secretDto.IsAvailable);
+        Assert.Null(secretDto.Secret);
+    }
+
 
     private static async Task<HttpResponseMessage> McpInitializeAsync(HttpClient client)
     {

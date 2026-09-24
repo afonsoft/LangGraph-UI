@@ -65,3 +65,7 @@ public sealed record ApiKeyUsageDto(
     int ErrorCount,
     double ErrorRate,
     List<ApiKeyUsageEventDto> RecentEvents);
+
+/// <summary>Revealed key secret response (SPEC-20260924-api-key-reveal-and-copy RF-002).</summary>
+public sealed record ApiKeySecretDto(Guid Id, string? Secret, bool IsAvailable);
+
