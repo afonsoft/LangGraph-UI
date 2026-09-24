@@ -1,6 +1,6 @@
-<mxfile host="app.diagrams.net" modified="2026-09-14T00:00:00.000Z" agent="Devin" version="24.7.5" type="device">
+<mxfile host="app.diagrams.net" modified="2026-09-24T00:00:00.000Z" agent="Devin" version="24.7.5" type="device">
   <diagram id="kh-context" name="KnowledgeHub - Context &amp; Containers">
-    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -8,71 +8,92 @@
         <mxCell id="grp-consumers" value="Consumers" style="swimlane;fontSize=14;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="40" width="340" height="240" as="geometry" />
         </mxCell>
-        <mxCell id="ui" value="Browser Admin&lt;br&gt;(Blazor WASM SPA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="grp-consumers">
+        <mxCell id="ui" value="Browser Admin&lt;br&gt;(Blazor WASM SPA / PWA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="grp-consumers">
           <mxGeometry x="60" y="50" width="220" height="50" as="geometry" />
         </mxCell>
         <mxCell id="cur" value="Cursor / Claude Desktop&lt;br&gt;(legacy SSE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="grp-consumers">
           <mxGeometry x="60" y="120" width="220" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="ag" value="LangGraph / Python agents&lt;br&gt;(Streamable HTTP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="grp-consumers">
+        <mxCell id="ag" value="MCP agents / LangGraph&lt;br&gt;(Streamable HTTP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="grp-consumers">
           <mxGeometry x="60" y="190" width="220" height="50" as="geometry" />
         </mxCell>
 
         <mxCell id="grp-kh" value="KnowledgeHub — single Kestrel process (.NET 10)" style="swimlane;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="520" y="40" width="480" height="620" as="geometry" />
+          <mxGeometry x="520" y="40" width="520" height="820" as="geometry" />
         </mxCell>
         <mxCell id="spa" value="Static host&lt;br&gt;index.html + WASM assets" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="50" width="180" height="50" as="geometry" />
+          <mxGeometry x="40" y="50" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="api" value="REST API&lt;br&gt;/api/sources · /api/search" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="250" y="50" width="190" height="50" as="geometry" />
+        <mxCell id="api" value="REST API&lt;br&gt;/api/* (Minimal APIs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="270" y="50" width="210" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="mcp" value="MCP Server&lt;br&gt;/mcp (Streamable HTTP)&lt;br&gt;/mcp/sse + /mcp/message (legacy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="130" width="400" height="60" as="geometry" />
+        <mxCell id="mcp" value="MCP Server&lt;br&gt;/mcp (Streamable HTTP, hybrid sessions)&lt;br&gt;/mcp/sse + /mcp/message (legacy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="40" y="120" width="440" height="60" as="geometry" />
         </mxCell>
         <mxCell id="hub" value="SignalR Hub&lt;br&gt;/hubs/mcp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="220" width="180" height="50" as="geometry" />
+          <mxGeometry x="40" y="200" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="auth" value="Auth&lt;br&gt;cookie + aft_* API keys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="190" y="200" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rl" value="Rate limiter&lt;br&gt;key → user → IP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="340" y="200" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="cat" value="DynamicToolCatalog&lt;br&gt;IToolProviders (live)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontStyle=1" vertex="1" parent="grp-kh">
+          <mxGeometry x="40" y="280" width="440" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ing" value="IngestionService&lt;br&gt;connectors · chunkers · watcher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="40" y="360" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="sec" value="ContentSanitizer&lt;br&gt;injection scan → SuspicionFlags" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="270" y="360" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="srch" value="SearchService&lt;br&gt;hybrid FTS5+vector RRF&lt;br&gt;rewrite · rerank · filters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="40" y="440" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="graph" value="EntityExtractor + IKnowledgeGraphStore&lt;br&gt;find_dependencies · find_path ..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="270" y="440" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ans" value="AnswerService / AgentService&lt;br&gt;bounded SSE · HITL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="40" y="530" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="emb" value="IEmbeddingProvider&lt;br&gt;deterministic · ollama · openai · onnx" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="270" y="530" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vec" value="IVectorStore&lt;br&gt;sqlite · sqlite-vec · pgvector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="40" y="610" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="tel" value="OpenTelemetry&lt;br&gt;metrics + traces (opt-in)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
+          <mxGeometry x="270" y="610" width="210" height="50" as="geometry" />
         </mxCell>
         <mxCell id="feed" value="IMcpActivityFeed&lt;br&gt;ring buffer 500" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="250" y="220" width="190" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="cat" value="DynamicToolCatalog&lt;br&gt;IToolProviders" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontStyle=1" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="300" width="400" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="srch" value="SearchService&lt;br&gt;cosine ranking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="380" width="180" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="ing" value="IngestionService&lt;br&gt;parser · chunker · watcher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="250" y="380" width="190" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="emb" value="IEmbeddingProvider&lt;br&gt;deterministic · ollama · openai" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="460" width="190" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="vec" value="IVectorStore&lt;br&gt;sqlite | postgres/pgvector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="grp-kh">
-          <mxGeometry x="250" y="460" width="190" height="50" as="geometry" />
+          <mxGeometry x="40" y="690" width="210" height="50" as="geometry" />
         </mxCell>
         <mxCell id="note-kh" value="tools/list resolved live per call;&lt;br&gt;list_changed broadcast on catalog mutation" style="text;html=1;fontSize=11;fontColor=#333333;align=center;" vertex="1" parent="grp-kh">
-          <mxGeometry x="40" y="540" width="400" height="40" as="geometry" />
+          <mxGeometry x="270" y="695" width="210" height="40" as="geometry" />
         </mxCell>
 
         <mxCell id="grp-stores" value="Storage" style="swimlane;fontSize=14;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="430" width="340" height="230" as="geometry" />
+          <mxGeometry x="40" y="430" width="340" height="310" as="geometry" />
         </mxCell>
-        <mxCell id="sql" value="SQLite — knowledgehub.db&lt;br&gt;catalog + docs + vectors" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="grp-stores">
-          <mxGeometry x="30" y="60" width="130" height="80" as="geometry" />
+        <mxCell id="sql" value="SQLite knowledgehub.db&lt;br&gt;catalog + docs + vectors&lt;br&gt;+ graph + settings" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="grp-stores">
+          <mxGeometry x="30" y="50" width="130" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="pg" value="PostgreSQL + pgvector&lt;br&gt;(optional vectors)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="grp-stores">
-          <mxGeometry x="190" y="60" width="130" height="80" as="geometry" />
+        <mxCell id="pg" value="PostgreSQL + pgvector&lt;br&gt;(optional, HNSW)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="grp-stores">
+          <mxGeometry x="190" y="50" width="130" height="90" as="geometry" />
         </mxCell>
         <mxCell id="vault" value="Obsidian vault&lt;br&gt;.md on disk (SafePath)" style="shape=folder;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="grp-stores">
-          <mxGeometry x="110" y="160" width="130" height="60" as="geometry" />
+          <mxGeometry x="30" y="170" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="redis" value="Redis&lt;br&gt;(optional cache)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="grp-stores">
+          <mxGeometry x="190" y="170" width="130" height="90" as="geometry" />
         </mxCell>
 
-        <mxCell id="dw" value="DeepWiki&lt;br&gt;mcp.deepwiki.com/mcp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="140" width="220" height="60" as="geometry" />
+        <mxCell id="up" value="Upstream MCP&lt;br&gt;DeepWiki · Firecrawl · Tavily · Context7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="140" width="230" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="llm" value="Embedding endpoints&lt;br&gt;Ollama · OpenAI-compat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="460" width="220" height="60" as="geometry" />
+        <mxCell id="llm" value="AI endpoints&lt;br&gt;Ollama · OpenAI-compat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="460" width="230" height="60" as="geometry" />
         </mxCell>
 
         <mxCell id="e-ui-spa" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;" edge="1" parent="1" source="ui" target="spa">
@@ -91,6 +112,18 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
+        <mxCell id="e-auth-api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="auth" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-auth-mcp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="auth" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-rl-api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="rl" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-rl-mcp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="rl" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e-mcp-cat" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="mcp" target="cat">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -106,13 +139,28 @@
         <mxCell id="e-cat-ing" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="cat" target="ing">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="e-cat-ans" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="cat" target="ans">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-cat-graph" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="cat" target="graph">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e-api-srch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="api" target="srch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-ans" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="api" target="ans">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-api-ing" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="api" target="ing">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="e-ing-sec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="ing" target="sec">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e-ing-emb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="ing" target="emb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-ing-graph" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="ing" target="graph">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-ing-vault" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="ing" target="vault">
@@ -124,16 +172,31 @@
         <mxCell id="e-srch-vec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="srch" target="vec">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="e-ans-srch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" parent="1" source="ans" target="srch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e-vec-sql" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;" edge="1" parent="1" source="vec" target="sql">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-vec-pg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;" edge="1" parent="1" source="vec" target="pg">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="e-vec-redis" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeColor=#666666;" edge="1" parent="1" source="vec" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-graph-sql" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;" edge="1" parent="1" source="graph" target="sql">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e-emb-llm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;" edge="1" parent="1" source="emb" target="llm">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-cat-dw" value="bypass: ask_question etc." style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeColor=#d79b00;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="cat" target="dw">
+        <mxCell id="e-ans-llm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;" edge="1" parent="1" source="ans" target="llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-cat-up" value="upstream passthrough" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeColor=#d79b00;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="cat" target="up">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-tel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeColor=#82b366;" edge="1" parent="1" source="api" target="tel">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

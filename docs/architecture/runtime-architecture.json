@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "KnowledgeHub — Runtime Architecture",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/afonsoft/LangGraph-UI",
+      "provider": "github",
+      "revision": "1996d6ae02f6332d70dac0defd0009339bdf91a7"
+    }
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Browser Admin",
+      "sublabel": "Blazor WASM / PWA",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Client/Program.cs"
+        }
+      ],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "mcpclients",
+      "type": "external",
+      "label": "MCP Clients",
+      "sublabel": "Cursor · agents",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.McpEngine/McpServiceCollectionExtensions.cs"
+        }
+      ],
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "edge",
+      "type": "security",
+      "label": "Kestrel Surfaces",
+      "sublabel": "/api + /mcp + auth",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Program.cs"
+        }
+      ],
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "Tool Catalog",
+      "sublabel": "live IToolProviders",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Mcp/DynamicToolCatalog.cs"
+        }
+      ],
+      "row": 0,
+      "col": 2
+    },
+    {
+      "id": "ingest",
+      "type": "backend",
+      "label": "Ingestion",
+      "sublabel": "chunk · scan · embed",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Ingestion/IngestionService.cs"
+        }
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "search",
+      "type": "backend",
+      "label": "Hybrid Search",
+      "sublabel": "FTS5 + vector RRF",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Services/SearchService.cs"
+        }
+      ],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "answer",
+      "type": "backend",
+      "label": "Answer / Agent",
+      "sublabel": "LLM · HITL · SSE",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Services/AnswerService.cs"
+        }
+      ],
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "graph",
+      "type": "backend",
+      "label": "GraphRAG",
+      "sublabel": "extract + traverse",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Graph/SqliteKnowledgeGraphStore.cs"
+        }
+      ],
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "catalog + FTS + graph",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Data/KnowledgeHubDbContext.cs"
+        }
+      ],
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "pgvector",
+      "type": "database",
+      "label": "pgvector",
+      "sublabel": "optional HNSW",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/VectorStore/PostgresVectorStore.cs"
+        }
+      ],
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "upstream",
+      "type": "cloud",
+      "label": "Upstream MCP",
+      "sublabel": "4 MCP integrations",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Mcp/Upstream/McpProxySession.cs"
+        }
+      ],
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "AI Endpoints",
+      "sublabel": "Ollama · OpenAI-compat",
+      "sources": [
+        {
+          "path": "src/KnowledgeHub.Server/Chat/ChatClientFactory.cs"
+        }
+      ],
+      "row": 0,
+      "col": 4
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "KnowledgeHub (single process)",
+      "wraps": [
+        "edge",
+        "catalog",
+        "ingest",
+        "graph",
+        "search",
+        "answer",
+        "sqlite",
+        "pgvector"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ui-edge",
+      "from": "browser",
+      "to": "edge",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-edge",
+      "from": "mcpclients",
+      "to": "edge",
+      "label": "JSON-RPC/SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "edge-catalog",
+      "from": "edge",
+      "to": "catalog"
+    },
+    {
+      "id": "edge-ingest",
+      "from": "edge",
+      "to": "ingest",
+      "label": "sync",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "catalog-upstream",
+      "from": "catalog",
+      "to": "upstream",
+      "label": "passthrough",
+      "variant": "dashed"
+    },
+    {
+      "id": "catalog-graph",
+      "from": "catalog",
+      "to": "graph",
+      "label": "find_*",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "catalog-search",
+      "from": "catalog",
+      "to": "search"
+    },
+    {
+      "id": "ingest-sqlite",
+      "from": "ingest",
+      "to": "sqlite",
+      "label": "chunks+flags"
+    },
+    {
+      "id": "graph-sqlite",
+      "from": "graph",
+      "to": "sqlite",
+      "variant": "dashed"
+    },
+    {
+      "id": "search-sqlite",
+      "from": "search",
+      "to": "sqlite"
+    },
+    {
+      "id": "search-pg",
+      "from": "search",
+      "to": "pgvector",
+      "label": "KNN",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "search-answer",
+      "from": "search",
+      "to": "answer",
+      "label": "context"
+    },
+    {
+      "id": "answer-llm",
+      "from": "answer",
+      "to": "llm",
+      "label": "chat/embed",
+      "variant": "security"
+    }
+  ],
+  "layout": {
+    "mode": "grid",
+    "cols": 5,
+    "gapX": 80,
+    "gapY": 100,
+    "cellW": 160,
+    "cellH": 70
+  }
+}

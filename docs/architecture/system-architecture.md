@@ -1,8 +1,8 @@
-# Knowledge — System Architecture
+# KnowledgeHub — System Architecture
 
-All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP in hybrid session mode — `initialize` clients get sessions, `2026-07-28` clients are served statelessly — plus legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, documents, APIs, SQL).
+All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP in hybrid session mode — `initialize` clients get sessions, `2026-07-28` clients are served statelessly — plus legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, document files, Notion, REST APIs, SQL) with **GraphRAG** entity/relation extraction, prompt-injection defense, partitioned rate limiting, and OpenTelemetry observability.
 
-> Source of truth: `.specs/` (SPEC-20260913-*, approved). Diagram sources: `*.mmd` (Mermaid) + `knowledge-hub-architecture.drawio` (editable XML).
+> Source of truth: `.specs/` (SPEC-*, all `Done`). Diagram sources: `*.mmd` (Mermaid) + `knowledge-hub-architecture.drawio` (editable XML). Decisions: `AD-*.md` in this directory.
 
 ## 1. Context & Container view
 
@@ -10,33 +10,40 @@ All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the 
 %%{init: {'theme':'neutral'}}%%
 flowchart TB
     subgraph Clients["Consumers"]
-        UI["Browser Admin<br/>(Blazor WASM SPA)"]
+        UI["Browser Admin<br/>(Blazor WASM SPA / PWA)"]
         CUR["Cursor / Claude Desktop<br/>(legacy SSE)"]
-        AG["LangGraph / Python agents<br/>(Streamable HTTP)"]
+        AG["MCP agents / LangGraph<br/>(Streamable HTTP)"]
     end
 
-    subgraph KH["Knowledge — single Kestrel process (.NET 10)"]
+    subgraph KH["KnowledgeHub — single Kestrel process (.NET 10)"]
         direction TB
         SPA["Static host<br/>index.html + WASM assets"]
-        API["REST API<br/>/api/sources · /api/search"]
-        MCP["MCP Server<br/>/mcp (Streamable HTTP, hybrid:<br/>initialize→session · 2026-07-28→stateless)<br/>/mcp/sse + /mcp/message (legacy)"]
+        API["REST API<br/>/api/* (Minimal APIs)"]
+        MCP["MCP Server<br/>/mcp (Streamable HTTP, hybrid sessions)<br/>/mcp/sse + /mcp/message (legacy)"]
         HUB["SignalR Hub<br/>/hubs/mcp"]
-        CAT["DynamicToolCatalog<br/>IToolProviders"]
-        ING["IngestionService<br/>parser · chunker · watcher"]
-        SRCH["SearchService<br/>cosine ranking"]
-        EMB["IEmbeddingProvider<br/>deterministic · ollama · openai"]
-        VEC["IVectorStore<br/>sqlite | postgres/pgvector"]
+        AUTH["Auth<br/>cookie session + aft_* API keys"]
+        RL["Rate limiter<br/>key → user → IP partitions"]
+        CAT["DynamicToolCatalog<br/>IToolProviders (live)"]
+        ING["IngestionService<br/>connectors · chunkers · watcher"]
+        SEC["ContentSanitizer<br/>prompt-injection scan"]
+        GRAPH["EntityExtractor +<br/>IKnowledgeGraphStore"]
+        SRCH["SearchService<br/>hybrid FTS5+vector RRF<br/>rewrite · rerank · filters"]
+        ANS["AnswerService /<br/>AgentService<br/>(bounded SSE, HITL)"]
+        EMB["IEmbeddingProvider<br/>deterministic · ollama · openai · onnx"]
+        VEC["IVectorStore<br/>sqlite · sqlite-vec · pgvector"]
+        TEL["OpenTelemetry<br/>metrics + traces"]
         FEED["IMcpActivityFeed<br/>ring buffer 500"]
     end
 
     subgraph Stores["Storage"]
-        SQL[("SQLite<br/>knowledgehub.db<br/>catalog + docs + vectors")]
-        PG[("PostgreSQL + pgvector<br/>(optional vectors)")]
+        SQL[("SQLite<br/>knowledgehub.db<br/>catalog + docs + vectors<br/>+ graph + settings")]
+        PG[("PostgreSQL + pgvector<br/>(optional, HNSW)")]
         VAULT["Obsidian vault<br/>(.md on disk)"]
+        REDIS[("Redis<br/>(optional cache)")]
     end
 
-    DW["DeepWiki<br/>mcp.deepwiki.com/mcp"]
-    LLM["Embedding endpoints<br/>Ollama · OpenAI-compat"]
+    UP["Upstream MCP<br/>DeepWiki · Firecrawl · Tavily · Context7"]
+    LLM["AI endpoints<br/>Ollama · OpenAI-compat"]
 
     UI -->|HTTPS+WS| SPA
     UI -->|REST| API
@@ -44,53 +51,75 @@ flowchart TB
     CUR -->|SSE+POST| MCP
     AG -->|JSON-RPC| MCP
 
+    AUTH --> API
+    AUTH --> MCP
+    RL --> API
+    RL --> MCP
     MCP --> CAT
     MCP --> FEED
     FEED --> HUB
     CAT --> SRCH
+    CAT --> ANS
     CAT --> ING
+    CAT --> GRAPH
     API --> SRCH
+    API --> ANS
     API --> ING
+    ING --> SEC
     ING --> EMB
+    ING --> GRAPH
     ING --> VAULT
     ING --> VEC
     SRCH --> VEC
-    VEC --> SQL
-    VEC --> PG
+    ANS --> SRCH
+    ANS --> LLM
     EMB --> LLM
-    CAT -.->|bypass: ask_question etc.| DW
+    VEC --> SQL
+    GRAPH --> SQL
+    VEC --> PG
+    VEC -.-> REDIS
+    CAT -.->|upstream tools passthrough| UP
+    API --> TEL
+    MCP --> TEL
 
     classDef client fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     classDef core fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:darkgreen
     classDef store fill:#f5f5f5,stroke:#666666,stroke-width:2px,color:black
     classDef ext fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#7f4d00
     class UI,CUR,AG client
-    class SPA,API,MCP,HUB,CAT,ING,SRCH,EMB,VEC,FEED core
-    class SQL,PG,VAULT store
-    class DW,LLM ext
+    class SPA,API,MCP,HUB,AUTH,RL,CAT,ING,SEC,GRAPH,SRCH,ANS,EMB,VEC,TEL,FEED core
+    class SQL,PG,VAULT,REDIS store
+    class UP,LLM ext
 ```
 
 | Layer | Component | Responsibility |
 |---|---|---|
-| Consumers | Browser (Blazor WASM) | `/sources` CRUD, `/mcp-monitor` (live), `/playground` (search) |
-| | Cursor / Claude Desktop | legacy SSE `GET /mcp/sse` + `POST /mcp/message` |
-| | LangGraph / Python agents | Streamable HTTP `POST /mcp` |
-| Edge | Static host | `index.html` + WASM assets, SPA fallback for `/sources` etc. |
-| | REST API | `/api/sources`, `/api/search` (Minimal APIs) |
-| | MCP transport | `MapMcp("/mcp")`, `SessionMode=StatefulForInitializeClients` (`Mcp:SessionMode`), `EnableLegacySse` — official `ModelContextProtocol.AspNetCore` 2.2.0 |
+| Consumers | Browser (Blazor WASM) | `/sources`, `/mcp-monitor`, `/playground`, `/chat`, `/settings`, `/api-keys`, `/approvals`, `/eval` |
+| | MCP clients | Streamable HTTP `/mcp` or legacy SSE `/mcp/sse` + `/mcp/message` |
+| Edge | Static host | `index.html` + WASM assets, SPA fallback |
+| | REST API | Minimal APIs under `/api/*` — see `docs/en/API.md` |
+| | MCP transport | `ModelContextProtocol.AspNetCore` 2.2.0, `Mcp:SessionMode` hybrid |
 | | SignalR hub | `/hubs/mcp` — live sessions + call log |
-| Core | `DynamicToolCatalog` | Resolves tools live per `tools/list` from `IToolProviders` |
-| | `IngestionService` | Markdown parse → chunk (500/50 tok) → embed → upsert |
-| | `VaultWatcherService` | `FileSystemWatcher` → debounce → re-index |
-| | `SearchService` | Cosine similarity over model-matched chunks |
-| | `IEmbeddingProvider` | `deterministic` (default) · `ollama` · `openai` — endpoint/key/model/dimensions via config |
-| | `IVectorStore` | `sqlite` (default) · `postgres`/pgvector |
+| Security | Auth | Cookie session (12 h sliding, lockout) + `aft_*` API keys (SHA-256 hash only) |
+| | Rate limiting | `System.Threading.RateLimiting` — partitions `key:`/`user:`/`anon:`; per-key overrides via `IApiKeyRateLimitResolver` |
+| | `ContentSanitizer` | Heuristic injection scan at ingest → `DocumentChunk.SuspicionFlags` + `security_events`; exclusion default-on |
+| | Source authorization | Per-key `AllowedSourceIdsJson`/`AllowedToolsJson` enforcement in `SearchService` |
+| Core | `DynamicToolCatalog` | Live tool resolution per `tools/list`; `IToolCatalogChangeNotifier` pushes `tools/list_changed` |
+| | `IngestionService` | Connector → chunker (markdown/code/config) → injection scan → embed → vector upsert → optional graph extraction |
+| | `SearchService` | Hybrid FTS5 + vector (RRF), optional query rewriting + LLM reranker, metadata filters, source authz, flagged-chunk exclusion |
+| | `AnswerService` / `AgentService` | LLM synthesis with `[n]` citations; agent loop with tool-calling, HITL approvals, bounded SSE, conversation threads + summarization |
+| | `EntityExtractor` + `IKnowledgeGraphStore` | LLM entity/relation extraction → `KgNodes`/`KgEdges`/`KgAliases` (SQLite adjacency); tools `find_dependencies`/`find_dependents`/`find_path`/`analyze_impact` |
+| | `IEmbeddingProvider` | `deterministic` · `ollama` · `openai` · `onnx` (local all-MiniLM-L6-v2) |
+| | `IVectorStore` | `sqlite` (chunk columns) · `sqlite-vec` (KNN) · `postgres`/pgvector (HNSW, batched upserts, metadata jsonb) |
+| | `EvalRunner` | Versioned eval datasets → Recall@K / P@K / MRR / faithfulness reports |
+| | `IDistributedCache` | `memory` (default) · `redis`; search/embedding/answer cache regions |
 | | `IMcpActivityFeed` | Ring buffer (500) → SignalR broadcast |
-| Storage | SQLite `knowledgehub.db` | Catalog (sources/docs/chunks) + vectors — beside the executable |
+| | Telemetry | `System.Diagnostics` `Meter`/`ActivitySource` → OTLP/Prometheus opt-in |
+| Storage | SQLite `knowledgehub.db` | Catalog, documents, chunks (FTS5), vectors (default), knowledge graph, settings, eval runs, security events — beside the executable |
 | | PostgreSQL + pgvector | Optional vector backend (catalog stays in SQLite) |
-| | Obsidian vault | `.md` files on disk — `SafePath` confines reads/writes to vault root |
-| External | `mcp.deepwiki.com/mcp` | Upstream bypass via `McpClient` (`HttpClientTransport AutoDetect`) |
-| | Ollama / OpenAI-compat | Embedding generation endpoints |
+| | Redis | Optional `IDistributedCache` backend |
+| External | Upstream MCP proxies | DeepWiki (public + private), Firecrawl, Tavily, Context7 — secrets encrypted at rest |
+| | Ollama / OpenAI-compat | Chat + embedding generation endpoints (HTTP resilience: retry + circuit breaker) |
 
 ## 2. MCP request flow (tools/call)
 
@@ -100,60 +129,69 @@ sequenceDiagram
     autonumber
     participant C as MCP Client
     participant K as /mcp (SDK transport)
-    participant F as Activity filters
+    participant F as Filters + rate limit
     participant CAT as DynamicToolCatalog
     participant S as SearchService
     participant V as IVectorStore
-    participant D as DeepWikiUpstreamClient
-    participant W as mcp.deepwiki.com
+    participant U as Upstream MCP proxy
 
     C->>K: POST initialize
     K-->>C: 200 + Mcp-Session-Id
     C->>K: notifications/initialized
     C->>K: tools/list
-    K->>CAT: GetToolsAsync (live DB)
-    CAT-->>K: 9 tools (local + query_* + deepwiki)
+    K->>CAT: GetToolsAsync (live)
+    CAT-->>K: local + graph + query_* + upstream tools
     K-->>C: tools[]
 
     alt Local tool (search_knowledge)
         C->>K: tools/call search_knowledge
-        K->>F: gate + telemetry start
+        K->>F: rate limit (llm policy) + telemetry
+        F-->>C: isError + retryAfter when over limit
         K->>CAT: resolve + invoke
-        CAT->>S: SearchAsync(query, topK)
-        S->>V: cosine similarity (model-matched)
-        V-->>S: ranked chunks
-        S-->>CAT: hits
-        CAT-->>K: CallToolResult(text)
+        CAT->>S: SearchAsync(query, topK, filters)
+        S->>V: hybrid FTS5+vector → RRF → rerank?
+        V-->>S: ranked hits
+        S->>S: source authz + flagged-chunk exclusion
+        S-->>CAT: items (+suspicionFlags when kept)
+        CAT-->>K: CallToolResult(text + structuredContent)
         K-->>C: result
-    else DeepWiki bypass (read_wiki_structure)
-        C->>K: tools/call read_wiki_structure
-        K->>F: gate + telemetry start
-        K->>CAT: resolve + validate repoName
-        CAT->>D: CallAsync(tool, args)
-        D->>W: McpClient → tools/call (Streamable HTTP)
-        W-->>D: CallToolResult
-        D-->>CAT: pass-through (retry once on failure)
-        CAT-->>K: CallToolResult
+    else Graph tool (find_dependencies)
+        C->>K: tools/call find_dependencies
+        K->>CAT: resolve → GraphToolsProvider
+        CAT->>CAT: KgNode resolve → BFS (depth ≤3) → evidence edges
+        CAT-->>K: CallToolResult(subgraph JSON)
+        K-->>C: result
+    else Upstream proxy (firecrawl_search)
+        C->>K: tools/call firecrawl_search
+        K->>CAT: resolve → upstream client
+        CAT->>U: McpClient tools/call (Streamable HTTP)
+        U-->>CAT: CallToolResult pass-through
+        CAT-->>K: result
         K-->>C: result
     end
 ```
 
-- `tools/list` resolves **live** from the DB per call; source mutations broadcast `notifications/tools/list_changed` to connected sessions.
-- Invalid params → `McpProtocolException` → JSON-RPC `-32602` (handled by the SDK).
-- Execution failures → `CallToolResult { isError: true }` — never break the SSE stream.
-- DeepWiki calls pass through with the **same tool names** as upstream (`ask_question`, `read_wiki_structure`, `read_wiki_contents`); `DeepWiki:ApiKey` is only sent as the upstream `Authorization` header.
+- `tools/list` resolves **live** per call; source/settings mutations broadcast `notifications/tools/list_changed`.
+- Rate limiting: LLM-spending tools (`ask_knowledge`, `agent_chat`, `search_knowledge`) and write tools (`write_knowledge`, `write_note`) are charged per partition; over-limit calls return `isError` + retry hint (no 429 in JSON-RPC).
+- Execution failures → `CallToolResult { isError: true }` — never break the session stream.
 
 ## 3. Tool catalog
 
 | Tool | Type | Availability |
 |---|---|---|
-| `search_knowledge` | local — ranked semantic search, all active sources | always |
-| `ask_knowledge` | local — retrieval aggregate (ranked passages + citations) | always |
-| `write_knowledge` | local — persist & index content (vault `.md` or DB doc) | always |
-| `query_{slug}` | local — per-source filtered search | per active source |
-| `read_document` | local — read vault note (`SafePath`) | ≥1 active ObsidianVault |
-| `write_note` | local — write vault `.md` + re-index | ≥1 active ObsidianVault |
-| `ask_question` · `read_wiki_structure` · `read_wiki_contents` | DeepWiki bypass | `DeepWiki:Enabled` |
+| `search_knowledge` | hybrid/semantic/lexical search, metadata filters | always |
+| `ask_knowledge` | retrieval + cited answer | always |
+| `agent_chat` | tool-calling agent loop, HITL, threads | always |
+| `write_knowledge` | persist + index content | always (write gate) |
+| `query_{slug}` | per-source filtered search | per active source |
+| `read_document` | read vault note (`SafePath`) | ≥1 active ObsidianVault |
+| `write_note` | write vault `.md` + re-index | ≥1 active ObsidianVault (write gate) |
+| `find_dependencies` · `find_dependents` · `find_path` · `analyze_impact` | knowledge graph traversal | `Graph:Enabled` (default **on**) |
+| `set_api_key_settings` | per-key chat/integration config | always |
+| `ask_question` · `read_wiki_structure` · `read_wiki_contents` | DeepWiki proxy | `DeepWiki:Enabled` |
+| `firecrawl_*` (6 tools) | Firecrawl proxy | `Firecrawl:Enabled` + key |
+| `tavily_*` (6 tools) | Tavily proxy | `Tavily:Enabled` + key |
+| `resolve-library-id` · `query-docs` | Context7 proxy | `Context7:Enabled` + key |
 
 Resources: `knowledge://sources` (catalog JSON) + `obsidian://{slug}/{path}` per indexed document.
 
@@ -162,24 +200,26 @@ Resources: `knowledge://sources` (catalog JSON) + `obsidian://{slug}/{path}` per
 ```mermaid
 %%{init: {'theme':'neutral'}}%%
 flowchart LR
-    subgraph Host["User machine (no .NET runtime needed)"]
-        EXE["KnowledgeHub<br/>single-file binary<br/>(self-contained, per-RID)"]
-        DB[("knowledgehub.db<br/>beside the executable")]
-        EXT["%TMP%/.net extraction<br/>native libs (e_sqlite3)"]
-        CFG["appsettings.json + env vars<br/>DeepWiki__* Embeddings__* ..."]
+    subgraph Host["Single host (container or bare binary)"]
+        EXE["KnowledgeHub<br/>single-file binary or<br/>knowledgehub:latest image"]
+        DB[("knowledgehub.db<br/>./data volume")]
+        EXT["%TMP%/.net extraction<br/>native libs"]
+        CFG["appsettings.json + env vars<br/>(__ nesting) + .env"]
         EXE --> DB
         EXE -.->|self-extract| EXT
         CFG -.->|config| EXE
     end
 
-    DEV["dotnet publish -r linux-x64|win-x64|osx-arm64"] -->|produces| EXE
+    DEV["docker compose build<br/>or dotnet publish -r <RID>"] -->|produces| EXE
 
-    subgraph Net["Same port (ASPNETCORE_URLS, default :5000)"]
+    subgraph Net["One port (default :8080 container / :5000 dev)"]
         R1["/            → SPA + deep links"]
-        R2["/api/*       → REST"]
+        R2["/api/*       → REST (auth)"]
         R3["/mcp         → Streamable HTTP"]
         R4["/mcp/sse|msg → legacy SSE"]
         R5["/hubs/mcp    → SignalR"]
+        R6["/metrics     → Prometheus (opt-in)"]
+        R7["/healthz     → liveness"]
     end
     EXE --- Net
 
@@ -188,23 +228,52 @@ flowchart LR
     classDef net fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     class EXE bin
     class DB,EXT,CFG data
-    class R1,R2,R3,R4,R5 net
+    class R1,R2,R3,R4,R5,R6,R7 net
 ```
 
-`dotnet publish -r <RID>` produces a **single-file self-contained binary** (~120 MB) — no .NET runtime, Python, container or external UI service required. `knowledgehub.db` is created beside the executable; native libs self-extract to `%TMP%/.net`. All endpoints share one port (`ASPNETCORE_URLS`, `AllowedHosts` restricted to localhost).
+- `docker compose up -d` builds `knowledgehub:latest`; `./data` persists SQLite + uploads; EF migrations run at startup (`DatabaseMigrator`).
+- `dotnet publish -r <RID>` produces a single-file self-contained binary; `install.sh --host --systemd` installs a hardened systemd unit.
+- `backup.sh`/`restore.sh` cover SQLite + uploads.
 
 ## 5. Configuration surface
 
 ```jsonc
 {
-  "Embeddings":  { "Provider": "deterministic|ollama|openai", "Endpoint": "...", "ApiKey": "...", "Model": "...", "Dimensions": 384 },
-  "VectorStore": { "Provider": "sqlite|postgres", "ConnectionString": "Host=...;Database=knowledgehub" },
-  "DeepWiki":    { "Enabled": true, "Endpoint": "https://mcp.deepwiki.com/mcp", "ApiKey": "", "TimeoutSeconds": 60 }
+  "Database":    { "Path": "knowledgehub.db" },
+  "Embeddings":  { "Provider": "deterministic|ollama|openai|onnx", "Endpoint": "...",
+                   "ApiKey": "", "Model": "nomic-embed-text", "Dimensions": 384,
+                   "ModelPath": "models/all-MiniLM-L6-v2" },
+  "VectorStore": { "Provider": "sqlite|sqlite-vec|postgres", "ConnectionString": "" },
+  "Chat":        { "Provider": "none|ollama|openai", "Endpoint": "...",
+                   "Model": "llama3.2", "ApiKey": "", "TimeoutSeconds": 120 },
+  "Search":      { "Lexical": { "Enabled": true },
+                   "QueryRewrite": { "Enabled": false, "LexicalToo": false },
+                   "Rerank": { "Enabled": false, "MaxCandidates": 50 } },
+  "Cache":       { "Provider": "memory|redis", "Redis": { "ConnectionString": "" },
+                   "AnswerCache": { "Enabled": false, "TtlSeconds": 600 } },
+  "RateLimiting":{ "Enabled": true, "LlmPermitLimit": 20, "LlmWindowSeconds": 60,
+                   "AnonymousLlmPermitLimit": 5, "SyncPermitLimit": 10,
+                   "SyncWindowSeconds": 3600, "GeneralPermitLimit": 300,
+                   "GeneralWindowSeconds": 60, "TrustForwardedHeaders": false },
+  "Security":    { "Injection": { "ExcludeFlagged": true } },
+  "Graph":       { "Enabled": true, "MaxChunksPerSync": 200,
+                   "MaxChunkChars": 2000, "MaxResults": 200 },
+  "Telemetry":   { "Otlp": { "Endpoint": "" }, "Metrics": { "Prometheus": false } },
+  "Mcp":         { "SessionMode": "StatefulForInitializeClients",
+                   "MaxConcurrentCallsPerSession": 8, "ActivityFeedCapacity": 500 },
+  "Auth":        { "AdminInitialPassword": "123qwe", "SessionHours": 12 },
+  "Host":        { "ShutdownTimeoutSeconds": 30 }
 }
 ```
 
-Security boundaries: source configs are **redacted** (`connectionString`, `apiKey`, `key`, `headers`, `token`, `password`, `secret`) in every API response; vault paths reject `..` and canonical escapes; embeddings record `EmbeddingModel` (`{provider}:{model}`) so stale vectors are ignored after a model switch.
+Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
+
+Security boundaries: source configs are **redacted** in API responses; vault paths reject `..`; `AllowedHosts` restricted to localhost; secrets live in env vars or the encrypted `IntegrationSecrets` store; embedding model changes are detected via `EmbeddingModel` stamping so stale vectors are never mixed.
 
 ## Editable diagram
 
-`knowledge-hub-architecture.drawio` mirrors section 1 — open in [draw.io / diagrams.net](https://app.diagrams.net) to edit.
+`knowledge-hub-architecture.drawio` mirrors section 1 — open in [draw.io / diagrams.net](https://app.diagrams.net) to edit. `runtime-architecture.html` is an interactive trace-enabled view (archify) for the same runtime.
+
+## Decision records
+
+See `AD-*.md` in this directory — indexed in `docs/architecture/README.md`.

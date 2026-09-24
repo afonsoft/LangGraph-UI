@@ -3,39 +3,45 @@ sequenceDiagram
     autonumber
     participant C as 🤖 MCP Client
     participant K as 📨 /mcp (SDK transport)
-    participant F as 📊 Activity filters
+    participant F as 📊 Filters + rate limit
     participant CAT as 🧰 DynamicToolCatalog
     participant S as 🔍 SearchService
+    participant G as 🕸️ GraphToolsProvider
     participant V as 💾 IVectorStore
-    participant D as ☁️ DeepWikiUpstreamClient
-    participant W as 🌐 mcp.deepwiki.com
+    participant U as ☁️ Upstream MCP proxy
 
     C->>K: POST initialize
     K-->>C: 200 + Mcp-Session-Id
     C->>K: notifications/initialized
     C->>K: tools/list
-    K->>CAT: GetToolsAsync (live DB)
-    CAT-->>K: 9 tools (local + query_* + deepwiki)
+    K->>CAT: GetToolsAsync (live)
+    CAT-->>K: local + graph + query_* + upstream tools
     K-->>C: tools[]
 
     alt Local tool (search_knowledge)
         C->>K: tools/call search_knowledge
-        K->>F: gate + telemetry start
+        K->>F: rate limit (llm policy) + telemetry
+        F-->>C: isError + retryAfter when over limit
         K->>CAT: resolve + invoke
-        CAT->>S: SearchAsync(query, topK)
-        S->>V: cosine similarity (model-matched)
-        V-->>S: ranked chunks
-        S-->>CAT: hits
-        CAT-->>K: CallToolResult(text)
+        CAT->>S: SearchAsync(query, topK, filters)
+        S->>V: hybrid FTS5+vector → RRF → rerank?
+        V-->>S: ranked hits
+        S->>S: source authz + flagged-chunk exclusion
+        S-->>CAT: items (+suspicionFlags when kept)
+        CAT-->>K: CallToolResult(text + structuredContent)
         K-->>C: result
-    else DeepWiki bypass (read_wiki_structure)
-        C->>K: tools/call read_wiki_structure
-        K->>F: gate + telemetry start
-        K->>CAT: resolve + validate repoName
-        CAT->>D: CallAsync(tool, args)
-        D->>W: McpClient → tools/call (Streamable HTTP)
-        W-->>D: CallToolResult
-        D-->>CAT: pass-through (retry once on failure)
-        CAT-->>K: CallToolResult
+    else Graph tool (find_dependencies)
+        C->>K: tools/call find_dependencies
+        K->>CAT: resolve → GraphToolsProvider
+        CAT->>G: BFS traversal (depth ≤3)
+        G-->>CAT: subgraph + evidence provenance
+        CAT-->>K: CallToolResult(JSON)
+        K-->>C: result
+    else Upstream proxy (firecrawl_search)
+        C->>K: tools/call firecrawl_search
+        K->>CAT: resolve → upstream client
+        CAT->>U: McpClient tools/call (Streamable HTTP)
+        U-->>CAT: CallToolResult pass-through
+        CAT-->>K: result
         K-->>C: result
     end
