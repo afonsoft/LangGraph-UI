@@ -58,7 +58,7 @@ public sealed class GraphSettingsService(
                 row.Enabled, row.MaxChunksPerSync, row.MaxChunkChars, row.MaxResults, "store");
 
         return new GraphSettingsSnapshot(
-            configuration.GetValue("Graph:Enabled", false),
+            configuration.GetValue("Graph:Enabled", true),
             configuration.GetValue("Graph:MaxChunksPerSync", DefaultMaxChunksPerSync),
             configuration.GetValue("Graph:MaxChunkChars", DefaultMaxChunkChars),
             configuration.GetValue("Graph:MaxResults", DefaultMaxResults),

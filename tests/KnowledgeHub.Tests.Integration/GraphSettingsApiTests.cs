@@ -41,7 +41,7 @@ public class GraphSettingsApiTests : IClassFixture<GraphSettingsApiTests.Fixture
 
         var dto = await http.GetFromJsonAsync<JsonElement>("/api/settings/graph");
         Assert.Equal("env", dto.GetProperty("source").GetString());
-        Assert.False(dto.GetProperty("enabled").GetBoolean());
+        Assert.True(dto.GetProperty("enabled").GetBoolean()); // default ON
         Assert.Equal(200, dto.GetProperty("maxChunksPerSync").GetInt32());
         Assert.Equal(2000, dto.GetProperty("maxChunkChars").GetInt32());
         Assert.Equal(200, dto.GetProperty("maxResults").GetInt32());
@@ -73,7 +73,7 @@ public class GraphSettingsApiTests : IClassFixture<GraphSettingsApiTests.Fixture
             (await http.DeleteAsync("/api/settings/graph")).StatusCode);
         var cleared = await http.GetFromJsonAsync<JsonElement>("/api/settings/graph");
         Assert.Equal("env", cleared.GetProperty("source").GetString());
-        Assert.False(cleared.GetProperty("enabled").GetBoolean());
+        Assert.True(cleared.GetProperty("enabled").GetBoolean()); // env default ON
     }
 
     [Theory]
@@ -98,7 +98,14 @@ public class GraphSettingsApiTests : IClassFixture<GraphSettingsApiTests.Fixture
     public async Task EnableViaPut_SurfacesGraphTools_WithoutRestart()
     {
         var http = TestAuth.Login(_factory);
-        await http.DeleteAsync("/api/settings/graph"); // ensure disabled baseline
+        // Graph:Enabled defaults to ON — write an explicit disabled baseline.
+        await http.PutAsJsonAsync("/api/settings/graph", new
+        {
+            enabled = false,
+            maxChunksPerSync = 200,
+            maxChunkChars = 2000,
+            maxResults = 200
+        });
 
         var before = await http.GetFromJsonAsync<JsonElement>("/api/tools/");
         Assert.DoesNotContain(before.GetProperty("tools").EnumerateArray()

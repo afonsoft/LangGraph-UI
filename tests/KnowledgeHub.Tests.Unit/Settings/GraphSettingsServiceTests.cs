@@ -69,7 +69,7 @@ public sealed class GraphSettingsServiceTests : IDisposable
     {
         var sut = Sut(Config(new()));
         var snap = sut.GetEffective();
-        Assert.False(snap.Enabled);
+        Assert.True(snap.Enabled); // GraphRAG default is ON
         Assert.Equal(200, snap.MaxChunksPerSync);
         Assert.Equal(2000, snap.MaxChunkChars);
         Assert.Equal(200, snap.MaxResults);
@@ -129,7 +129,7 @@ public sealed class GraphSettingsServiceTests : IDisposable
 
         await sut.ClearAsync();
         var snap = sut.GetEffective();
-        Assert.False(snap.Enabled);
+        Assert.True(snap.Enabled); // env default ON
         Assert.Equal(55, snap.MaxResults); // env again
         Assert.Equal("env", snap.Source);
         Assert.Equal(2, _notifier.Version);

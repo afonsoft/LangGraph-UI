@@ -158,12 +158,14 @@ else
                     </div>
                 </HeaderTemplate>
                 <BodyTemplate>
-                    <div class="form-check form-switch mb-3">
-                        <input type="checkbox" class="form-check-input" id="graphEnabled"
-                               @bind="_graphForm.Enabled" />
-                        <label class="form-check-label" for="graphEnabled">
-                            Ativar GraphRAG (tools no catálogo + extração na ingestão)
-                        </label>
+                    <div class="row g-2 mb-3 align-items-center">
+                        <div class="col-12 col-md-6">
+                            <Switch @bind-Value="_graphForm.Enabled"
+                                    DisplayText="Ativar GraphRAG" ShowLabel="true" />
+                            <small class="text-muted d-block mt-1">
+                                Expõe as tools no catálogo MCP e roda a extração na ingestão.
+                            </small>
+                        </div>
                     </div>
 
                     <div class="row g-2 mb-3">
