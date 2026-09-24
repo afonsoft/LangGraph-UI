@@ -16,6 +16,15 @@ public sealed class DocumentChunk
     /// <summary>Structural context — e.g. <c>Namespace.Type.Method</c> or
     /// <c>$.server.port</c>; null for prose/markdown chunks.</summary>
     public string? SymbolPath { get; set; }
+    /// <summary>SPEC-20260924-contextual-chunk-enrichment RF-001: markdown
+    /// heading chain this chunk belongs to ("Guide > Install"), null for
+    /// chunks outside any section.</summary>
+    public string? SectionPath { get; set; }
+    /// <summary>SPEC-20260924-contextual-chunk-enrichment RF-002: text actually
+    /// embedded and FTS-indexed — structural prefix + <see cref="TextContent"/>.
+    /// Null when enrichment is off or skipped (tiny chunks); fall back to
+    /// TextContent wherever this is read.</summary>
+    public string? EnrichedText { get; set; }
     /// <summary>SPEC-20260923-prompt-injection-guard RF-002: comma-separated
     /// suspicion flags from the content sanitizer; null = clean.</summary>
     public string? SuspicionFlags { get; set; }

@@ -39,7 +39,7 @@ public sealed class SearchService(
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query, int topK, Guid? sourceId = null,
         SearchMode mode = SearchMode.Hybrid, ResolvedSearchFilter? filter = null,
-        CancellationToken ct = default)
+        string? conversationContext = null, CancellationToken ct = default)
     {
         var modeName = mode.ToString().ToLowerInvariant();
         using var activity = KnowledgeHubActivity.Start("search");
@@ -51,9 +51,13 @@ public sealed class SearchService(
         {
             var scope = await callerScope.GetAsync(ct);
             var indexVersion = await GetIndexVersionAsync(ct);
+            // conversationContext alters the effective (rewritten) query — it is
+            // part of the result identity (SPEC-20260924-conversational-query-context).
             var resultKey = CacheKeys.Search(
                 mode.ToString(), topK, sourceId, filter?.Fingerprint() ?? "-",
-                scope.SourceFingerprint, query, indexVersion);
+                scope.SourceFingerprint,
+                conversationContext is null ? query : $"{CacheKeys.Hash(conversationContext)}|{query}",
+                indexVersion);
             var cached = await SafeCache.GetStringAsync(cache, resultKey, logger, ct);
             if (cached is not null)
             {
@@ -66,7 +70,7 @@ public sealed class SearchService(
                 }
             }
 
-            var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, ct);
+            var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, conversationContext, ct);
             await SafeCache.SetJsonAsync(cache, resultKey, results, ResultTtl, logger, ct);
             return results;
         }
@@ -86,7 +90,7 @@ public sealed class SearchService(
     private async Task<IReadOnlyList<SearchResultItem>> ExecuteAsync(
         string query, int topK, Guid? sourceId,
         SearchMode mode, ResolvedSearchFilter? filter,
-        Auth.CallerScope scope, CancellationToken ct)
+        Auth.CallerScope scope, string? conversationContext, CancellationToken ct)
     {
         var activeSourceIds = sourceId is null
             ? await db.Sources.Where(s => s.IsActive).Select(s => s.Id).ToListAsync(ct)
@@ -111,16 +115,17 @@ public sealed class SearchService(
         var effectiveQuery = mode == SearchMode.Lexical
             && !configuration.GetValue("Search:QueryRewrite:LexicalToo", false)
             ? query
-            : await rewriter.RewriteAsync(query, ct);
+            : await rewriter.RewriteAsync(query, conversationContext, ct);
 
         var rerankEnabled = configuration.GetValue("Search:Rerank:Enabled", false);
+        var diversityEnabled = configuration.GetValue("Search:Diversity:Enabled", false);
         var filtersActive = filter is { IsEmpty: false };
         var window = topK * CandidateWindowFactor;
         var rerankCap = configuration.GetValue("Search:Rerank:MaxCandidates", 20);
 
-        // Fetch a wider window when filters or rerank need room to work;
-        // otherwise hydrate exactly topK — identical to the pre-filter pipeline.
-        var fetchLimit = rerankEnabled || filtersActive
+        // Fetch a wider window when filters, diversity or rerank need room to
+        // work; otherwise hydrate exactly topK — identical to the pre-filter pipeline.
+        var fetchLimit = rerankEnabled || filtersActive || diversityEnabled
             ? (rerankEnabled ? Math.Min(window, Math.Max(rerankCap, topK)) : window)
             : topK;
 
@@ -186,6 +191,8 @@ public sealed class SearchService(
                 throw;
             }
         }
+        items = await ApplyDiversityAsync(items, topK, ct);
+
         if (!rerankEnabled || items.Count <= 1)
             return items.Take(topK).ToList();
 
@@ -239,6 +246,66 @@ public sealed class SearchService(
         }).ToList();
     }
 
+    /// <summary>SPEC-20260924-mmr-diversity: score floor (<c>Search:MinScore</c>)
+    /// applies always; per-document quota + MMR only when
+    /// <c>Search:Diversity:Enabled</c>. Vectors for MMR similarity come from the
+    /// persisted <c>DocumentChunk.Embedding</c> blobs — no extra provider calls;
+    /// chunks without a stored vector degrade to score/quota-only treatment.</summary>
+    private async Task<List<SearchResultItem>> ApplyDiversityAsync(
+        List<SearchResultItem> items, int topK, CancellationToken ct)
+    {
+        var minScore = configuration.GetValue("Search:MinScore", 0.0);
+        if (minScore > 0)
+        {
+            var before = items.Count;
+            items = items
+                .Where(i => (i.ScoreBreakdown?.Fused ?? i.Score) >= minScore)
+                .ToList();
+            var dropped = before - items.Count;
+            if (dropped > 0)
+            {
+                KnowledgeHubMetrics.SearchCandidatesDropped.Add(dropped,
+                    new KeyValuePair<string, object?>("reason", "floor"));
+                Activity.Current?.SetTag("search.floor.removed", dropped);
+            }
+        }
+
+        if (!configuration.GetValue("Search:Diversity:Enabled", false) || items.Count <= 1)
+            return items;
+
+        var lambda = configuration.GetValue("Search:Diversity:Lambda", 0.7);
+        var maxPerDoc = configuration.GetValue("Search:Diversity:MaxPerDocument", 0);
+
+        var ids = items.Where(i => i.ChunkId is not null).Select(i => i.ChunkId!.Value).ToList();
+        var vectors = await db.Chunks.AsNoTracking()
+            .Where(c => ids.Contains(c.Id) && c.Embedding != null)
+            .Select(c => new { c.Id, c.Embedding })
+            .ToDictionaryAsync(c => c.Id, c => c.Embedding!, ct);
+
+        var candidates = items.Select(i => new MmrSelector.Candidate(
+            i.ChunkId ?? Guid.Empty,
+            i.DocumentId ?? Guid.Empty,
+            i.ScoreBreakdown?.Fused ?? i.Score,
+            i.ChunkId is { } id && vectors.TryGetValue(id, out var blob)
+                ? EmbeddingVectorCodec.FromBytes(blob)
+                : null)).ToList();
+
+        var orderedIds = MmrSelector.Select(candidates, topK, lambda, maxPerDoc);
+        var byId = items.Where(i => i.ChunkId is not null)
+            .ToDictionary(i => i.ChunkId!.Value);
+        var ordered = orderedIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        ordered.AddRange(items.Where(i => i.ChunkId is null));
+
+        var removed = items.Count - ordered.Count;
+        if (removed > 0)
+        {
+            KnowledgeHubMetrics.SearchCandidatesDropped.Add(removed,
+                new KeyValuePair<string, object?>("reason", "diversity"));
+            Activity.Current?.SetTag("search.diversity.removed", removed);
+        }
+        return ordered;
+    }
+
     /// <summary>Vector store call wrapped in a span + duration histogram.</summary>
     private async Task<IReadOnlyList<VectorHit>> VectorSearchAsync(
         float[] queryVector, int topK, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct)
@@ -277,7 +344,7 @@ public sealed class SearchService(
         var sw = Stopwatch.StartNew();
         try
         {
-            var vector = await embeddings.EmbedAsync(query, ct);
+            var vector = await embeddings.EmbedQueryAsync(query, ct);
             KnowledgeHubMetrics.EmbeddingDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("provider", embeddings.GetType().Name),
                 new KeyValuePair<string, object?>("model", embeddings.ModelId));
@@ -324,9 +391,9 @@ public sealed class SearchService(
         var query = db.Chunks.AsNoTracking()
             .Where(c => chunkIds.Contains(c.Id))
             .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id,
-                (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, c.ChunkKind, c.SymbolPath, DocId = d.Id, d.Title, d.UriReference, d.IndexedAt, d.KnowledgeSourceId })
+                (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, c.ChunkKind, c.SymbolPath, c.SectionPath, DocId = d.Id, d.Title, d.UriReference, d.IndexedAt, d.KnowledgeSourceId })
             .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id,
-                (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.ChunkKind, x.SymbolPath, x.DocId, x.Title, x.UriReference, x.IndexedAt, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType });
+                (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.ChunkKind, x.SymbolPath, x.SectionPath, x.DocId, x.Title, x.UriReference, x.IndexedAt, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType });
         if (filter?.SourceType is { } st)
             query = query.Where(x => x.SourceType == st);
         if (filter?.PathPrefix is { } pp)
@@ -372,6 +439,7 @@ public sealed class SearchService(
                     UriReference = c.UriReference,
                     ScoreBreakdown = breakdowns?.GetValueOrDefault(h.ChunkId),
                     SuspicionFlags = c.SuspicionFlags,
+                    SectionPath = c.SectionPath,
                     ChunkId = c.Id,
                     DocumentId = c.DocId,
                     Metadata = BuildMetadata(c.SourceType, c.UriReference, c.ChunkKind, c.SymbolPath),

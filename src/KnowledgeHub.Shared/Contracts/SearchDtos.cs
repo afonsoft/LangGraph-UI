@@ -66,6 +66,10 @@ public sealed record SearchResultItem
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
     /// <summary>When the owning document was last indexed.</summary>
     public DateTimeOffset? IndexedAt { get; init; }
+    /// <summary>SPEC-20260924-contextual-chunk-enrichment RF-003: heading chain
+    /// this chunk belongs to — lets callers/agent see where in the document the
+    /// passage lives. Null when outside any section.</summary>
+    public string? SectionPath { get; init; }
     /// <summary>Knowledge-graph entity names evidenced by this chunk — feed these
     /// names to the find_* graph tools (SPEC-20260924-graph-tool-discovery RF-001).
     /// Null when GraphRAG is disabled or the chunk has no graph evidence.</summary>

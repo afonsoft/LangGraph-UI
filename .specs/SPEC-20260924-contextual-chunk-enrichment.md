@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `IngestionService`, `ITextChunker`, embeddings, FTS5 |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-contextual-chunk-enrichment` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | tabnews "RAG na Prática" (document-aware chunking: chunk herda hierarquia H1>H2>H3 como contexto); Anthropic Contextual Retrieval; beerandcode (chunk como entidade de 1ª classe com metadados) |
 

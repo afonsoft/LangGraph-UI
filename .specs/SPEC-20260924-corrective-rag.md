@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `SearchService`, `AnswerService`, `AgentService`, `IQueryRewriter` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-corrective-rag` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | tabnews (CRAG/Self-RAG); beerandcode ("diga que não sabe" + faithfulness); fonte-rag (abstention set no eval) |
 

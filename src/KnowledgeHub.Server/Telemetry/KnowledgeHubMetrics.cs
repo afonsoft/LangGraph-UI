@@ -60,6 +60,10 @@ public sealed class KnowledgeHubMetrics : IMcpRequestMetrics
     public static readonly Counter<long> McpRequests =
         Meter.CreateCounter<long>("knowledgehub.mcp.requests");
 
+    /// <summary>Search candidates dropped post-rank. Tags: reason (floor|diversity).</summary>
+    public static readonly Counter<long> SearchCandidatesDropped =
+        Meter.CreateCounter<long>("knowledgehub.search.candidates_dropped");
+
     /// <inheritdoc />
     public void Record(string method, string sessionMode, bool succeeded)
     {

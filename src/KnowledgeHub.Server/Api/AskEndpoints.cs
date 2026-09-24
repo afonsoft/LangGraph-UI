@@ -12,7 +12,7 @@ public static class AskEndpoints
 
         group.MapPost("/", async (
             AskRequest request,
-            ISearchService search,
+            CorrectiveRetrievalService retrieval,
             IAnswerService answers,
             CancellationToken ct) =>
         {
@@ -28,7 +28,11 @@ public static class AskEndpoints
 
             var generate = request.Generate ?? answers.IsConfigured;
             var k = request.TopK is null or <= 0 ? SearchEndpoints.DefaultTopK : Math.Min(request.TopK.Value, SearchEndpoints.MaxTopK);
-            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, filter, ct);
+            var outcome = await retrieval.RetrieveAsync(request.Question, k, request.SourceId, mode.Value, filter, ct: ct);
+            var context = outcome.Results;
+            var grade = retrieval.GradingEnabled
+                ? outcome.Grading.Grade.ToString().ToLowerInvariant()
+                : (string?)null;
 
             if (!generate)
             {
@@ -39,14 +43,24 @@ public static class AskEndpoints
                     LatencyMs = 0,
                     Model = null,
                     Generated = false,
-                    Context = context
+                    Context = context,
+                    RetrievalGrade = grade,
+                    Retried = outcome.Retried
                 });
             }
+
+            // SPEC-20260924-corrective-rag RF-003: abstain without synthesis.
+            if (outcome.Grading.Grade == Search.RetrievalGrade.Insufficient)
+                return Results.Ok(retrieval.BuildAbstention(request.Question, outcome) with { Context = context });
 
             if (!answers.IsConfigured)
                 return Results.BadRequest(new { error = "chat provider not configured (Chat:Provider=none)" });
 
-            return Results.Ok(await answers.AnswerAsync(request.Question, context, ct));
+            return Results.Ok((await answers.AnswerAsync(request.Question, context, ct)) with
+            {
+                RetrievalGrade = grade,
+                Retried = outcome.Retried
+            });
         });
 
         return group;

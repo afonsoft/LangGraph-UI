@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using KnowledgeHub.McpEngine.Activity;
@@ -373,8 +374,13 @@ public sealed class AgentService(
             .Where(t => request.AllowWrite || t.ReadOnly)
             .ToList();
 
+        // SPEC-20260924-conversational-query-context: compact snapshot of the
+        // recent turns so retrieval tools can resolve follow-up references.
+        var conversationContext = ConversationSnapshot(messages);
+
         var functions = visible
-            .Select(t => (AIFunction)new CatalogToolAIFunction(t, services, options.MaxToolResultChars))
+            .Select(t => (AIFunction)new CatalogToolAIFunction(
+                t, services, options.MaxToolResultChars, conversationContext))
             .ToList();
 
         return new LoopState
@@ -388,6 +394,34 @@ public sealed class AgentService(
             MaxIterations = maxIterations,
             Request = request
         };
+    }
+
+    /// <summary>SPEC-20260924-conversational-query-context: last N user/assistant
+    /// text turns (≤200 chars each), system prompt excluded. Null when there is
+    /// nothing but the current prompt.</summary>
+    private string? ConversationSnapshot(List<ChatMessage> messages)
+    {
+        if (!options.QueryContext.Enabled)
+            return null;
+        var maxMessages = Math.Clamp(options.QueryContext.HistoryMessages, 1, 10);
+        var turns = messages
+            .Where(m => m.Role == ChatRole.User || m.Role == ChatRole.Assistant)
+            .Select(m => (Role: m.Role, Text: m.Text))
+            .Where(t => !string.IsNullOrWhiteSpace(t.Text))
+            .TakeLast(maxMessages)
+            .ToList();
+        if (turns.Count <= 1)
+            return null; // only the current prompt — nothing to contextualise
+        var sb = new StringBuilder();
+        foreach (var (role, text) in turns)
+        {
+            var trimmed = text.Trim();
+            if (trimmed.Length > 200)
+                trimmed = trimmed[..200] + "…";
+            sb.Append(role == ChatRole.User ? "user: " : "assistant: ")
+              .Append(trimmed).Append('\n');
+        }
+        return sb.ToString();
     }
 
     private async Task<AgentResponse> RunLoopAsync(

@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace KnowledgeHub.Server.Ingestion.Chunking;
 
 /// <summary>
@@ -18,8 +20,39 @@ public sealed class MarkdownTextChunker : ITextChunker
 
     public ChunkKind Kind { get; }
 
-    public IReadOnlyList<ChunkPiece> Chunk(string text, int maxTokens, int overlapTokens) =>
-        MarkdownChunker.Chunk(text, maxTokens, overlapTokens)
-            .Select(t => new ChunkPiece(t))
-            .ToList();
+    public IReadOnlyList<ChunkPiece> Chunk(string text, int maxTokens, int overlapTokens)
+    {
+        var pieces = MarkdownChunker.Chunk(text, maxTokens, overlapTokens);
+        // SPEC-20260924-contextual-chunk-enrichment RF-001: track the heading
+        // stack across consecutive pieces — a piece whose own text starts a
+        // section updates the path; pieces without headers inherit the path of
+        // the section they continue.
+        var stack = new List<(int Level, string Title)>();
+        return pieces.Select(p => new ChunkPiece(p, SectionPath: SectionPathFor(p, stack))).ToList();
+    }
+
+    /// <summary>First header inside <paramref name="piece"/> (post stack-update)
+    /// defines its section; no header → current stack. Handles mid-piece
+    /// headers too — they update the stack for subsequent pieces.</summary>
+    private static string? SectionPathFor(string piece, List<(int Level, string Title)> stack)
+    {
+        string? firstPath = null;
+        foreach (var raw in piece.Split('\n'))
+        {
+            var m = HeaderLine().Match(raw.TrimStart());
+            if (!m.Success)
+                continue;
+            var level = m.Groups[1].Value.Length;
+            var title = m.Groups[2].Value.Trim();
+            while (stack.Count > 0 && stack[^1].Level >= level)
+                stack.RemoveAt(stack.Count - 1);
+            stack.Add((level, title));
+            firstPath ??= string.Join(" > ", stack.Select(s => s.Title));
+        }
+        return firstPath ?? (stack.Count > 0 ? string.Join(" > ", stack.Select(s => s.Title)) : null);
+    }
+
+    private static Regex HeaderLine() => _headerLine;
+    private static readonly Regex _headerLine =
+        new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Compiled);
 }

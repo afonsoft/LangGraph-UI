@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `SearchService`, sqlite-vec/pgvector, FTS5 |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-mmr-diversity` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | Análise comparativa RAG (tabnews "RAG na Prática": estratégia MMR; pedrolealdino: chunks do mesmo doc dominando topK) |
 

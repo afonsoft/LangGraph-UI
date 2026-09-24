@@ -82,9 +82,17 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                     var query = ToolArgs.RequiredString(ctx, "query");
                     var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
                     var (sourceId, mode, filter) = await ResolveScopeAsync(ctx, ct);
-                    var search = ctx.Services!.GetRequiredService<ISearchService>();
-                    var results = await search.SearchAsync(query, topK, sourceId, mode, filter, ct);
-                    return await ToolResults.Text(FormatHits(results));
+                    // SPEC-20260924-corrective-rag RF-004: the corrective wrapper
+                    // retries weak retrievals once and surfaces the grade so the
+                    // agent can decide to rephrase on its own.
+                    var retrieval = ctx.Services!.GetRequiredService<CorrectiveRetrievalService>();
+                    var outcome = await retrieval.RetrieveAsync(query, topK, sourceId, mode, filter, ctx.ConversationContext, ct);
+                    var grade = retrieval.GradingEnabled
+                        ? $"[grade: {outcome.Grading.Grade.ToString().ToLowerInvariant()}" +
+                          (outcome.Grading.Grade == Search.RetrievalGrade.Weak ? " — suggestion: rephrase the query" : "") +
+                          (outcome.Retried ? " — retried" : "") + "]\n"
+                        : null;
+                    return await ToolResults.Text(grade + FormatHits(outcome.Results));
                 }
             },
             new CatalogTool
@@ -171,11 +179,20 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         var question = ToolArgs.RequiredString(ctx, "question");
         var topK = ToolArgs.OptionalInt(ctx, "topK", 5, 50);
         var (sourceId, mode, filter) = await ResolveScopeAsync(ctx, ct);
-        var search = ctx.Services!.GetRequiredService<ISearchService>();
-        var results = await search.SearchAsync(question, topK, sourceId, mode, filter, ct);
+        var retrieval = ctx.Services!.GetRequiredService<CorrectiveRetrievalService>();
+        var outcome = await retrieval.RetrieveAsync(question, topK, sourceId, mode, filter, ctx.ConversationContext, ct);
+        var results = outcome.Results;
 
         var answers = ctx.Services!.GetRequiredService<IAnswerService>();
         var generate = ToolArgs.OptionalBool(ctx, "generate") ?? answers.IsConfigured;
+
+        // SPEC-20260924-corrective-rag RF-003: insufficient evidence short-circuits
+        // synthesis — honest abstention, no LLM call, weak citations attached.
+        if (outcome.Grading.Grade == Search.RetrievalGrade.Insufficient && generate)
+            return await ToolResults.Structured(
+                retrieval.BuildAbstention(question, outcome).Answer
+                + (results.Count > 0 ? "\n\nClosest passages:\n" + FormatHits(results.Take(3).ToList()) : ""),
+                retrieval.BuildAbstention(question, outcome));
 
         if (!generate)
             return await ToolResults.Text(FormatAnswerContext(question, results));
@@ -190,7 +207,13 @@ public sealed class KnowledgeToolsProvider : IToolProvider
 
         try
         {
-            var answer = await answers.AnswerAsync(question, results, ct);
+            var answer = (await answers.AnswerAsync(question, results, ct)) with
+            {
+                RetrievalGrade = retrieval.GradingEnabled
+                    ? outcome.Grading.Grade.ToString().ToLowerInvariant()
+                    : null,
+                Retried = outcome.Retried
+            };
             var text = new StringBuilder(answer.Answer);
             if (answer.Citations.Count > 0)
             {
@@ -330,6 +353,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         // SPEC-20260923-code-aware-chunking: kind from the document URI.
         var (kind, pieces) = Ingestion.Chunking.ChunkerSelector.Chunk(doc2.UriReference, body, 500, 50);
         var sanitizer = ctx.Services!.GetRequiredService<Security.IContentSanitizer>();
+        var config = ctx.Services!.GetRequiredService<IConfiguration>();
         var flagged = 0;
         var newChunks = pieces.Select((p, i) =>
         {
@@ -343,6 +367,11 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                 TextContent = p.Text,
                 ChunkKind = kind.ToString().ToLowerInvariant(),
                 SymbolPath = p.SymbolPath,
+                SectionPath = p.SectionPath,
+                EnrichedText = Ingestion.ContextEnricher.Compose(
+                    target.Name, title, p.SectionPath ?? p.SymbolPath, p.Text,
+                    config.GetValue("Ingestion:ContextualEnrichment", "structural"),
+                    config.GetValue("Ingestion:ContextualEnrichment:MinTokens", 40)),
                 SuspicionFlags = flags.Count == 0 ? null : string.Join(',', flags)
             };
         }).ToList();
@@ -368,7 +397,7 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         };
         foreach (var chunk in newChunks)
         {
-            var vector = await embeddings.EmbedAsync(chunk.TextContent, ct);
+            var vector = await embeddings.EmbedDocumentAsync(chunk.TextContent, ct);
             await vectors.UpsertAsync(chunk.Id, doc2.Id, target.Id, vector, embeddings.ModelId,
                 upsertMetadata, ct);
         }

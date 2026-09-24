@@ -37,4 +37,16 @@ public sealed class AgentOptions
     /// the run instead of growing memory unboundedly; events are never dropped.
     /// </summary>
     public int SseChannelCapacity { get; set; } = 256;
+
+    /// <summary>SPEC-20260924-conversational-query-context: history-aware query
+    /// rewriting for retrieval tools invoked inside a thread.</summary>
+    public QueryContextOptions QueryContext { get; set; } = new();
+
+    public sealed class QueryContextOptions
+    {
+        /// <summary>Pass the conversation snapshot to retrieval tools.</summary>
+        public bool Enabled { get; set; } = true;
+        /// <summary>How many recent turns feed the rewriter context.</summary>
+        public int HistoryMessages { get; set; } = 4;
+    }
 }

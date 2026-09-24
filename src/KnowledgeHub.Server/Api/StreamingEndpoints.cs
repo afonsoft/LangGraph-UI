@@ -49,7 +49,7 @@ public static class StreamingEndpoints
 
             var ct = http.RequestAborted;
             var k = request.TopK is null or <= 0 ? SearchEndpoints.DefaultTopK : Math.Min(request.TopK.Value, SearchEndpoints.MaxTopK);
-            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, streamFilter, ct);
+            var context = await search.SearchAsync(request.Question, k, request.SourceId, mode.Value, streamFilter, ct: ct);
             await WriteSseAsync(http, answers.StreamAsync(request.Question, context, ct), ct);
         }).RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
 

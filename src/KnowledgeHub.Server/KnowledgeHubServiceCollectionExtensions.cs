@@ -197,6 +197,16 @@ public static class KnowledgeHubServiceCollectionExtensions
                 && sp.GetService<Microsoft.Extensions.AI.IChatClient>() is { } chat
                 ? new Search.LlmReranker(chat, sp.GetRequiredService<ILogger<Search.LlmReranker>>())
                 : Search.NoOpReranker.Instance);
+        // SPEC-20260924-corrective-rag RF-001: retrieval grading + corrective loop.
+        services.AddScoped<Search.IRetrievalGrader>(sp =>
+            string.Equals(
+                sp.GetRequiredService<IConfiguration>().GetValue("Search:Grading:Mode", "heuristic"),
+                "llm", StringComparison.OrdinalIgnoreCase)
+                ? (Search.IRetrievalGrader)new Search.LlmRetrievalGrader(
+                    sp, sp.GetRequiredService<ILogger<Search.LlmRetrievalGrader>>())
+                : new Search.HeuristicRetrievalGrader(sp.GetRequiredService<IConfiguration>()));
+        services.AddScoped<CorrectiveRetrievalService>();
+
         // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
         services.AddScoped<Eval.EvalRunner>();
 

@@ -14,6 +14,8 @@ public sealed class OpenAiEmbeddingProvider : IEmbeddingProvider
     private readonly HttpClient _http;
     private readonly string _model;
     private readonly int _dimensions;
+    private readonly string? _queryInputType;
+    private readonly string? _documentInputType;
 
     public OpenAiEmbeddingProvider(HttpClient http, EmbeddingOptions options)
     {
@@ -25,15 +27,28 @@ public sealed class OpenAiEmbeddingProvider : IEmbeddingProvider
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
         _model = options.Model;
         _dimensions = options.Dimensions;
+        // SPEC-20260924-asymmetric-embeddings RF-002: input_type for providers
+        // that support it (Voyage-compatible gateways); OpenAI ignores it.
+        _queryInputType = options.QueryInputType;
+        _documentInputType = options.DocumentInputType;
     }
 
     public string ModelId => $"openai:{_model}";
     public int Dimensions => _dimensions;
 
-    public async Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken = default)
+    public Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken = default) =>
+        EmbedWithTypeAsync(text, null, cancellationToken);
+
+    public Task<float[]> EmbedQueryAsync(string text, CancellationToken cancellationToken = default) =>
+        EmbedWithTypeAsync(text, _queryInputType, cancellationToken);
+
+    public Task<float[]> EmbedDocumentAsync(string text, CancellationToken cancellationToken = default) =>
+        EmbedWithTypeAsync(text, _documentInputType, cancellationToken);
+
+    private async Task<float[]> EmbedWithTypeAsync(string text, string? inputType, CancellationToken cancellationToken)
     {
         var response = await _http.PostAsJsonAsync("v1/embeddings",
-            new OpenAiRequest(_model, text), cancellationToken);
+            new OpenAiRequest(_model, text, inputType), cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new EmbeddingProviderException($"OpenAI embeddings failed with HTTP {(int)response.StatusCode}");
 
@@ -54,7 +69,8 @@ public sealed class OpenAiEmbeddingProvider : IEmbeddingProvider
 
     private sealed record OpenAiRequest(
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("input")] string Input);
+        [property: JsonPropertyName("input")] string Input,
+        [property: JsonPropertyName("input_type"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? InputType);
 
     private sealed record OpenAiResponse(
         [property: JsonPropertyName("data")] List<OpenAiEmbedding>? Data);

@@ -184,7 +184,9 @@ public sealed class IngestionService(
                     ChunkIndex = i,
                     TextContent = piece.Text,
                     ChunkKind = kind.ToString().ToLowerInvariant(),
-                    SymbolPath = piece.SymbolPath
+                    SymbolPath = piece.SymbolPath,
+                    SectionPath = piece.SectionPath,
+                    EnrichedText = EnrichPiece(source.Name, note.Title, piece)
                 }).ToList();
                 db.Chunks.AddRange(newChunks);
                 ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
@@ -324,7 +326,9 @@ public sealed class IngestionService(
                     ChunkIndex = i,
                     TextContent = piece.Text,
                     ChunkKind = kind.ToString().ToLowerInvariant(),
-                    SymbolPath = piece.SymbolPath
+                    SymbolPath = piece.SymbolPath,
+                    SectionPath = piece.SectionPath,
+                    EnrichedText = EnrichPiece(source.Name, raw.Title, piece)
                 }).ToList();
             db.Chunks.AddRange(newChunks);
             ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
@@ -407,6 +411,17 @@ public sealed class IngestionService(
         }
     }
 
+    /// <summary>SPEC-20260924-contextual-chunk-enrichment: structural prefix
+    /// (Source | Document | Section) for the embedded/indexed text — display
+    /// text stays untouched.</summary>
+    private string? EnrichPiece(string sourceName, string documentTitle, Chunking.ChunkPiece piece) =>
+        ContextEnricher.Compose(
+            sourceName, documentTitle,
+            piece.SectionPath ?? piece.SymbolPath,
+            piece.Text,
+            configuration.GetValue("Ingestion:ContextualEnrichment", "structural"),
+            configuration.GetValue("Ingestion:ContextualEnrichment:MinTokens", 40));
+
     /// <summary>Embed + upsert chunks in one batch — a single provider call for
     /// N texts and a single store batch (SPEC-20260916-performance-memory-cache
     /// RF-004). Batch failure falls back to per-chunk so one bad text doesn't
@@ -425,8 +440,8 @@ public sealed class IngestionService(
         IReadOnlyList<float[]> batchVectors;
         try
         {
-            batchVectors = await embeddings.EmbedBatchAsync(
-                chunks.Select(c => c.TextContent).ToList(), cancellationToken);
+            batchVectors = await embeddings.EmbedDocumentBatchAsync(
+                chunks.Select(c => c.EnrichedText ?? c.TextContent).ToList(), cancellationToken);
         }
         catch (EmbeddingProviderException ex)
         {
@@ -461,7 +476,7 @@ public sealed class IngestionService(
         {
             try
             {
-                var vector = await embeddings.EmbedAsync(chunk.TextContent, cancellationToken);
+                var vector = await embeddings.EmbedDocumentAsync(chunk.EnrichedText ?? chunk.TextContent, cancellationToken);
                 await vectors.UpsertAsync(chunk.Id, documentId, sourceId, vector, embeddings.ModelId,
                     metadata, cancellationToken);
                 created++;
@@ -700,7 +715,9 @@ public sealed class IngestionService(
                 ChunkIndex = i,
                 TextContent = piece.Text,
                 ChunkKind = kind.ToString().ToLowerInvariant(),
-                SymbolPath = piece.SymbolPath
+                SymbolPath = piece.SymbolPath,
+                SectionPath = piece.SectionPath,
+                EnrichedText = EnrichPiece(source.Name, title, piece)
             }).ToList();
             db.Chunks.AddRange(newChunks);
             ScanChunks(newChunks, doc.Id, sourceId, title, db, watcherWarnings);

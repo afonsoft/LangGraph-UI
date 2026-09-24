@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `IEmbeddingProvider`, Ollama/OpenAI/ONNX providers |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-asymmetric-embeddings` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | beerandcode (Voyage `input_type: document|query` — esquecer de alternar derruba recall ~10pp); convenção nomic/Ollama (`search_query:`/`search_document:`) |
 

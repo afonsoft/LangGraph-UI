@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `LlmQueryRewriter`, `AgentService`, `ConversationThread` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-conversational-query` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | tabnews (query rewriting contextual); todos os guias de produção (perguntas de follow-up são o caso real dominante em chat) |
 

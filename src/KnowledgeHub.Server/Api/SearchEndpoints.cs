@@ -38,7 +38,7 @@ public static class SearchEndpoints
                 return Results.BadRequest(new { error });
 
             var k = topK is null or <= 0 ? DefaultTopK : Math.Min(topK.Value, MaxTopK);
-            var results = await svc.SearchAsync(query, k, sourceId, searchMode.Value, filter, ct);
+            var results = await svc.SearchAsync(query, k, sourceId, searchMode.Value, filter, ct: ct);
             return Results.Ok(new SearchResponse { Results = results });
         });
 
@@ -56,7 +56,7 @@ public static class SearchEndpoints
                 return Results.BadRequest(new { error });
 
             var k = request.TopK is null or <= 0 ? DefaultTopK : Math.Min(request.TopK.Value, MaxTopK);
-            var results = await svc.SearchAsync(request.Query, k, request.SourceId, searchMode.Value, filter, ct);
+            var results = await svc.SearchAsync(request.Query, k, request.SourceId, searchMode.Value, filter, ct: ct);
             return Results.Ok(new SearchResponse { Results = results });
         });
 
