@@ -258,16 +258,34 @@
 
     private async Task SyncNow(KnowledgeSourceDto dto)
     {
-        var result = await Api.SyncAsync(dto.Id);
-        if (!result.IsSuccess)
+        // SPEC-20260924-async-ingestion-queue: enqueue + poll until terminal.
+        var enqueued = await Api.EnqueueSyncAsync(dto.Id);
+        if (!enqueued.IsSuccess)
         {
-            await Toast.Error("Sync falhou", result.Error!);
+            await Toast.Error("Sync falhou", enqueued.Error!);
             return;
         }
-        var s = result.Value!;
-        await Toast.Success("Sync concluído",
-            $"{s.DocumentsProcessed} docs, {s.ChunksCreated} chunks em {s.DurationMs:F0}ms ({s.Status}).");
-        await ReloadAsync();
+        var job = enqueued.Value!;
+        await Toast.Information("Sync enfileirado",
+            job.Existing ? "Já existe um job em andamento para esta fonte." : $"Job {job.JobId:N}");
+
+        // Poll the job — most sources finish fast; cap at ~5min.
+        for (var i = 0; i < 150; i++)
+        {
+            await Task.Delay(2000);
+            var j = await Api.GetJobAsync(job.JobId);
+            if (j is null || j.Status is "queued" or "running")
+                continue;
+            if (j.Status == "done")
+                await Toast.Success("Sync concluído",
+                    $"{j.DocsProcessed} docs, {j.ChunksCreated} chunks" +
+                    (j.DocsFailed > 0 ? $" — {j.DocsFailed} doc(s) falharam" : ""));
+            else
+                await Toast.Error($"Sync {j.Status}", j.Error ?? "");
+            await ReloadAsync();
+            return;
+        }
+        await Toast.Warning("Sync em andamento", "O job continua em background.");
     }
 
     private async Task DeleteSource(KnowledgeSourceDto dto)

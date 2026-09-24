@@ -20,6 +20,13 @@ public sealed record SearchScoreBreakdown
     /// <summary>Reranker score (0–10) when Search:Rerank:Enabled
     /// (SPEC-20260923-retrieval-quality RF-002).</summary>
     public double? Rerank { get; init; }
+    /// <summary>SPEC-20260924-graph-expanded-retrieval RF-002: rank on the
+    /// knowledge-graph arm (entity evidence chunks) when present.</summary>
+    public int? GraphRank { get; init; }
+    /// <summary>SPEC-20260924-query-expansion-hyde RF-004: the expansion variant
+    /// that surfaced this hit ("hyde" for the hypothetical-document arm);
+    /// null when expansion is off or the hit came from the original query.</summary>
+    public string? ExpandedFrom { get; init; }
 }
 
 /// <summary>Optional metadata filters for search/ask
@@ -35,6 +42,15 @@ public sealed record SearchFilter
     public string? IndexedAfter { get; init; }
     /// <summary>BCP-47 tag matched against document language metadata when present.</summary>
     public string? Language { get; init; }
+    /// <summary>SPEC-20260924-query-expansion-hyde RF-003: per-call expansion
+    /// override — off|multi|hyde|both. Null = use configured default.</summary>
+    public string? Expand { get; init; }
+    /// <summary>SPEC-20260924-hierarchical-retrieval RF-001: per-hit context
+    /// expansion — none|window|section. Null/none = unchanged behavior.</summary>
+    public string? ContextExpand { get; init; }
+    /// <summary>SPEC-20260924-graph-expanded-retrieval RF-004: per-call toggle
+    /// for the graph arm — null = configured default.</summary>
+    public bool? UseGraph { get; init; }
 }
 
 /// <summary>One ranked chunk hit from semantic search (SPEC-02 RF-004).</summary>
@@ -62,6 +78,9 @@ public sealed record SearchResultItem
     public Guid? ChunkId { get; init; }
     /// <summary>Owning document id.</summary>
     public Guid? DocumentId { get; init; }
+    /// <summary>Ordinal position inside the owning document
+    /// (SPEC-20260924-hierarchical-retrieval — needed for window expansion).</summary>
+    public int? ChunkIndex { get; init; }
     /// <summary>Derived provenance metadata (sourceType, path, chunkKind, symbolPath).</summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
     /// <summary>When the owning document was last indexed.</summary>
@@ -70,6 +89,10 @@ public sealed record SearchResultItem
     /// this chunk belongs to — lets callers/agent see where in the document the
     /// passage lives. Null when outside any section.</summary>
     public string? SectionPath { get; init; }
+    /// <summary>SPEC-20260924-hierarchical-retrieval RF-002: surrounding context
+    /// (neighbouring chunks or the parent section) — never part of ranking or
+    /// citation identity; the hit itself stays in <see cref="ChunkText"/>.</summary>
+    public string? Context { get; init; }
     /// <summary>Knowledge-graph entity names evidenced by this chunk — feed these
     /// names to the find_* graph tools (SPEC-20260924-graph-tool-discovery RF-001).
     /// Null when GraphRAG is disabled or the chunk has no graph evidence.</summary>

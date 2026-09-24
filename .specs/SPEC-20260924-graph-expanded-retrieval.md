@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `IKnowledgeGraphStore`, `SearchService`, RRF |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-graph-expanded-retrieval` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | tabnews (GraphRAG); latenode (LightRAG — grafo+vetor); SPEC-20260923-graphrag (extração Done — falta a expansão no retrieval) |
 

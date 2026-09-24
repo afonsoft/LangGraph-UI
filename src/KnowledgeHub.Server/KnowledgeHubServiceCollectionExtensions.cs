@@ -192,6 +192,8 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<Auth.ICallerScopeProvider, Auth.CallerScopeProvider>();
         // SPEC-20260923-retrieval-quality: opt-in query rewriting + reranker.
         services.AddScoped<Search.IQueryRewriter, Search.LlmQueryRewriter>();
+        // SPEC-20260924-query-expansion-hyde: multi-query + HyDE (opt-in).
+        services.AddScoped<Search.IQueryExpander, Search.LlmQueryExpander>();
         services.AddScoped<Search.IReranker>(sp =>
             sp.GetRequiredService<IConfiguration>().GetValue("Search:Rerank:Enabled", false)
                 && sp.GetService<Microsoft.Extensions.AI.IChatClient>() is { } chat
@@ -209,12 +211,16 @@ public static class KnowledgeHubServiceCollectionExtensions
 
         // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
         services.AddScoped<Eval.EvalRunner>();
+        // SPEC-20260924-eval-regression-gate RF-003: scheduled eval + gate alerts.
+        services.AddHostedService<Eval.EvalScheduleService>();
 
         // SPEC-20260923-graph-settings-ui: runtime-editable Graph:* overrides.
         services.AddSingleton<Settings.IGraphSettingsService, Settings.GraphSettingsService>();
 
         // SPEC-20260923-graphrag: adjacency-table store + LLM extractor.
         services.AddScoped<Graph.IKnowledgeGraphStore, Graph.SqliteKnowledgeGraphStore>();
+        // SPEC-20260924-graph-expanded-retrieval RF-001: lexical entity linker.
+        services.AddScoped<Graph.GraphEntityLinker>();
         services.AddScoped<Graph.EntityExtractor>(sp => new Graph.EntityExtractor(
             sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
             sp.GetRequiredService<Settings.IGraphSettingsService>()));
@@ -223,6 +229,10 @@ public static class KnowledgeHubServiceCollectionExtensions
 
         services.AddSingleton<IngestionService>();
         services.AddSingleton<IIngestionService>(sp => sp.GetRequiredService<IngestionService>());
+        // SPEC-20260924-async-ingestion-queue RF-001/RF-002: bounded channel +
+        // sequential worker (SQLite write lock keeps MaxParallelJobs at 1).
+        services.AddSingleton<Ingestion.IIngestionQueue, Ingestion.IngestionQueue>();
+        services.AddHostedService<Ingestion.IngestionWorker>();
         services.AddHostedService<VaultWatcherService>();
 
         // SPEC-04: dynamic MCP tool catalog + handlers + change notifier.

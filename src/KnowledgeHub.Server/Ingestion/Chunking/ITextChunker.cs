@@ -24,4 +24,10 @@ public interface ITextChunker
     /// <summary>Splits <paramref name="text"/> into pieces ≤ roughly
     /// <paramref name="maxTokens"/> tokens (chars/4 approximation).</summary>
     IReadOnlyList<ChunkPiece> Chunk(string text, int maxTokens, int overlapTokens);
+
+    /// <summary>Async variant — needed by embedding-driven chunkers
+    /// (SPEC-20260924-semantic-chunking). Default delegates to <see cref="Chunk"/>.</summary>
+    Task<IReadOnlyList<ChunkPiece>> ChunkAsync(
+        string text, int maxTokens, int overlapTokens, CancellationToken ct = default) =>
+        Task.FromResult(Chunk(text, maxTokens, overlapTokens));
 }

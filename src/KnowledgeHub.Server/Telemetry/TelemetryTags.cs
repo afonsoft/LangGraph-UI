@@ -20,7 +20,10 @@ public static class TelemetryTags
         "search.mode", "search.topK", "vector.store", "llm.model", "llm.kind",
         "tool.name", "sync.sourceId", "sync.status", "agent.iteration",
         "mcp.method", "cache.hit", "search.floor.removed",
-        "search.diversity.removed", "search.grade", "search.retried"
+        "search.diversity.removed", "search.grade", "search.retried",
+        "search.expansion.mode", "search.expansion.variants",
+        "search.expansion.cached", "search.expansion.chunks",
+        "search.graph.hits"
     };
 
     /// <summary>Cache region names derived from key prefixes — bounded set.</summary>

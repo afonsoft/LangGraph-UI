@@ -158,7 +158,7 @@ public sealed class VaultWatcherService(
             _lastFullSync[source.Id] = DateTimeOffset.UtcNow;
             try
             {
-                await ingestion.SyncAsync(source.Id, ct);
+                await ingestion.SyncAsync(source.Id, cancellationToken: ct);
             }
             catch (Exception ex)
             {

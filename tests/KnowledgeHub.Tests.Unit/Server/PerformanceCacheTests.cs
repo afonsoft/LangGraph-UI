@@ -3,6 +3,7 @@ using KnowledgeHub.Server.Caching;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Server.Embeddings;
+using KnowledgeHub.Server.Graph;
 using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Server.Search;
 using KnowledgeHub.Server.Services;
@@ -137,7 +138,7 @@ public sealed class PerformanceCacheTests
         var cache = new MemoryDistributedCache(
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, embeddings, vectors, new DisabledLexical(), cache,
-            new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var first = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);
@@ -181,7 +182,7 @@ public sealed class PerformanceCacheTests
 
         var search = new SearchService(db, new CountingEmbeddingProvider(),
             new CountingVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(),
-            new ThrowingCache(), new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            new ThrowingCache(), new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var results = await search.SearchAsync("q", 5, mode: SearchMode.Semantic);

@@ -12,4 +12,11 @@ public sealed class EvalRun
     public string MetricsJson { get; set; } = "";
     /// <summary>Serialized per-case <see cref="Eval.EvalCaseResult"/> list.</summary>
     public string PerCaseJson { get; set; } = "";
+    /// <summary>SPEC-20260924-eval-regression-gate: serialized
+    /// <see cref="Eval.EvalLatencySummary"/> (null pre-RF-002).</summary>
+    public string? LatencyJson { get; set; }
+    /// <summary>Serialized <see cref="Eval.EvalGateResult"/> when gated.</summary>
+    public string? GateResultJson { get; set; }
+    /// <summary>Named baseline this run compared against.</summary>
+    public string? BaselineName { get; set; }
 }

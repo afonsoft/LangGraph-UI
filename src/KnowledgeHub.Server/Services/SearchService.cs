@@ -27,6 +27,8 @@ public sealed class SearchService(
     IDistributedCache cache,
     IConfiguration configuration,
     IQueryRewriter rewriter,
+    IQueryExpander expander,
+    Graph.GraphEntityLinker graphLinker,
     IReranker reranker,
     Auth.ICallerScopeProvider callerScope,
     Settings.IGraphSettingsService graphSettings,
@@ -132,40 +134,57 @@ public sealed class SearchService(
         List<VectorHit> windowed;
         IReadOnlyDictionary<Guid, SearchScoreBreakdown>? breakdowns = null;
 
-        if (mode == SearchMode.Semantic)
+        // SPEC-20260924-query-expansion-hyde: expansion mode — per-call `expand`
+        // filter arg wins over config; off = the classic single-query pipeline.
+        var expansionMode = filter?.Expansion
+            ?? configuration.GetValue("Search:QueryExpansion:Mode", "off");
+
+        // SPEC-20260924-graph-expanded-retrieval RF-001/RF-002: optional third
+        // arm — entity-linked chunks (direct + 1-hop) fused via the same RRF.
+        var graphEnabled = filter?.UseGraph
+            ?? configuration.GetValue("Search:Graph:Enabled", false);
+
+        if (mode == SearchMode.Semantic && expansionMode == "off" && !graphEnabled)
         {
             var queryVector = await EmbedQueryAsync(effectiveQuery, ct);
             windowed = (await VectorSearchAsync(queryVector, fetchLimit, activeSourceIds, ct)).ToList();
         }
         else
         {
-            var vectorRanked = mode == SearchMode.Hybrid
-                ? (await VectorSearchAsync(
-                    await EmbedQueryAsync(effectiveQuery, ct), window, activeSourceIds, ct))
-                    .Select(h => h.ChunkId).ToList()
-                : [];
+            var (vectorLabels, vectorLists, lexicalLabels, lexicalLists) =
+                await ExpandAndSearchAsync(query, effectiveQuery, mode, expansionMode,
+                    window, activeSourceIds, ct);
 
-            using var lexicalSpan = KnowledgeHubActivity.Start("lexical_search");
-            var lexicalSw = Stopwatch.StartNew();
-            List<LexicalHit> lexicalHits;
-            try
-            {
-                lexicalHits = (await lexical.SearchAsync(effectiveQuery, window, activeSourceIds, ct)).ToList();
-            }
-            catch (Exception ex)
-            {
-                KnowledgeHubActivity.Fail(lexicalSpan, ex);
-                throw;
-            }
-            finally
-            {
-                KnowledgeHubMetrics.LexicalDuration.Record(lexicalSw.Elapsed.TotalMilliseconds);
-            }
-            var lexicalRanked = lexicalHits.Select(h => h.ChunkId).ToList();
+            var graphArm = graphEnabled
+                ? await GraphRankedAsync(query, ct)
+                : (Ranked: (IReadOnlyList<Guid>)Array.Empty<Guid>(), DirectChunks: new HashSet<Guid>());
 
-            var fused = RrfFuser.Fuse(vectorRanked, lexicalRanked, fetchLimit);
+            var rankedLists = vectorLists.Select(l => ("vector", (IReadOnlyList<Guid>)l))
+                .Concat(lexicalLists.Select(l => ("lexical", (IReadOnlyList<Guid>)l)))
+                .Concat(graphArm.Ranked.Count > 0 ? [("graph", graphArm.Ranked)] : [])
+                .ToList();
+            var fused = RrfFuser.Fuse(rankedLists, fetchLimit);
+
+            // RF-003: gentle boost on chunks with direct-entity evidence.
+            var boost = configuration.GetValue("Search:Graph:Boost", 1.0);
+            if (graphArm.DirectChunks.Count > 0 && Math.Abs(boost - 1.0) > 0.001)
+                fused = fused
+                    .Select(f => graphArm.DirectChunks.Contains(f.ChunkId)
+                        ? f with { Fused = f.Fused * boost }
+                        : f)
+                    .OrderByDescending(f => f.Fused).ThenBy(f => f.ChunkId)
+                    .Take(fetchLimit)
+                    .ToList();
+
             if (fused.Count == 0)
                 return [];
+
+            // ExpandedFrom: first list (in arm order) that surfaced the chunk.
+            var expandedFrom = new Dictionary<Guid, string>();
+            foreach (var (label, list) in vectorLabels.Zip(vectorLists).Concat(lexicalLabels.Zip(lexicalLists)))
+                if (label is not null)
+                    foreach (var id in list)
+                        expandedFrom.TryAdd(id, label);
 
             breakdowns = fused.ToDictionary(
                 f => f.ChunkId,
@@ -173,7 +192,9 @@ public sealed class SearchService(
                 {
                     VectorRank = f.VectorRank,
                     LexicalRank = f.LexicalRank,
-                    Fused = f.Fused
+                    Fused = f.Fused,
+                    GraphRank = f.GraphRank,
+                    ExpandedFrom = expandedFrom.GetValueOrDefault(f.ChunkId)
                 });
             windowed = fused.Select(f => new VectorHit(f.ChunkId, f.Fused)).ToList();
         }
@@ -193,10 +214,13 @@ public sealed class SearchService(
         }
         items = await ApplyDiversityAsync(items, topK, ct);
 
-        if (!rerankEnabled || items.Count <= 1)
-            return items.Take(topK).ToList();
+        var final = (!rerankEnabled || items.Count <= 1)
+            ? items.Take(topK).ToList()
+            : await RerankAsync(query, items, breakdowns, topK, ct);
 
-        return await RerankAsync(query, items, breakdowns, topK, ct);
+        // SPEC-20260924-hierarchical-retrieval: post-selection context expansion
+        // (neighbours / parent section) — never affects ranking.
+        return await ApplyContextExpansionAsync(final, filter?.ContextExpand, ct);
     }
 
     /// <summary>RF-002: re-orders the hydrated window by rerank score; any
@@ -306,6 +330,222 @@ public sealed class SearchService(
         return ordered;
     }
 
+    /// <summary>
+    /// SPEC-20260924-hierarchical-retrieval: attaches surrounding context to each
+    /// hit — window = ±WindowSize same-document neighbours; section = the full
+    /// parent section (degrades to window when no SectionPath). Never changes
+    /// which/how many hits are returned; total context bounded by MaxTotalTokens.
+    /// </summary>
+    private async Task<List<SearchResultItem>> ApplyContextExpansionAsync(
+        IReadOnlyList<SearchResultItem> items, string? contextExpand, CancellationToken ct)
+    {
+        if (contextExpand is null or "none" || items.Count == 0)
+            return items.ToList();
+
+        var windowSize = Math.Clamp(
+            configuration.GetValue("Search:Expansion:WindowSize", 1), 0, 5);
+        var maxParentChars = Math.Max(200,
+            configuration.GetValue("Search:Expansion:MaxParentTokens", 1500)) * 4;
+        var budgetChars = Math.Max(400,
+            configuration.GetValue("Search:Expansion:MaxTotalTokens", 6000)) * 4;
+
+        var expandable = items
+            .Select((Item, Pos) => (Item, Pos))
+            .Where(t => t.Item.DocumentId is not null && t.Item.ChunkIndex is not null)
+            .ToList();
+        if (expandable.Count == 0)
+            return items.ToList();
+
+        var result = items.ToList();
+        var spent = 0;
+        var addedChunks = 0;
+
+        foreach (var docGroup in expandable.GroupBy(t => t.Item.DocumentId!.Value))
+        {
+            var indexes = docGroup.Select(t => t.Item.ChunkIndex!.Value).ToList();
+            var min = indexes.Min() - windowSize;
+            var max = indexes.Max() + windowSize;
+
+            // One indexed range query per document covers every hit's window.
+            var neighbours = await db.Chunks.AsNoTracking()
+                .Where(c => c.KnowledgeDocumentId == docGroup.Key
+                    && c.ChunkIndex >= min && c.ChunkIndex <= max)
+                .OrderBy(c => c.ChunkIndex)
+                .Select(c => new { c.ChunkIndex, c.TextContent })
+                .ToListAsync(ct);
+
+            Dictionary<string, List<string>>? sections = null;
+            if (contextExpand == "section")
+            {
+                var paths = docGroup
+                    .Where(t => t.Item.SectionPath is not null)
+                    .Select(t => t.Item.SectionPath!)
+                    .Distinct().ToList();
+                if (paths.Count > 0)
+                    sections = (await db.Chunks.AsNoTracking()
+                        .Where(c => c.KnowledgeDocumentId == docGroup.Key
+                            && c.SectionPath != null && paths.Contains(c.SectionPath))
+                        .OrderBy(c => c.ChunkIndex)
+                        .Select(c => new { c.ChunkIndex, c.TextContent, c.SectionPath })
+                        .ToListAsync(ct))
+                        .GroupBy(c => c.SectionPath!)
+                        .ToDictionary(g => g.Key, g => g.Select(c => c.TextContent).ToList());
+            }
+
+            foreach (var (item, pos) in docGroup.OrderBy(t => t.Pos))
+            {
+                var own = item.ChunkIndex!.Value;
+                IEnumerable<string> parts;
+                if (contextExpand == "section" && item.SectionPath is { } path
+                    && sections is not null && sections.TryGetValue(path, out var sectionTexts))
+                {
+                    // Whole parent section minus the hit itself, capped.
+                    var joined = string.Join("\n\n",
+                        sectionTexts.Where(t => t != item.ChunkText));
+                    if (joined.Length > maxParentChars)
+                        joined = joined[..maxParentChars] + "…";
+                    parts = joined.Length > 0 ? [joined] : [];
+                }
+                else
+                {
+                    parts = neighbours
+                        .Where(n => n.ChunkIndex != own
+                            && n.ChunkIndex >= own - windowSize
+                            && n.ChunkIndex <= own + windowSize)
+                        .Select(n => n.TextContent);
+                }
+
+                var context = string.Join("\n\n", parts);
+                if (context.Length == 0 || spent + context.Length > budgetChars)
+                    continue;
+                spent += context.Length;
+                addedChunks += parts.Count();
+                result[pos] = item with { Context = context };
+            }
+        }
+
+        Activity.Current?.SetTag("search.expansion.chunks", addedChunks);
+        return result;
+    }
+
+    /// <summary>
+    /// SPEC-20260924-query-expansion-hyde: runs the retrieval arms for the query
+    /// and its expansion variants in parallel. Returns per-arm labels (null =
+    /// original query, "hyde" = hypothetical document) paired with ranked lists.
+    /// </summary>
+    private async Task<(
+        List<string?> VectorLabels, List<IReadOnlyList<Guid>> VectorLists,
+        List<string?> LexicalLabels, List<IReadOnlyList<Guid>> LexicalLists)>
+        ExpandAndSearchAsync(
+            string rawQuery, string effectiveQuery, SearchMode mode,
+            string expansionMode, int window,
+            IReadOnlyCollection<Guid> activeSourceIds, CancellationToken ct)
+    {
+        IReadOnlyList<string> variants = [];
+        string? hydeText = null;
+        if (expansionMode is "multi" or "hyde" or "both")
+        {
+            var count = Math.Clamp(configuration.GetValue("Search:QueryExpansion:Count", 3), 1, 5);
+            var variantsTask = expansionMode is "multi" or "both"
+                ? expander.ExpandQueriesAsync(effectiveQuery, count, ct)
+                : Task.FromResult<IReadOnlyList<string>>([]);
+            var hydeTask = expansionMode is "hyde" or "both"
+                ? expander.GenerateHypotheticalAsync(rawQuery, ct)
+                : Task.FromResult<string?>(null);
+            variants = await variantsTask;
+            hydeText = await hydeTask;
+            var activity = Activity.Current;
+            activity?.SetTag("search.expansion.mode", expansionMode);
+            activity?.SetTag("search.expansion.variants",
+                variants.Count + (hydeText is null ? 0 : 1));
+        }
+
+        // Arm contents per mode — HyDE replaces the vector query (spec RF-002);
+        // lexical always keeps real queries (the hypothetical doc would pollute FTS).
+        var vectorTexts = new List<(string Text, string? Label)> { (effectiveQuery, null) };
+        var lexicalQueries = new List<(string Query, string? Label)> { (effectiveQuery, null) };
+        switch (expansionMode)
+        {
+            case "multi":
+                vectorTexts.AddRange(variants.Select(v => (v, (string?)v)));
+                lexicalQueries.AddRange(variants.Select(v => (v, (string?)v)));
+                break;
+            case "hyde" or "both" when hydeText is not null:
+                vectorTexts.Clear();
+                vectorTexts.Add((hydeText, "hyde"));
+                if (expansionMode == "both")
+                    lexicalQueries.AddRange(variants.Select(v => (v, (string?)v)));
+                break;
+            case "both":
+                lexicalQueries.AddRange(variants.Select(v => (v, (string?)v)));
+                break;
+        }
+
+        var vectorLists = new List<IReadOnlyList<Guid>>();
+        var vectorLabels = new List<string?>();
+        if (mode != SearchMode.Lexical)
+        {
+            var tasks = vectorTexts.Select(async t =>
+                (await VectorSearchAsync(await EmbedQueryAsync(t.Text, ct), window, activeSourceIds, ct))
+                    .Select(h => h.ChunkId).ToList() as IReadOnlyList<Guid>);
+            vectorLists.AddRange(await Task.WhenAll(tasks));
+            vectorLabels.AddRange(vectorTexts.Select(t => t.Label));
+        }
+
+        var lexicalLists = new List<IReadOnlyList<Guid>>();
+        var lexicalLabels = new List<string?>();
+        if (mode != SearchMode.Semantic)
+        {
+            var tasks = lexicalQueries.Select(q => LexicalRankedAsync(q.Query, window, activeSourceIds, ct));
+            lexicalLists.AddRange(await Task.WhenAll(tasks));
+            lexicalLabels.AddRange(lexicalQueries.Select(q => q.Label));
+        }
+
+        return (vectorLabels, vectorLists, lexicalLabels, lexicalLists);
+    }
+
+    /// <summary>
+    /// SPEC-20260924-graph-expanded-retrieval: entity-link the query, expand
+    /// 1-hop, return evidence chunks ranked (direct first). Empty arm when the
+    /// graph has no match — fusion stays unchanged.
+    /// </summary>
+    private async Task<(List<Guid> Ranked, HashSet<Guid> DirectChunks)> GraphRankedAsync(
+        string query, CancellationToken ct)
+    {
+        var maxEntities = Math.Clamp(configuration.GetValue("Search:Graph:MaxEntities", 5), 1, 20);
+        var maxNeighbors = Math.Clamp(configuration.GetValue("Search:Graph:MaxNeighbors", 10), 1, 50);
+
+        var nodeIds = await graphLinker.LinkAsync(query, maxEntities, ct);
+        if (nodeIds.Count == 0)
+            return ([], []);
+
+        var (ranked, direct) = await graphLinker.EvidenceChunksAsync(nodeIds, maxNeighbors, ct);
+        Activity.Current?.SetTag("search.graph.hits", ranked.Count);
+        return (ranked, direct);
+    }
+
+    /// <summary>Lexical arm call wrapped in span + duration metric.</summary>
+    private async Task<IReadOnlyList<Guid>> LexicalRankedAsync(
+        string query, int topK, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct)
+    {
+        using var span = KnowledgeHubActivity.Start("lexical_search");
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var hits = await lexical.SearchAsync(query, topK, sourceIds, ct);
+            return hits.Select(h => h.ChunkId).ToList();
+        }
+        catch (Exception ex)
+        {
+            KnowledgeHubActivity.Fail(span, ex);
+            throw;
+        }
+        finally
+        {
+            KnowledgeHubMetrics.LexicalDuration.Record(sw.Elapsed.TotalMilliseconds);
+        }
+    }
+
     /// <summary>Vector store call wrapped in a span + duration histogram.</summary>
     private async Task<IReadOnlyList<VectorHit>> VectorSearchAsync(
         float[] queryVector, int topK, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct)
@@ -391,9 +631,9 @@ public sealed class SearchService(
         var query = db.Chunks.AsNoTracking()
             .Where(c => chunkIds.Contains(c.Id))
             .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id,
-                (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, c.ChunkKind, c.SymbolPath, c.SectionPath, DocId = d.Id, d.Title, d.UriReference, d.IndexedAt, d.KnowledgeSourceId })
+                (c, d) => new { c.Id, c.TextContent, c.SuspicionFlags, c.ChunkKind, c.SymbolPath, c.SectionPath, c.ChunkIndex, DocId = d.Id, d.Title, d.UriReference, d.IndexedAt, d.KnowledgeSourceId })
             .Join(db.Sources, x => x.KnowledgeSourceId, s => s.Id,
-                (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.ChunkKind, x.SymbolPath, x.SectionPath, x.DocId, x.Title, x.UriReference, x.IndexedAt, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType });
+                (x, s) => new { x.Id, x.TextContent, x.SuspicionFlags, x.ChunkKind, x.SymbolPath, x.SectionPath, x.ChunkIndex, x.DocId, x.Title, x.UriReference, x.IndexedAt, x.KnowledgeSourceId, SourceName = s.Name, s.SourceType });
         if (filter?.SourceType is { } st)
             query = query.Where(x => x.SourceType == st);
         if (filter?.PathPrefix is { } pp)
@@ -442,6 +682,7 @@ public sealed class SearchService(
                     SectionPath = c.SectionPath,
                     ChunkId = c.Id,
                     DocumentId = c.DocId,
+                    ChunkIndex = c.ChunkIndex,
                     Metadata = BuildMetadata(c.SourceType, c.UriReference, c.ChunkKind, c.SymbolPath),
                     IndexedAt = c.IndexedAt
                 };

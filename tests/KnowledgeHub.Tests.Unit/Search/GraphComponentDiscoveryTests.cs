@@ -1,6 +1,7 @@
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Server.Embeddings;
+using KnowledgeHub.Server.Graph;
 using KnowledgeHub.Server.Mcp.ToolProviders;
 using KnowledgeHub.Server.Search;
 using KnowledgeHub.Server.Services;
@@ -65,7 +66,7 @@ public class GraphComponentDiscoveryTests
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         return new SearchService(db, new StubEmbeddings(),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
-            new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), graph, NullLogger<SearchService>.Instance);
     }
 

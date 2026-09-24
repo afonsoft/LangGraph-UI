@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `System.Threading.Channels`, BackgroundService, SignalR (`McpMonitorHub`), EF Core |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-async-ingestion` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | beerandcode (ingestion não roda no request — fila + job; custo de re-embed em mudança de chunker → versionar estratégia); rag-data-platform (pipeline upload→extract→embed→index desacoplado); milvus (bulk ingestion) |
 

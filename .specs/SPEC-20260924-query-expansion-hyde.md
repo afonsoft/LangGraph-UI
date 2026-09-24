@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `IQueryRewriter`/`LlmQueryRewriter`, `SearchService`, RRF |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-query-expansion-hyde` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | tabnews "RAG na Prática" (técnicas avançadas: HyDE, multi-query); literatura Gao et al. 2023 |
 

@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `SearchService`, `IngestionService`, EF Core |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-hierarchical-retrieval` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | pedrolealdino (chunking hierárquico: chunk pequeno para precisão + contexto pai para coerência); tabnews (document-aware chunking) |
 

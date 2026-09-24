@@ -3,6 +3,7 @@ using System;
 using KnowledgeHub.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KnowledgeHub.Server.Migrations
 {
     [DbContext(typeof(KnowledgeHubDbContext))]
-    partial class KnowledgeHubDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924215921_EvalBaselinesAndGate")]
+    partial class EvalBaselinesAndGate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -415,56 +418,6 @@ namespace KnowledgeHub.Server.Migrations
                     b.ToTable("GraphSettings");
                 });
 
-            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.IngestionJob", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ChunksCreated")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("DocsFailed")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("DocsProcessed")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("DocsSkipped")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Error")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("FinishedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("SourceId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("StartedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SourceId", "Status");
-
-                    b.ToTable("IngestionJobs");
-                });
-
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.IntegrationSecret", b =>
                 {
                     b.Property<Guid>("Id")
@@ -620,12 +573,6 @@ namespace KnowledgeHub.Server.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
-
-                    b.Property<string>("ChunkerConfigHash")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ChunkerVersion")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ContentHash")
                         .HasColumnType("TEXT");
@@ -860,17 +807,6 @@ namespace KnowledgeHub.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
-                });
-
-            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.IngestionJob", b =>
-                {
-                    b.HasOne("KnowledgeHub.Server.Domain.Entities.KnowledgeSource", "Source")
-                        .WithMany()
-                        .HasForeignKey("SourceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Source");
                 });
 
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.KgAlias", b =>

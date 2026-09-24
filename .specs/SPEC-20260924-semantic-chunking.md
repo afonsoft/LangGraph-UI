@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `ITextChunker`, `IEmbeddingProvider` |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-semantic-chunking` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | tabnews "RAG na Prática" (Estratégia 2 — SemanticChunker, breakpoint por percentil); pedrolealdino (separador semântico) |
 

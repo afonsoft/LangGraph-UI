@@ -8,7 +8,7 @@
 | Stack | `.NET 10`, `EvalRunner` existente, BackgroundService, GitHub Actions |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-eval-regression-gate` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | beerandcode ("RAG sem evals é fé" — recall@5/faithfulness/p95 medidos semanalmente); fonte-rag (golden set + RAGAS-like + diff entre runs); withnocode (monitoramento contínuo de qualidade) |
 
@@ -84,3 +84,8 @@
 
 - LLM-judge não-determinista causa flapping de gate → thresholds com margem (histerese) + faithfulness opt-in.
 - Eval agendado em produção consome LLM → default desligado, doc clara sobre custo.
+
+## 9. Nota de implementação
+
+Implementado: RF-001 (baselines + gate + `baseline` no run), RF-002 (latência p50/p95/p99 por caso agregada no report), RF-003 (`EvalScheduleService` — `Eval:Schedule:Cron` `@daily`/`@weekly`/`@hourly` ou `IntervalMinutes`, webhook `NotifyUrl` em gate-fail), RF-004 (`scripts/eval-gate.sh` — sai 0/1 conforme gate; step de CI fica a cargo do dono pois `.github/workflows/` é protegido).
+**Deferido:** RF-005 (UI mínima de runs/baselines) — não existe página de eval no client ainda; endpoints já expõem tudo (`GET /api/eval/runs`, `/baselines`, `POST /baselines`).

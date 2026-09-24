@@ -25,7 +25,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
           "sourceType":{"type":"string","description":"Filter by connector type (e.g. DocumentFile, WebPage)"},
           "pathPrefix":{"type":"string","description":"Filter by document path/URI prefix"},
           "indexedAfter":{"type":"string","description":"ISO-8601 date — only documents indexed at/after it"},
-          "language":{"type":"string","description":"BCP-47 language tag filter (matches document metadata when present)"}
+          "language":{"type":"string","description":"BCP-47 language tag filter (matches document metadata when present)"},
+          "expand":{"type":"string","enum":["off","multi","hyde","both"],"description":"Query expansion override (default: server config). multi rewrites N variants + fuses; hyde embeds a hypothetical doc on the vector arm; both combines them"},
+          "contextExpand":{"type":"string","enum":["none","window","section"],"description":"Attach surrounding context to each hit: window=neighbouring chunks, section=whole parent section"},
+          "useGraph":{"type":"boolean","description":"Enable the knowledge-graph retrieval arm: entity linking + 1-hop evidence chunks (default: server config)"}
         },"required":["query"],
         "examples":[{"query":"what is RAG?","topK":5,"mode":"hybrid"}]}
         """)!.AsObject();
@@ -40,7 +43,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
           "sourceType":{"type":"string","description":"Filter by connector type (e.g. DocumentFile, WebPage)"},
           "pathPrefix":{"type":"string","description":"Filter by document path/URI prefix"},
           "indexedAfter":{"type":"string","description":"ISO-8601 date — only documents indexed at/after it"},
-          "language":{"type":"string","description":"BCP-47 language tag filter (matches document metadata when present)"}
+          "language":{"type":"string","description":"BCP-47 language tag filter (matches document metadata when present)"},
+          "expand":{"type":"string","enum":["off","multi","hyde","both"],"description":"Query expansion override (default: server config). multi rewrites N variants + fuses; hyde embeds a hypothetical doc on the vector arm; both combines them"},
+          "contextExpand":{"type":"string","enum":["none","window","section"],"description":"Attach surrounding context to each hit: window=neighbouring chunks, section=whole parent section"},
+          "useGraph":{"type":"boolean","description":"Enable the knowledge-graph retrieval arm: entity linking + 1-hop evidence chunks (default: server config)"}
         },"required":["question"],
         "examples":[{"question":"How does synchronization work?","topK":5,"generate":true}]}
         """)!.AsObject();
@@ -161,7 +167,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             SourceType = ToolArgs.OptionalString(ctx, "sourceType"),
             PathPrefix = ToolArgs.OptionalString(ctx, "pathPrefix"),
             IndexedAfter = ToolArgs.OptionalString(ctx, "indexedAfter"),
-            Language = ToolArgs.OptionalString(ctx, "language")
+            Language = ToolArgs.OptionalString(ctx, "language"),
+            Expand = ToolArgs.OptionalString(ctx, "expand"),
+            ContextExpand = ToolArgs.OptionalString(ctx, "contextExpand"),
+            UseGraph = ToolArgs.OptionalBool(ctx, "useGraph")
         };
         return Search.ResolvedSearchFilter.TryResolve(raw, out var filter, out var error)
             ? filter
@@ -351,9 +360,14 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         var embeddings = ctx.Services!.GetRequiredService<Embeddings.IEmbeddingProvider>();
         var vectors = ctx.Services!.GetRequiredService<VectorStore.IVectorStore>();
         // SPEC-20260923-code-aware-chunking: kind from the document URI.
-        var (kind, pieces) = Ingestion.Chunking.ChunkerSelector.Chunk(doc2.UriReference, body, 500, 50);
-        var sanitizer = ctx.Services!.GetRequiredService<Security.IContentSanitizer>();
         var config = ctx.Services!.GetRequiredService<IConfiguration>();
+        var (kind, pieces) = await Ingestion.Chunking.ChunkerSelector.ChunkAsync(
+            doc2.UriReference, body, 500, 50,
+            embeddings, config,
+            Ingestion.Chunking.ChunkerSelector.StrategyFor(target.ConfigurationJson),
+            ctx.Services!.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("KnowledgeHub.write_knowledge"), ct);
+        var sanitizer = ctx.Services!.GetRequiredService<Security.IContentSanitizer>();
         var flagged = 0;
         var newChunks = pieces.Select((p, i) =>
         {

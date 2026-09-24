@@ -1,0 +1,162 @@
+using KnowledgeHub.Server.Data;
+using KnowledgeHub.Server.Services;
+using Microsoft.EntityFrameworkCore;
+
+namespace KnowledgeHub.Server.Ingestion;
+
+/// <summary>
+/// SPEC-20260924-async-ingestion-queue RF-002: sequential worker draining the
+/// ingestion channel. Each job runs the shared <see cref="IIngestionService"/>
+/// pipeline with per-document failure isolation and periodic progress flush to
+/// the job row. Startup marks orphaned queued/running rows as failed — the
+/// per-document pipeline is idempotent, so a fresh sync is always safe.
+/// </summary>
+public sealed class IngestionWorker(
+    IIngestionQueue queue,
+    IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
+    ILogger<IngestionWorker> logger) : BackgroundService
+{
+    /// <summary>Synchronous <see cref="IProgress{T}"/> — just stores the latest
+    /// snapshot; a timer flushes it to the DB on its own scope.</summary>
+    private sealed class LatestProgress(Action<SyncProgress> onReport) : IProgress<SyncProgress>
+    {
+        public void Report(SyncProgress value) => onReport(value);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await FailOrphanedJobsAsync(stoppingToken);
+
+        await foreach (var jobId in queue.Reader.ReadAllAsync(stoppingToken))
+        {
+            try
+            {
+                await RunJobAsync(jobId, stoppingToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "Ingestion job {JobId} crashed — continuing with next job", jobId);
+            }
+            finally
+            {
+                queue.Complete(jobId);
+            }
+        }
+    }
+
+    /// <summary>Jobs left queued/running by a previous process are marked
+    /// failed — honest recovery, no resume (re-sync is idempotent).</summary>
+    private async Task FailOrphanedJobsAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+            var orphans = await db.IngestionJobs
+                .Where(j => j.Status == "queued" || j.Status == "running")
+                .ToListAsync(ct);
+            foreach (var job in orphans)
+            {
+                job.Status = "failed";
+                job.Error = "interrupted by restart";
+                job.FinishedAt = DateTimeOffset.UtcNow;
+            }
+            if (orphans.Count > 0)
+            {
+                logger.LogWarning("Marked {Count} orphaned ingestion job(s) as failed", orphans.Count);
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Orphaned-job sweep failed");
+        }
+    }
+
+    private async Task RunJobAsync(Guid jobId, CancellationToken stoppingToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+        var ingestion = scope.ServiceProvider.GetRequiredService<IIngestionService>();
+
+        var job = await db.IngestionJobs.FirstOrDefaultAsync(j => j.Id == jobId, stoppingToken);
+        if (job is null || job.Status != "queued")
+            return;
+
+        job.Status = "running";
+        job.StartedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(stoppingToken);
+
+        var jobCt = queue.TokenFor(jobId, stoppingToken);
+        SyncProgress latest = new(0, 0, 0, 0);
+        var progress = new LatestProgress(p => latest = p);
+        var flushEverySeconds = Math.Max(2,
+            configuration.GetValue("Ingestion:ProgressFlushSeconds", 5));
+        using var flushTimer = new PeriodicTimer(TimeSpan.FromSeconds(flushEverySeconds));
+        var flusher = FlushProgressAsync(jobId, () => latest, flushTimer, stoppingToken);
+
+        var options = new SyncOptions
+        {
+            ForceReindex = job.Kind == "reindex",
+            Progress = progress
+        };
+
+        try
+        {
+            var result = await ingestion.SyncAsync(job.SourceId, options, jobCt);
+            job.Status = result.Status == "failed" ? "failed" : "done";
+            job.Error = result.Status == "failed" ? result.Reason : null;
+            job.DocsProcessed = result.DocumentsProcessed;
+            job.DocsSkipped = result.DocumentsSkipped;
+            job.DocsFailed = result.DocumentsFailed;
+            job.ChunksCreated = result.ChunksCreated;
+        }
+        catch (OperationCanceledException) when (jobCt.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+        {
+            job.Status = "cancelled";
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Ingestion job {JobId} failed", jobId);
+            job.Status = "failed";
+            job.Error = ex.Message;
+        }
+        finally
+        {
+            job.FinishedAt = DateTimeOffset.UtcNow;
+            flushTimer.Dispose();
+            try { await flusher; } catch { /* already logged inside */ }
+            try { await db.SaveChangesAsync(CancellationToken.None); }
+            catch (Exception ex) { logger.LogWarning(ex, "Could not persist job {JobId} outcome", jobId); }
+        }
+    }
+
+    /// <summary>Periodic counter flush on an isolated scope — the job's own
+    /// DbContext stays free for the sync loop.</summary>
+    private async Task FlushProgressAsync(
+        Guid jobId, Func<SyncProgress> latest, PeriodicTimer timer, CancellationToken ct)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var p = latest();
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+                await db.IngestionJobs
+                    .Where(j => j.Id == jobId && j.Status == "running")
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(j => j.DocsProcessed, p.Processed)
+                        .SetProperty(j => j.DocsSkipped, p.Skipped)
+                        .SetProperty(j => j.DocsFailed, p.Failed)
+                        .SetProperty(j => j.ChunksCreated, p.ChunksCreated), ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Progress flush for job {JobId} stopped", jobId);
+        }
+    }
+}

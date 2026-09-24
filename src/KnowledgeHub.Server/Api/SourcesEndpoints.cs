@@ -46,12 +46,54 @@ public static class SourcesEndpoints
             SetActive(svc, id, false, ct));
 
         // SPEC-20260923-rate-limiting: sync burns embeddings — stricter bucket.
-        group.MapPost("/{id:guid}/sync", async (IKnowledgeSourceService sources, IIngestionService ingestion, Guid id, CancellationToken ct) =>
+        // SPEC-20260924-async-ingestion-queue RF-001: default = enqueue + 202
+        // jobId; ?wait=true keeps the legacy synchronous contract.
+        group.MapPost("/{id:guid}/sync", async (
+            IKnowledgeSourceService sources, IIngestionService ingestion,
+            Ingestion.IIngestionQueue queue, Guid id, bool? wait, CancellationToken ct) =>
         {
             if (await sources.GetAsync(id, ct) is null)
                 return Results.NotFound(new { error = "Source not found" });
-            var result = await ingestion.SyncAsync(id, ct);
-            return Results.Accepted($"/api/sources/{id}", result);
+
+            if (wait == true)
+            {
+                var result = await ingestion.SyncAsync(id, cancellationToken: ct);
+                return Results.Accepted($"/api/sources/{id}", result);
+            }
+
+            try
+            {
+                var (job, existed) = await queue.EnqueueAsync(id, "sync", ct);
+                return Results.Accepted($"/api/ingestion/jobs/{job.Id}",
+                    new { jobId = job.Id, status = job.Status, existing = existed });
+            }
+            catch (Ingestion.QueueFullException)
+            {
+                return Results.Problem(
+                    "ingestion queue is full — try again later",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        }).RequireRateLimiting("sync");
+
+        // RF-003: force re-chunk + re-embed regardless of content hash.
+        group.MapPost("/{id:guid}/reindex", async (
+            IKnowledgeSourceService sources, Ingestion.IIngestionQueue queue,
+            Guid id, CancellationToken ct) =>
+        {
+            if (await sources.GetAsync(id, ct) is null)
+                return Results.NotFound(new { error = "Source not found" });
+            try
+            {
+                var (job, existed) = await queue.EnqueueAsync(id, "reindex", ct);
+                return Results.Accepted($"/api/ingestion/jobs/{job.Id}",
+                    new { jobId = job.Id, status = job.Status, existing = existed });
+            }
+            catch (Ingestion.QueueFullException)
+            {
+                return Results.Problem(
+                    "ingestion queue is full — try again later",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         }).RequireRateLimiting("sync");
 
         group.MapGet("/{id:guid}/documents", async (IKnowledgeSourceService svc, Guid id, CancellationToken ct) =>
