@@ -48,6 +48,12 @@ public sealed class SourceApiClient(HttpClient http)
     public Task<IngestionJobDto?> GetJobAsync(Guid jobId, CancellationToken ct = default) =>
         http.GetFromJsonAsync<IngestionJobDto>($"api/ingestion/jobs/{jobId}", ct);
 
+    /// <summary>SPEC-20260925-sources-grid-ux RF-003: latest jobs of a source
+    /// (status detail popup).</summary>
+    public Task<List<IngestionJobDto>?> JobsAsync(Guid sourceId, int limit = 5, CancellationToken ct = default) =>
+        http.GetFromJsonAsync<List<IngestionJobDto>>(
+            $"api/ingestion/jobs?sourceId={sourceId}&limit={limit}", ct);
+
     public async Task<ApiResult<object>> DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var response = await http.DeleteAsync($"api/sources/{id}", ct);
@@ -102,10 +108,15 @@ public sealed record SyncJobEnqueueDto(Guid JobId, string Status, bool Existing)
 public sealed record IngestionJobDto
 {
     public Guid Id { get; init; }
+    public Guid SourceId { get; init; }
+    public string Kind { get; init; } = "";
     public string Status { get; init; } = "";
     public int DocsProcessed { get; init; }
     public int DocsSkipped { get; init; }
     public int DocsFailed { get; init; }
     public int ChunksCreated { get; init; }
     public string? Error { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? StartedAt { get; init; }
+    public DateTimeOffset? FinishedAt { get; init; }
 }

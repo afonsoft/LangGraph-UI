@@ -305,9 +305,30 @@ img, table, pre, code, .table-responsive {
    cramping, keeps the 44px touch target from the rule above. */
 .kh-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.25rem;
+}
+
+/* SPEC-20260925-sources-grid-ux RF-001: BootstrapBlazor's PopConfirmButton
+   wraps the actual button in a div.popover-confirm — that wrapper became the
+   flex item, so the delete icon sat on a different baseline than the plain
+   Buttons. Make every direct child a centered inline-flex so wrapped buttons
+   line up on the same row/baseline. */
+.kh-actions > * {
+    display: inline-flex;
+    align-items: center;
+}
+
+.kh-actions .popover-confirm {
+    margin: 0;
+}
+
+.kh-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* <576px: cramped rows collapse to icon-only buttons — the text node is

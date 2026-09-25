@@ -35,23 +35,36 @@
                 }
             </Template>
         </TableColumn>
-        <TableColumn Field="@context.LastSyncAt" FieldExpression="@(() => context.LastSyncAt)" Text="Último sync">
+        <TableColumn Field="@context.LastSyncAt" FieldExpression="@(() => context.LastSyncAt)" Text="Último sync" Width="120">
             <Template Context="v">
-                @(v.Value?.LocalDateTime.ToString("g") ?? "—")
+                @(v.Value?.LocalDateTime.ToString("dd/MM/yy HH:mm") ?? "—")
             </Template>
         </TableColumn>
-        <TableColumn Field="@context.LastSyncStatus" FieldExpression="@(() => context.LastSyncStatus)" Text="Status">
+        <TableColumn Field="@context.LastSyncStatus" FieldExpression="@(() => context.LastSyncStatus)" Text="Status" Width="110">
             <Template Context="v">
+                @* SPEC-20260925-sources-grid-ux RF-003: status badge opens the
+                   error/job detail modal when there is something to show. *@
+                @{
+                    var hasDetail = !string.IsNullOrEmpty(v.Row.LastError);
+                }
                 @switch (v.Row.LastSyncStatus)
                 {
                     case "completed":
                         <Badge Color="Color.Success">ok</Badge>
                         break;
                     case "failed":
-                        <Badge Color="Color.Danger" title="@v.Row.LastError">falhou</Badge>
+                        <span role="button" tabindex="0" title="Clique para ver detalhes"
+                              style="@(hasDetail ? "cursor:pointer" : null)"
+                              @onclick="() => ShowStatusDetail(v.Row)">
+                            <Badge Color="Color.Danger">falhou</Badge>
+                        </span>
                         break;
                     case "skipped":
-                        <Badge Color="Color.Warning" title="@v.Row.LastError">skip</Badge>
+                        <span role="button" tabindex="0" title="Clique para ver detalhes"
+                              style="@(hasDetail ? "cursor:pointer" : null)"
+                              @onclick="() => ShowStatusDetail(v.Row)">
+                            <Badge Color="Color.Warning">skip</Badge>
+                        </span>
                         break;
                     default:
                         <span class="text-muted">—</span>
@@ -59,7 +72,7 @@
                 }
             </Template>
         </TableColumn>
-        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="150">
+        <TableColumn Field="@context.Id" FieldExpression="@(() => context.Id)" Text="Ações" Width="120">
             <Template Context="v">
                 <div class="kh-actions">
                     <Button Size="Size.ExtraSmall" Icon="fa-solid fa-pen" TooltipText="Editar"
@@ -101,6 +114,71 @@
     </ModalDialog>
 </Modal>
 
+@* SPEC-20260925-sources-grid-ux RF-003: status/error detail modal. *@
+<Modal @ref="_statusModal">
+    <ModalDialog Title="@($"Status — {_statusSource?.Name}")" ShowSaveButton="false" CloseButtonText="Fechar">
+        <BodyTemplate>
+            @if (_statusSource is not null)
+            {
+                <dl class="row mb-3">
+                    <dt class="col-sm-3">Status</dt>
+                    <dd class="col-sm-9">@_statusSource.LastSyncStatus</dd>
+                    <dt class="col-sm-3">Último sync</dt>
+                    <dd class="col-sm-9">@(_statusSource.LastSyncAt?.LocalDateTime.ToString("g") ?? "—")</dd>
+                </dl>
+
+                @if (!string.IsNullOrEmpty(_statusSource.LastError))
+                {
+                    <h6>Erro / log</h6>
+                    <div style="max-height:200px;overflow-y:auto">
+                        <ul class="mb-0 small">
+                            @foreach (var line in _statusSource.LastError.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                <li>@line</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <h6 class="mt-3">Último job</h6>
+                @if (_statusJobLoading)
+                {
+                    <p class="text-muted small mb-0">Carregando…</p>
+                }
+                else if (_statusJob is null)
+                {
+                    <p class="text-muted small mb-0">Nenhum job registrado.</p>
+                }
+                else
+                {
+                    <dl class="row mb-0 small">
+                        <dt class="col-sm-3">Tipo</dt>
+                        <dd class="col-sm-9">@_statusJob.Kind</dd>
+                        <dt class="col-sm-3">Status</dt>
+                        <dd class="col-sm-9">@_statusJob.Status</dd>
+                        <dt class="col-sm-3">Docs</dt>
+                        <dd class="col-sm-9">
+                            @_statusJob.DocsProcessed processados,
+                            @_statusJob.DocsSkipped pulados,
+                            @_statusJob.DocsFailed com falha — @_statusJob.ChunksCreated chunks
+                        </dd>
+                        <dt class="col-sm-3">Início/Fim</dt>
+                        <dd class="col-sm-9">
+                            @(_statusJob.StartedAt?.LocalDateTime.ToString("g") ?? "—")
+                            → @(_statusJob.FinishedAt?.LocalDateTime.ToString("g") ?? "—")
+                        </dd>
+                        @if (!string.IsNullOrEmpty(_statusJob.Error))
+                        {
+                            <dt class="col-sm-3">Erro</dt>
+                            <dd class="col-sm-9 text-danger">@_statusJob.Error</dd>
+                        }
+                    </dl>
+                }
+            }
+        </BodyTemplate>
+    </ModalDialog>
+</Modal>
+
 @code {
     private List<KnowledgeSourceDto>? _sources;
     private Modal? _modal;
@@ -115,6 +193,10 @@
     private SyncResultDto? _syncResult;
     private bool _syncRunning;
     private string? _syncError;
+    private Modal? _statusModal;
+    private KnowledgeSourceDto? _statusSource;
+    private IngestionJobDto? _statusJob;
+    private bool _statusJobLoading;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -286,6 +368,33 @@
             return;
         }
         await Toast.Warning("Sync em andamento", "O job continua em background.");
+    }
+
+    /// <summary>SPEC-20260925-sources-grid-ux RF-003: opens the status detail
+    /// modal and lazy-loads the latest ingestion job for the source.</summary>
+    private async Task ShowStatusDetail(KnowledgeSourceDto dto)
+    {
+        if (string.IsNullOrEmpty(dto.LastError) && dto.LastSyncStatus is null)
+            return;
+
+        _statusSource = dto;
+        _statusJob = null;
+        _statusJobLoading = true;
+        await _statusModal!.Toggle();
+
+        try
+        {
+            _statusJob = (await Api.JobsAsync(dto.Id, 1))?.FirstOrDefault();
+        }
+        catch
+        {
+            _statusJob = null;
+        }
+        finally
+        {
+            _statusJobLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task DeleteSource(KnowledgeSourceDto dto)
