@@ -212,6 +212,8 @@ public sealed class PerformanceCacheTests
 
         public Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+        public Task DeleteBySourceAsync(Guid sourceId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
 
         public Task<IReadOnlyList<VectorHit>> SearchAsync(
             float[] queryVector, string model, int topK,

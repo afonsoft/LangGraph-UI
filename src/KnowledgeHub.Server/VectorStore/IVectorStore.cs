@@ -38,6 +38,14 @@ public interface IVectorStore
     Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Purge all vectors owned by a source
+    /// (SPEC-20260925-pgvector-source-cascade RF-001) — external stores keep
+    /// vectors in their own table where EF cascade cannot reach; without this,
+    /// deleting a source orphans its rows forever.
+    /// </summary>
+    Task DeleteBySourceAsync(Guid sourceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Rank chunks by similarity to <paramref name="queryVector"/>.
     /// Only vectors whose stored model equals <paramref name="model"/> are eligible.
     /// <paramref name="sourceIds"/> restricts the search space (active sources); null = all.

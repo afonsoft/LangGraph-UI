@@ -54,6 +54,19 @@ public sealed class SqliteVectorStore(KnowledgeHubDbContext db) : IVectorStore
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>SPEC-20260925-pgvector-source-cascade RF-001: embeddings live on
+    /// the chunk rows — clear them for every document of the source (the docs
+    /// themselves are cascade-deleted by EF on source removal, but reindex-style
+    /// callers can purge embeddings without deleting documents).</summary>
+    public async Task DeleteBySourceAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    {
+        await db.Chunks
+            .Where(c => c.Embedding != null && c.Document.KnowledgeSourceId == sourceId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.Embedding, (byte[]?)null)
+                .SetProperty(c => c.EmbeddingModel, (string?)null), cancellationToken);
+    }
+
     public async Task<IReadOnlyList<VectorHit>> SearchAsync(
         float[] queryVector, string model, int topK,
         IReadOnlyCollection<Guid>? sourceIds = null,
