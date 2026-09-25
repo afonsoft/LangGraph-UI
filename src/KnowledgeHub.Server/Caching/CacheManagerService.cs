@@ -175,7 +175,7 @@ public sealed class CacheManagerService : ICacheManagerService
         try
         {
             await SafeCache.SetStringAsync(_cache, CacheKeys.IndexVersion,
-                Guid.NewGuid().ToString("N"), TimeSpan.FromDays(7), _logger, ct);
+                Guid.NewGuid().ToString("N"), null, _logger, ct);
         }
         catch (Exception ex)
         {

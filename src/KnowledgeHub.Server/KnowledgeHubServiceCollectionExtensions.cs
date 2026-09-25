@@ -302,6 +302,12 @@ public static class KnowledgeHubServiceCollectionExtensions
             .Configure<IConfiguration>((options, cfg) =>
                 cfg.GetSection(Configuration.CacheOptions.SectionName).Bind(options));
         services.AddMemoryCache();
+
+        // SPEC-20260925-cache-region-ttl-policies: resolver for region-prefix
+        // TTLs; registered for BOTH providers — call sites pass null and the
+        // policy decides.
+        services.AddSingleton<Caching.CacheTtlPolicy>();
+
         if (configuration.GetValue($"{Configuration.CacheOptions.SectionName}:Provider", "memory")
                 .Equals("redis", StringComparison.OrdinalIgnoreCase))
         {
@@ -318,20 +324,44 @@ public static class KnowledgeHubServiceCollectionExtensions
                 parsed.ConnectTimeout = 3000;
                 return StackExchange.Redis.ConnectionMultiplexer.Connect(parsed);
             });
-            services.AddStackExchangeRedisCache(o =>
+            var l1Enabled = configuration.GetValue(
+                $"{Configuration.CacheOptions.SectionName}:L1Enabled", true);
+            var l1MaxTtl = TimeSpan.FromMinutes(configuration.GetValue(
+                $"{Configuration.CacheOptions.SectionName}:L1MaxTtlMinutes", 5));
+
+            // IDistributedCache = L1L2Cache(IMemoryCache → RedisCache) when L1 is
+            // on, plain RedisCache otherwise (AddSingleton factory instead of
+            // AddStackExchangeRedisCache so we can wrap without Scrutor).
+            services.AddSingleton<IDistributedCache>(sp =>
             {
-                o.Configuration = redisConnection;
+                var redisOpts = new Microsoft.Extensions.Caching.StackExchangeRedis.RedisCacheOptions
+                {
+                    Configuration = redisConnection
+                };
                 try
                 {
                     var parsed = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
                     parsed.AbortOnConnectFail = false;
                     parsed.ConnectTimeout = 3000;
-                    o.ConfigurationOptions = parsed;
+                    redisOpts.ConfigurationOptions = parsed;
                 }
                 catch
                 {
                     // If parsing fails fall back to connection string only
                 }
+
+                IDistributedCache inner =
+                    new Microsoft.Extensions.Caching.StackExchangeRedis.RedisCache(
+                        Microsoft.Extensions.Options.Options.Create(redisOpts));
+
+                // SPEC-20260925-hybrid-cache-l1l2 RF-001: in-process L1 in front
+                // of Redis — hits no longer pay a network RTT; L1 TTL capped by
+                // L1MaxTtlMinutes (bounded staleness until pub/sub, wave 4).
+                return l1Enabled
+                    ? new Caching.L1L2Cache(
+                        sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+                        inner, l1MaxTtl)
+                    : inner;
             });
         }
         else

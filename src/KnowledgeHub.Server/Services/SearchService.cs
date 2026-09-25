@@ -35,8 +35,7 @@ public sealed class SearchService(
     ILogger<SearchService> logger) : ISearchService
 {
     private const int CandidateWindowFactor = 4;
-    private static readonly TimeSpan EmbeddingTtl = TimeSpan.FromHours(24);
-    private static readonly TimeSpan ResultTtl = TimeSpan.FromMinutes(5);
+    // TTLs: region policy (emb:/search: prefixes) — SPEC-20260925-cache-region-ttl-policies.
 
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query, int topK, Guid? sourceId = null,
@@ -73,7 +72,7 @@ public sealed class SearchService(
             }
 
             var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, conversationContext, ct);
-            await SafeCache.SetJsonAsync(cache, resultKey, results, ResultTtl, logger, ct);
+            await SafeCache.SetJsonAsync(cache, resultKey, results, null, logger, ct);
             return results;
         }
         catch (Exception ex)
@@ -598,31 +597,36 @@ public sealed class SearchService(
     }
 
     /// <summary>Query embedding via the distributed cache — embeddings are
-    /// deterministic per (modelId, text) so the key needs no version.</summary>
+    /// deterministic per (modelId, text) so the key needs no version.
+    /// SPEC-20260925-hybrid-cache-l1l2: GetOrCreate collapses concurrent
+    /// misses on the same query to a single provider call.</summary>
     private async Task<float[]> EmbedQueryAsync(string query, CancellationToken ct)
     {
         var key = CacheKeys.Embedding(embeddings.ModelId, query);
-        var cached = await SafeCache.GetAsync(cache, key, logger, ct);
-        if (cached is not null)
-            return EmbeddingVectorCodec.FromBytes(cached);
-
-        using var span = KnowledgeHubActivity.Start("embed_query");
-        span?.SetTag("llm.model", embeddings.ModelId);
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var vector = await embeddings.EmbedQueryAsync(query, ct);
-            KnowledgeHubMetrics.EmbeddingDuration.Record(sw.Elapsed.TotalMilliseconds,
-                new KeyValuePair<string, object?>("provider", embeddings.GetType().Name),
-                new KeyValuePair<string, object?>("model", embeddings.ModelId));
-            await SafeCache.SetAsync(cache, key, EmbeddingVectorCodec.ToBytes(vector), EmbeddingTtl, logger, ct);
-            return vector;
-        }
-        catch (Exception ex)
-        {
-            KnowledgeHubActivity.Fail(span, ex);
-            throw;
-        }
+        var vector = await SafeCache.GetOrCreateAsync<float[]>(
+            cache, key,
+            async innerCt =>
+            {
+                using var span = KnowledgeHubActivity.Start("embed_query");
+                span?.SetTag("llm.model", embeddings.ModelId);
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    var v = await embeddings.EmbedQueryAsync(query, innerCt);
+                    KnowledgeHubMetrics.EmbeddingDuration.Record(sw.Elapsed.TotalMilliseconds,
+                        new KeyValuePair<string, object?>("provider", embeddings.GetType().Name),
+                        new KeyValuePair<string, object?>("model", embeddings.ModelId));
+                    return v;
+                }
+                catch (Exception ex)
+                {
+                    KnowledgeHubActivity.Fail(span, ex);
+                    throw;
+                }
+            },
+            EmbeddingVectorCodec.ToBytes, EmbeddingVectorCodec.FromBytes,
+            ttl: null, logger, ct);
+        return vector!; // factory never returns null (provider throws instead)
     }
 
     /// <summary>Current index-version token — shared helper so the answer

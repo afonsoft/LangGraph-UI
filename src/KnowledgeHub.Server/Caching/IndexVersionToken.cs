@@ -19,7 +19,7 @@ public static class IndexVersionToken
             return version;
         version = Guid.NewGuid().ToString("N");
         await SafeCache.SetStringAsync(cache, CacheKeys.IndexVersion, version,
-            TimeSpan.FromDays(7), logger, ct);
+            null, logger, ct);
         return version;
     }
 }

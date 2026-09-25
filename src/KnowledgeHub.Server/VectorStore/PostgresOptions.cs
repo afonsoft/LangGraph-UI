@@ -41,4 +41,14 @@ public sealed class PostgresOptions
     /// <summary>SPEC-20260925-pgvector-source-cascade RF-003: run ANALYZE after
     /// batch upserts at or above this row count.</summary>
     public int AnalyzeThresholdRows { get; set; } = 500;
+
+    /// <summary>SPEC-20260925-pgvector-iterative-filtered-scan RF-001: opt-in
+    /// <c>pgvector.iterative_scan=relaxed_order</c> — HNSW keeps scanning until
+    /// topK rows survive the <c>source_id</c> filter (pgvector ≥0.8; the SET is
+    /// ignored on older versions). Max distance checks before giving up.</summary>
+    public bool IterativeScan { get; set; }
+
+    /// <summary>Companion knob for <see cref="IterativeScan"/> —
+    /// <c>hnsw.max_scan_tuples</c> (0 = pgvector default 20000).</summary>
+    public int IterativeScanMaxTuples { get; set; }
 }

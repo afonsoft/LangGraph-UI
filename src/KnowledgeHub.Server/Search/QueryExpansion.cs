@@ -86,9 +86,7 @@ public sealed class LlmQueryExpander(
             if (variants.Count == 0)
                 return [];
 
-            var ttl = TimeSpan.FromSeconds(
-                configuration.GetValue("Search:QueryExpansion:Ttl", 3600));
-            await SafeCache.SetJsonAsync(cache, key, variants, ttl, logger, ct);
+            await SafeCache.SetJsonAsync(cache, key, variants, null, logger, ct);
             return variants;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -126,9 +124,7 @@ public sealed class LlmQueryExpander(
             if (string.IsNullOrEmpty(doc) || doc.Length > 8000)
                 return null;
 
-            var ttl = TimeSpan.FromSeconds(
-                configuration.GetValue("Search:QueryExpansion:Ttl", 3600));
-            await SafeCache.SetStringAsync(cache, key, doc, ttl, logger, ct);
+            await SafeCache.SetStringAsync(cache, key, doc, null, logger, ct);
             return doc;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

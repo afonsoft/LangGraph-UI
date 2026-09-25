@@ -33,7 +33,7 @@ public sealed class LlmQueryRewriter(
     IConfiguration configuration,
     ILogger<LlmQueryRewriter> logger) : IQueryRewriter
 {
-    private static readonly TimeSpan Ttl = TimeSpan.FromHours(24);
+    // TTL: region policy ("rewrite:" prefix) — SPEC-20260925-cache-region-ttl-policies.
 
     private const string RewritePrompt =
         "Rewrite the user's text as a concise search query for a knowledge base: " +
@@ -94,7 +94,7 @@ public sealed class LlmQueryRewriter(
             }
 
             logger.LogInformation("Query rewritten ({In} → {Out} chars)", query.Length, rewritten.Length);
-            await SafeCache.SetStringAsync(cache, key, rewritten, Ttl, logger, ct);
+            await SafeCache.SetStringAsync(cache, key, rewritten, null, logger, ct);
             return rewritten;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

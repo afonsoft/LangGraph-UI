@@ -105,9 +105,7 @@ public sealed partial class AnswerService(
         var result = Result(answer, citations, response.ModelId ?? options.Model, sw);
         if (answerKey is not null)
         {
-            var ttl = TimeSpan.FromSeconds(
-                configuration.GetValue("Cache:AnswerCache:TtlSeconds", 600));
-            await SafeCache.SetJsonAsync(cache, answerKey, result, ttl, logger, cancellationToken);
+            await SafeCache.SetJsonAsync(cache, answerKey, result, null, logger, cancellationToken);
         }
         logger.LogDebug("Answer synthesized in {LatencyMs} ms (model {Model}, {Citations} citations)",
             sw.Elapsed.TotalMilliseconds, response.ModelId ?? options.Model, citations.Count);

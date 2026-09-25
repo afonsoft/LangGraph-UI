@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `IDistributedCache`, `CacheOptions` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` |
+| Status | `Done` |
 | Origem | análise de cache 2026-09-25 |
 
 ## 1. User Story
