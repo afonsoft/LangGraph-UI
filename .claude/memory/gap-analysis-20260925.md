@@ -65,3 +65,22 @@ All 7 gap SPECs + 3 remaining Approved SPECs implemented on `feature/Devin-20260
 Gotchas: Drive natives report no size → sentinel 1 so base loop doesn't skip. DateTimeOffset "O" → Z suffix. Staging subdirs need CreateDirectory before File.Create (found earlier).
 
 Suite: 613 unit + 229 integration green.
+
+## Follow-up (2026-09-25): monitor audit + api-keys icons + deploy
+
+- PR #189 merged (4f25a5f): CallerResolver (IHttpContextAccessor ambient) → Caller em todos os eventos MCP; monitor ganhou colunas Quem/Sessão, filtros kind/outcome/texto, resumo agregado, export CSV; ApiKeys ícone-only.
+- Pinned contract tests updated para o campo aditivo `caller`.
+- Issue #181 fechada — todas as specs Done, zero issues abertas.
+- Deploys: 6c313ee (specs batch) e 4f25a5f (audit) ambos healthy :5550.
+
+## Follow-up 2 (2026-09-25): infra specs — cache/pgvector/logging/otel
+
+- PR #190 aberto (feature/Devin-20260925-infra-specs): 12 Draft specs.
+- Bug confirmado documentado: `DeleteAsync` de fonte não apaga kh_embeddings
+  (só DeleteByDocumentAsync existe) → SPEC-pgvector-source-cascade.
+- CacheManagerService stats são process-local (enganosos com redis) → SCAN/INFO.
+- L1/stampede ausentes → HybridCache. Invalidação single-replica → pub/sub.
+- Serilog: sem request logging, sem redaction, logs/ não é volume, sem level
+  switch. OTel: pipeline RAG sem spans.
+- Prioridade sugerida: pgvector-source-cascade (bug) > request-logging >
+  redis-health > hybrid-cache > region-ttl > resto.
