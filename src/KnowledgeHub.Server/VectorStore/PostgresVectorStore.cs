@@ -194,6 +194,34 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 }
             }
 
+            // SPEC-20260925-pgvector-iterative-filtered-scan RF-001/RF-002: a
+            // selective source_id filter starves the HNSW recall — relaxed
+            // iteration keeps scanning past the first topK until enough rows
+            // survive the filter. Opt-in; ignored when the extension predates
+            // pgvector 0.8 (PostgresException swallowed like ef_search above).
+            if (_options.IterativeScan && sourceIds is { Count: > 0 })
+            {
+                try
+                {
+                    await using var setCmd = conn.CreateCommand();
+                    setCmd.Transaction = (NpgsqlTransaction)tx;
+                    setCmd.CommandText = "SET LOCAL pgvector.iterative_scan = relaxed_order";
+                    await setCmd.ExecuteNonQueryAsync(cancellationToken);
+
+                    if (_options.IterativeScanMaxTuples > 0)
+                    {
+                        await using var maxCmd = conn.CreateCommand();
+                        maxCmd.Transaction = (NpgsqlTransaction)tx;
+                        maxCmd.CommandText = $"SET LOCAL hnsw.max_scan_tuples = {_options.IterativeScanMaxTuples}";
+                        await maxCmd.ExecuteNonQueryAsync(cancellationToken);
+                    }
+                }
+                catch (PostgresException)
+                {
+                    // pgvector < 0.8 — ignore, filtered post-scan still applies.
+                }
+            }
+
             await using var cmd = conn.CreateCommand();
             cmd.Transaction = (NpgsqlTransaction)tx;
 
