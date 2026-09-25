@@ -119,6 +119,61 @@ public static class SettingsEndpoints
             return Results.Ok(await chat.TestAsync(body ?? new TestChatConnectionRequest(), ct));
         });
 
+        // SPEC-20260926-settings-ux-embeddings RF-004: embedding/indexing
+        // provider (provider + endpoint + model + dims + chunking + API key)
+        // editable from /settings; the resolver swaps the live provider on
+        // signature change — no restart, but warn about dims/model drift.
+        var embeddingProviders = new[] { "deterministic", "ollama", "openai", "onnx" };
+        group.MapGet("/embeddings", async (
+            IEmbeddingSettingsService emb,
+            Embeddings.IEmbeddingProviderResolver resolver,
+            CancellationToken ct) =>
+        {
+            var dto = await emb.DescribeAsync(ct);
+            return Results.Ok(dto with { StampedModelId = resolver.Current.ModelId });
+        });
+
+        group.MapPut("/embeddings", async (
+            SaveEmbeddingSettingsRequest? body,
+            IEmbeddingSettingsService emb,
+            CancellationToken ct) =>
+        {
+            if (body is null)
+                return Results.BadRequest(new { error = "body is required" });
+            var provider = body.Provider?.Trim().ToLowerInvariant();
+            if (!embeddingProviders.Contains(provider))
+                return Results.BadRequest(new { error = $"provider must be one of: {string.Join(", ", embeddingProviders)}" });
+            if (!string.IsNullOrWhiteSpace(body.Endpoint) && !IsHttpUri(body.Endpoint.Trim()))
+                return Results.BadRequest(new { error = "endpoint must be an absolute http(s) URI" });
+            if (body.Dimensions is < 64 or > 4096)
+                return Results.BadRequest(new { error = "dimensions must be 64..4096" });
+            if (body.MaxTokens is < 100 or > 4000)
+                return Results.BadRequest(new { error = "maxTokens must be 100..4000" });
+            if (body.OverlapTokens is < 0 or > 2000)
+                return Results.BadRequest(new { error = "overlapTokens must be 0..2000" });
+            if (body.MaxTokens is { } mt && body.OverlapTokens is { } ov && ov >= mt)
+                return Results.BadRequest(new { error = "overlapTokens must be smaller than maxTokens" });
+
+            await emb.SaveAsync(body with { Provider = provider! }, ct);
+            return Results.NoContent();
+        });
+
+        group.MapDelete("/embeddings/apikey", async (
+            IEmbeddingSettingsService emb,
+            CancellationToken ct) =>
+        {
+            await emb.RemoveKeyAsync(ct);
+            return Results.NoContent();
+        });
+
+        group.MapDelete("/embeddings", async (
+            IEmbeddingSettingsService emb,
+            CancellationToken ct) =>
+        {
+            await emb.ClearAsync(ct);
+            return Results.NoContent();
+        });
+
         // SPEC-20260923-graph-settings-ui RF-004: GraphRAG switch + tuning knobs,
         // editable from /settings; effective immediately via the service's
         // Invalidate() — no restart.
@@ -163,6 +218,16 @@ public static class SettingsEndpoints
             Caching.ICacheManagerService cacheMgr,
             CancellationToken ct) =>
             Results.Ok(await cacheMgr.ClearAllAsync(ct)));
+
+        // SPEC-20260926-settings-ux-embeddings RF-003: per-key eviction —
+        // removes the real entry (L1+L2) and the tracked record.
+        group.MapDelete("/cache/keys/{*key}", async (
+            string key,
+            Caching.ICacheManagerService cacheMgr,
+            CancellationToken ct) =>
+            await cacheMgr.RemoveEntryAsync(key, ct)
+                ? Results.NoContent()
+                : Results.NotFound(new { error = $"key '{key}' not tracked" }));
 
         // SPEC-20260926-settings-tabs-database-metrics RF-002: storage snapshot
         // for the "Banco de Dados" tab — provider, sizes, PRAGMAs, entity

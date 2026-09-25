@@ -166,6 +166,21 @@ public sealed class CacheManagerService : ICacheManagerService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<bool> RemoveEntryAsync(string key, CancellationToken ct = default)
+    {
+        var tracked = _trackedKeys.TryRemove(key, out _);
+        try
+        {
+            await _cache.RemoveAsync(key, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to remove key {Key} from cache", key);
+        }
+        return tracked;
+    }
+
     private static string TrimError(Exception ex)
     {
         var b = ex.GetBaseException();

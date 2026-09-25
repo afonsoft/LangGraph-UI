@@ -97,10 +97,14 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.OciStorageConnector>();
         // SPEC-20260924-gdrive-shared-link-connector.
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.GoogleDriveSharedConnector>();
+        // SPEC-20260926-settings-ux-embeddings RF-004: effective options come
+        // from the EmbeddingSettings store over env. Consumers still inject
+        // IEmbeddingProvider — a delegating facade forwards to resolver.Current
+        // so /settings edits swap the provider without restart.
+        services.AddSingleton<Settings.IEmbeddingSettingsService, Settings.EmbeddingSettingsService>();
+        services.AddSingleton<IEmbeddingProviderResolver, EmbeddingProviderResolver>();
         services.AddSingleton<IEmbeddingProvider>(sp =>
-            EmbeddingProviderFactory.Create(
-                sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value,
-                sp.GetRequiredService<IHttpClientFactory>()));
+            new DelegatingEmbeddingProvider(sp.GetRequiredService<IEmbeddingProviderResolver>()));
 
         // SPEC-20260914-llm-answer-synthesis RF-001: optional chat client.
         // Provider=none → GetClient() returns null; consumers use GetService.

@@ -128,6 +128,42 @@ public sealed class SettingsApiClient(HttpClient http)
         return await ReadAsync<LogLevelState>(response, ct);
     }
 
+    // SPEC-20260926-settings-ux-embeddings RF-004.
+
+    /// <summary>Estado efetivo do provider de embeddings (store + env mascarado).</summary>
+    public Task<EmbeddingSettingsDto?> GetEmbeddingsAsync(CancellationToken ct = default) =>
+        http.GetFromJsonAsync<EmbeddingSettingsDto>("api/settings/embeddings", ct);
+
+    /// <summary>Salva provider/endpoint/model/dims/chunking de embeddings; key em branco mantém.</summary>
+    public async Task<ApiResult<object>> SaveEmbeddingsAsync(SaveEmbeddingSettingsRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/settings/embeddings", request, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    /// <summary>Remove só a key persistida de embeddings.</summary>
+    public async Task<ApiResult<object>> RemoveEmbeddingsKeyAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("api/settings/embeddings/apikey", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    /// <summary>Apaga o override de embeddings — env volta a valer.</summary>
+    public async Task<ApiResult<object>> ClearEmbeddingsAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("api/settings/embeddings", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    // SPEC-20260926-settings-ux-embeddings RF-003.
+
+    /// <summary>Remove uma entrada específica do cache (L1+L2 + tracked set).</summary>
+    public async Task<ApiResult<object>> DeleteCacheKeyAsync(string key, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/settings/cache/keys/{Uri.EscapeDataString(key)}", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     /// <summary>Limpa todas as chaves do cache no backend ativo.</summary>
     public async Task<ApiResult<ClearCacheResultDto>> ClearCacheAsync(CancellationToken ct = default)
     {

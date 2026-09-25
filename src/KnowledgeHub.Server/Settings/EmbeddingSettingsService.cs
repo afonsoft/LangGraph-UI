@@ -1,0 +1,185 @@
+using KnowledgeHub.Server.Data;
+using KnowledgeHub.Server.Embeddings;
+using KnowledgeHub.Shared.Contracts;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
+namespace KnowledgeHub.Server.Settings;
+
+/// <summary>
+/// SPEC-20260926-settings-ux-embeddings RF-004: singleton backing
+/// /api/settings/embeddings and the runtime embedding provider/chunking
+/// resolution (blueprint: <see cref="ChatSettingsService"/>). The effective
+/// snapshot is loaded lazily, cached and rebuilt after <see cref="Invalidate"/>.
+/// </summary>
+public sealed class EmbeddingSettingsService(
+    IOptions<EmbeddingOptions> envOptions,
+    IConfiguration configuration,
+    IIntegrationSecretStore secrets,
+    IServiceScopeFactory scopeFactory,
+    ILogger<EmbeddingSettingsService> logger) : IEmbeddingSettingsService
+{
+    public const int DefaultMaxTokens = 500;
+    public const int DefaultOverlapTokens = 50;
+
+    private readonly object _gate = new();
+    private volatile Snapshot? _snapshot;
+
+    private sealed record Snapshot(EmbeddingOptions Options, int MaxTokens, int OverlapTokens);
+
+    /// <inheritdoc />
+    public EmbeddingOptions GetEffectiveOptions() => Current().Options;
+
+    /// <inheritdoc />
+    public (int MaxTokens, int OverlapTokens) GetChunking() =>
+        (Current().MaxTokens, Current().OverlapTokens);
+
+    /// <inheritdoc />
+    public void Invalidate()
+    {
+        lock (_gate)
+            _snapshot = null;
+    }
+
+    private Snapshot Current()
+    {
+        var snap = _snapshot;
+        if (snap is not null)
+            return snap;
+        lock (_gate)
+        {
+            snap ??= LoadSnapshotAsync().GetAwaiter().GetResult();
+            _snapshot = snap;
+            return snap;
+        }
+    }
+
+    /// <summary>Store row over env: base fields from the row, advanced knobs
+    /// (asymmetric prefixes, input_type) stay env-driven; key from the
+    /// "embeddings" secret with env fallback.</summary>
+    private async Task<Snapshot> LoadSnapshotAsync()
+    {
+        var env = envOptions.Value;
+        var row = await FindRowAsync(CancellationToken.None);
+
+        EmbeddingOptions options;
+        if (row is not null)
+        {
+            options = new EmbeddingOptions
+            {
+                Provider = row.Provider,
+                Endpoint = row.Endpoint,
+                Model = row.Model,
+                Dimensions = row.Dimensions,
+                ModelPath = row.ModelPath,
+                ApiKey = await secrets.GetAsync(IntegrationProviders.Embeddings) ?? env.ApiKey,
+                Asymmetric = env.Asymmetric,
+                QueryInputType = env.QueryInputType,
+                DocumentInputType = env.DocumentInputType
+            };
+        }
+        else
+        {
+            options = env;
+        }
+
+        var maxTokens = row?.MaxTokens
+            ?? configuration.GetValue("Ingestion:MaxTokens", DefaultMaxTokens);
+        var overlapTokens = row?.OverlapTokens
+            ?? configuration.GetValue("Ingestion:OverlapTokens", DefaultOverlapTokens);
+
+        return new Snapshot(options, maxTokens, overlapTokens);
+    }
+
+    /// <inheritdoc />
+    public async Task<EmbeddingSettingsDto> DescribeAsync(CancellationToken cancellationToken = default)
+    {
+        var env = envOptions.Value;
+        var row = await FindRowAsync(cancellationToken);
+        var (maxTokens, overlapTokens) = GetChunking();
+
+        var info = await secrets.GetInfoAsync(IntegrationProviders.Embeddings, cancellationToken);
+        var (hasKey, hint, keySource) = info is not null
+            ? (true, $"••••{info.KeyHint}", "store")
+            : !string.IsNullOrWhiteSpace(env.ApiKey)
+                ? (true, $"••••{(env.ApiKey.Length >= 4 ? env.ApiKey[^4..] : env.ApiKey)}", "env")
+                : (false, (string?)null, "none");
+
+        return new EmbeddingSettingsDto
+        {
+            Provider = row?.Provider ?? env.Provider,
+            Endpoint = row?.Endpoint ?? env.Endpoint,
+            Model = row?.Model ?? env.Model,
+            Dimensions = row?.Dimensions ?? env.Dimensions,
+            ModelPath = row?.ModelPath ?? env.ModelPath,
+            MaxTokens = maxTokens,
+            OverlapTokens = overlapTokens,
+            HasApiKey = hasKey,
+            ApiKeyHint = hint,
+            ApiKeySource = keySource,
+            Source = row is not null ? "store" : "env",
+            UpdatedAt = row?.UpdatedAt
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task SaveAsync(SaveEmbeddingSettingsRequest request, CancellationToken cancellationToken = default)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+        var row = await db.EmbeddingSettings.SingleOrDefaultAsync(cancellationToken);
+        if (row is null)
+        {
+            row = new Domain.Entities.EmbeddingSettings { Id = 1, Provider = request.Provider.Trim() };
+            db.EmbeddingSettings.Add(row);
+        }
+        else
+        {
+            row.Provider = request.Provider.Trim();
+        }
+
+        row.Endpoint = string.IsNullOrWhiteSpace(request.Endpoint) ? null : request.Endpoint.Trim();
+        row.Model = string.IsNullOrWhiteSpace(request.Model) ? null : request.Model.Trim();
+        row.ModelPath = string.IsNullOrWhiteSpace(request.ModelPath) ? null : request.ModelPath.Trim();
+        row.Dimensions = request.Dimensions;
+        row.MaxTokens = request.MaxTokens;
+        row.OverlapTokens = request.OverlapTokens;
+        row.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(request.ApiKey))
+            await secrets.SetAsync(IntegrationProviders.Embeddings, request.ApiKey.Trim(), cancellationToken);
+
+        Invalidate();
+        logger.LogInformation(
+            "embedding settings saved (provider {Provider}, model {Model}, dims {Dimensions}, key {KeyAction})",
+            row.Provider, row.Model, row.Dimensions,
+            string.IsNullOrWhiteSpace(request.ApiKey) ? "kept" : "updated");
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveKeyAsync(CancellationToken cancellationToken = default)
+    {
+        await secrets.RemoveAsync(IntegrationProviders.Embeddings, cancellationToken);
+        Invalidate();
+        logger.LogInformation("embeddings API key removed from store");
+    }
+
+    /// <inheritdoc />
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+        await db.EmbeddingSettings.ExecuteDeleteAsync(cancellationToken);
+        await secrets.RemoveAsync(IntegrationProviders.Embeddings, cancellationToken);
+        Invalidate();
+        logger.LogInformation("embedding settings cleared — falling back to env/config");
+    }
+
+    private async Task<Domain.Entities.EmbeddingSettings?> FindRowAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+        return await db.EmbeddingSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+    }
+}

@@ -347,3 +347,8 @@ img, table, pre, code, .table-responsive {
             font-size: 0.875rem;
         }
 }
+/* SPEC-20260926-settings-ux-embeddings RF-002: respiro à esquerda dos badges —
+   sem ajuste eles colam no texto/elemento anterior em todas as telas. */
+.badge {
+    margin-left: 0.35rem;
+}
