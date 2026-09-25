@@ -25,12 +25,10 @@ internal sealed class GoogleDriveGateway(
     };
 
     private readonly Dictionary<string, GoogleDriveApiClient.DriveFileMeta> _byKey = new();
-    private bool _listed;
 
     public async IAsyncEnumerable<RemoteObject> ListAsync(
         string? prefix, [EnumeratorCancellation] CancellationToken ct)
     {
-        _listed = true;
         var seen = 0;
 
         if (!rootIsFolder)
