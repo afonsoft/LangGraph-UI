@@ -384,6 +384,47 @@ else
                                       OnConfirm="ClearCacheAsync" />
                 </BodyTemplate>
             </Card>
+
+            @* SPEC-20260925-runtime-log-level RF-004: temporary level raise with
+               auto-reset — no redeploy to debug production. *@
+            <Card class="mt-3">
+                <HeaderTemplate><span>Nível de log</span></HeaderTemplate>
+                <BodyTemplate>
+                    @if (_logLevel is not null)
+                    {
+                        <div class="small mb-2">
+                            Atual: <Badge Color="@(_logLevel.Level == "Information" ? Color.Info : Color.Warning)">@_logLevel.Level</Badge>
+                            @if (_logLevel.AutoResetAt is { } resetAt)
+                            {
+                                <span class="text-muted"> — volta a @_logLevel.ConfiguredDefault em
+                                    @(((resetAt - DateTimeOffset.UtcNow).TotalMinutes).ToString("F0"))min</span>
+                            }
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <select class="form-select form-select-sm" style="width:auto" @bind="_logLevelChoice">
+                                @foreach (var lvl in new[] { "Verbose", "Debug", "Information", "Warning", "Error" })
+                                {
+                                    <option value="@lvl">@lvl</option>
+                                }
+                            </select>
+                            <select class="form-select form-select-sm" style="width:auto" @bind="_logLevelMinutes">
+                                <option value="5">5 min</option>
+                                <option value="15">15 min</option>
+                                <option value="30">30 min</option>
+                                <option value="60">1 h</option>
+                                <option value="120">2 h</option>
+                            </select>
+                            <Button Size="Size.Small" Color="Color.Primary" Text="Aplicar"
+                                    IsAsync="true" OnClick="SetLogLevelAsync" />
+                        </div>
+                        <div class="small text-muted mt-2">Debug volta sozinho — não fica aberto para sempre.</div>
+                    }
+                    else
+                    {
+                        <span class="text-muted small">Não foi possível ler o nível atual.</span>
+                    }
+                </BodyTemplate>
+            </Card>
         </div>
     </div>
 }
@@ -396,6 +437,9 @@ else
     private GraphSettingsDto? _graph;
     private readonly GraphFormState _graphForm = new();
     private CacheStatsDto? _cache;
+    private LogLevelState? _logLevel;
+    private string _logLevelChoice = "Debug";
+    private int _logLevelMinutes = 15;
 
     private sealed class FormState
     {
@@ -429,6 +473,7 @@ else
         await ReloadChatAsync();
         await ReloadGraphAsync();
         await ReloadCacheAsync();
+        await ReloadLogLevelAsync();
     }
 
     /// <summary>SPEC-20260924-redis-cache-and-tool-caching RF-004.</summary>
@@ -443,6 +488,25 @@ else
             _cache = new CacheStatsDto { IsConnected = false };
             await Toast.Error("Erro", $"Falha ao carregar cache: {ex.Message}");
         }
+    }
+
+    /// <summary>SPEC-20260925-runtime-log-level RF-004.</summary>
+    private async Task ReloadLogLevelAsync()
+    {
+        try { _logLevel = await Api.GetLogLevelAsync(); }
+        catch { _logLevel = null; }
+    }
+
+    private async Task SetLogLevelAsync()
+    {
+        var result = await Api.SetLogLevelAsync(_logLevelChoice, _logLevelMinutes);
+        if (!result.IsSuccess || result.Value is null)
+        {
+            await Toast.Error("Erro", result.Error ?? "falha ao mudar nível");
+            return;
+        }
+        _logLevel = result.Value;
+        await Toast.Success("Log", $"Nível agora: {_logLevel.Level}.");
     }
 
     private async Task ClearCacheAsync()

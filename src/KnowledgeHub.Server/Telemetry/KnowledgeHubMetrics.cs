@@ -28,6 +28,15 @@ public sealed class KnowledgeHubMetrics : IMcpRequestMetrics
     public static readonly Histogram<double> VectorSearchDuration =
         Meter.CreateHistogram<double>("knowledgehub.vector_search.duration", "ms");
 
+    /// <summary>Vector store errors (SPEC-20260925-vectorstore-metrics RF-001).
+    /// Tags: store, op (search|upsert|delete).</summary>
+    public static readonly Counter<long> VectorErrors =
+        Meter.CreateCounter<long>("knowledgehub.vector.errors");
+
+    /// <summary>Vector store upsert latency (ms). Tags: store.</summary>
+    public static readonly Histogram<double> VectorUpsertDuration =
+        Meter.CreateHistogram<double>("knowledgehub.vector_upsert.duration", "ms");
+
     /// <summary>Lexical (FTS5) search latency (ms). No tags.</summary>
     public static readonly Histogram<double> LexicalDuration =
         Meter.CreateHistogram<double>("knowledgehub.lexical.duration", "ms");

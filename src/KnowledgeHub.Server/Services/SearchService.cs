@@ -114,10 +114,19 @@ public sealed class SearchService(
 
         // RF-001/RF-002: rewrite + rerank run on the user's retrieval intent.
         // Lexical skips rewriting unless explicitly opted in.
-        var effectiveQuery = mode == SearchMode.Lexical
-            && !configuration.GetValue("Search:QueryRewrite:LexicalToo", false)
-            ? query
-            : await rewriter.RewriteAsync(query, conversationContext, ct);
+        // SPEC-20260925-otel-pipeline-spans: rewrite boundary span.
+        string effectiveQuery;
+        using (var span = Telemetry.KnowledgeHubActivity.Start("search.rewrite"))
+        {
+            try
+            {
+                effectiveQuery = mode == SearchMode.Lexical
+                    && !configuration.GetValue("Search:QueryRewrite:LexicalToo", false)
+                    ? query
+                    : await rewriter.RewriteAsync(query, conversationContext, ct);
+            }
+            catch (Exception ex) { Telemetry.KnowledgeHubActivity.Fail(span, ex); throw; }
+        }
 
         var rerankEnabled = configuration.GetValue("Search:Rerank:Enabled", false);
         var diversityEnabled = configuration.GetValue("Search:Diversity:Enabled", false);
@@ -163,7 +172,9 @@ public sealed class SearchService(
                 .Concat(lexicalLists.Select(l => ("lexical", (IReadOnlyList<Guid>)l)))
                 .Concat(graphArm.Ranked.Count > 0 ? [("graph", graphArm.Ranked)] : [])
                 .ToList();
-            var fused = RrfFuser.Fuse(rankedLists, fetchLimit);
+            IReadOnlyList<FusedHit> fused;
+            using (KnowledgeHubActivity.Start("search.rrf"))
+                fused = RrfFuser.Fuse(rankedLists, fetchLimit);
 
             // RF-003: gentle boost on chunks with direct-entity evidence.
             var boost = configuration.GetValue("Search:Graph:Boost", 1.0);
@@ -230,12 +241,15 @@ public sealed class SearchService(
         IReadOnlyDictionary<Guid, SearchScoreBreakdown>? breakdowns, int topK, CancellationToken ct)
     {
         IReadOnlyList<RerankScore> scores;
+        using var span = Telemetry.KnowledgeHubActivity.Start("search.rerank");
+        span?.SetTag("rerank.candidates", items.Count);
         try
         {
             scores = await reranker.RerankAsync(query, items, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
+            Telemetry.KnowledgeHubActivity.Fail(span, ex);
             logger.LogWarning(ex, "Reranker failed — returning fused order");
             return items.Take(topK).ToList();
         }
@@ -314,7 +328,9 @@ public sealed class SearchService(
                 ? EmbeddingVectorCodec.FromBytes(blob)
                 : null)).ToList();
 
-        var orderedIds = MmrSelector.Select(candidates, topK, lambda, maxPerDoc);
+        List<Guid> orderedIds;
+        using (Telemetry.KnowledgeHubActivity.Start("search.mmr"))
+            orderedIds = MmrSelector.Select(candidates, topK, lambda, maxPerDoc);
         var byId = items.Where(i => i.ChunkId is not null)
             .ToDictionary(i => i.ChunkId!.Value);
         var ordered = orderedIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
@@ -558,10 +574,21 @@ public sealed class SearchService(
         {
             return await vectors.SearchAsync(queryVector, embeddings.ModelId, topK, sourceIds, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
+            // SPEC-20260925-vectorstore-metrics RF-004: the vector arm is
+            // fail-soft — FTS still serves results; record the error span and
+            // metric, log once, return empty so RRF fuses FTS-only.
+            KnowledgeHubMetrics.VectorErrors.Add(1,
+                new KeyValuePair<string, object?>("store", store),
+                new KeyValuePair<string, object?>("op", "search"));
             KnowledgeHubActivity.Fail(span, ex);
-            throw;
+            logger.LogWarning(ex, "vector search failed ({Store}) — continuing with lexical only", store);
+            return [];
         }
         finally
         {

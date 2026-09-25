@@ -473,6 +473,9 @@ public static class KnowledgeHubServiceCollectionExtensions
         // Telemetry:* config the Meter/ActivitySource stay no-op listeners —
         // zero exporter overhead and zero behavioral change.
         services.AddSingleton<IMcpRequestMetrics, Telemetry.KnowledgeHubMetrics>();
+        // SPEC-20260925-runtime-log-level: LogLevelControl + LoggingLevelSwitch
+        // are registered in Program.cs (the switch must exist before Serilog
+        // config binds to it).
         var telemetry = Telemetry.TelemetryOptions.FromConfiguration(configuration);
         if (!string.IsNullOrEmpty(telemetry.OtlpEndpoint) || telemetry.Prometheus)
         {
