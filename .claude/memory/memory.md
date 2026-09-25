@@ -20,3 +20,12 @@ Sessão executou as 6 SPECs aprovadas em branches independentes off main@9b52213
 Decisões/notas de implementação no log datado (20260926-memory.md).
 
 Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
+
+## 2026-09-26 — Postgres vector store ativado (host PG18)
+
+- Prompt: conectar no Postgres (rag_db/rag_user no host :5432, aaPanel `/www/server/pgsql`), credenciais em `.env`, compose lendo env — padrão proxyLLM-AI.
+- Instalado pgvector 0.8.6 no PG18 do host (build /tmp/pgvector, PG_CONFIG=/www/server/pgsql/bin/pg_config); `CREATE EXTENSION vector` em rag_db via postgres@127.0.0.1 (trust).
+- pg_hba.conf: adicionado `host rag_db rag_user 172.22.0.0/16 md5` (subnet langgraph-ui_default; host-gateway resolve 172.17.0.1 mas client_ip é do container).
+- Branch `feature/Devin-20260925-postgres-vectorstore` (commit 3d072c3): compose `env_file: .env` (required:false) + `VectorStore__ConnectionString` composta de POSTGRES_*; install.sh idem; .env.example documenta.
+- **Bug real achado**: `PostgresVectorStore.SearchAsync` commitava tx com reader aberto → Npgsql 10 `OperationInProgress` em TODA busca. Fix: `await using` no reader antes do Commit. `/health/ready` Healthy pós-redeploy.
+- Pendente: `kh_embeddings` vazia — embeddings legados estão no SQLite; precisa reindex das fontes (UI/API) para popular pgvector. PR não aberto ainda.
