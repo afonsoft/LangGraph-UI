@@ -324,6 +324,11 @@ public static class KnowledgeHubServiceCollectionExtensions
                 parsed.ConnectTimeout = 3000;
                 return StackExchange.Redis.ConnectionMultiplexer.Connect(parsed);
             });
+
+            // SPEC-20260925-distributed-invalidation-pubsub RF-001: Redis pub/sub
+            // bus + the subscriber that evicts local L1 entries on remote events.
+            services.AddSingleton<Caching.ICacheInvalidationBus, Caching.RedisInvalidationBus>();
+            services.AddHostedService<Caching.InvalidationSubscriber>();
             var l1Enabled = configuration.GetValue(
                 $"{Configuration.CacheOptions.SectionName}:L1Enabled", true);
             var l1MaxTtl = TimeSpan.FromMinutes(configuration.GetValue(
@@ -367,6 +372,7 @@ public static class KnowledgeHubServiceCollectionExtensions
         else
         {
             services.AddDistributedMemoryCache();
+            services.AddSingleton<Caching.ICacheInvalidationBus, Caching.NoopInvalidationBus>();
         }
         services.AddSingleton<Caching.ICacheManagerService, Caching.CacheManagerService>();
         services.AddSingleton<Caching.IToolCacheService, Caching.ToolCacheService>();

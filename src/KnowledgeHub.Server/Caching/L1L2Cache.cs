@@ -75,4 +75,15 @@ public sealed class L1L2Cache : IDistributedCache
     /// <see cref="SafeCache.GetOrCreateAsync"/> to collapse concurrent misses.</summary>
     internal SemaphoreSlim LockFor(string key) =>
         _keyLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+
+    /// <summary>SPEC-20260925-distributed-invalidation-pubsub RF-003: drop one
+    /// L1 entry (the L2 is the source of truth — next read re-fetches).</summary>
+    public void InvalidateLocal(string key) => _l1.Remove(key);
+
+    /// <summary>Drop the entire local tier — e.g. a remote cache-clear.</summary>
+    public void InvalidateAllLocal()
+    {
+        if (_l1 is MemoryCache mc)
+            mc.Compact(1.0);
+    }
 }

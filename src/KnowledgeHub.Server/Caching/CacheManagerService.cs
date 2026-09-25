@@ -21,6 +21,7 @@ public sealed class CacheManagerService : ICacheManagerService
     private readonly CacheOptions _options;
     private readonly ILogger<CacheManagerService> _logger;
     private readonly StackExchange.Redis.IConnectionMultiplexer? _redis;
+    private readonly ICacheInvalidationBus? _bus;
     private long _hits;
     private long _misses;
 
@@ -31,13 +32,15 @@ public sealed class CacheManagerService : ICacheManagerService
         IOptions<CacheOptions> options,
         ILogger<CacheManagerService> logger,
         IMemoryCache? memoryCache = null,
-        StackExchange.Redis.IConnectionMultiplexer? redis = null)
+        StackExchange.Redis.IConnectionMultiplexer? redis = null,
+        ICacheInvalidationBus? bus = null)
     {
         _cache = cache;
         _memoryCache = memoryCache;
         _options = options.Value;
         _logger = logger;
         _redis = redis;
+        _bus = bus;
         Current = this;
     }
 
@@ -186,6 +189,11 @@ public sealed class CacheManagerService : ICacheManagerService
         {
             mc.Compact(1.0); // clears all compactable entries
         }
+
+        // SPEC-20260925-distributed-invalidation-pubsub RF-002/RF-003: tell the
+        // other replicas to drop their L1 tiers too.
+        if (_bus is not null)
+            await _bus.PublishAsync("cache-clear", ct);
 
         _logger.LogInformation("Cache completely cleared: {Count} keys purged", count);
         return new ClearCacheResultDto
