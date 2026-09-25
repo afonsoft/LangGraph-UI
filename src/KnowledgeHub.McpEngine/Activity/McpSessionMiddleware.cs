@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 
@@ -48,7 +49,7 @@ public sealed class McpSessionMiddleware
         var sniff = new SessionIdSniffingStream(originalBody, id =>
         {
             sessionId = id;
-            Record(McpActivityKind.SessionOpened, sessionId, "sse");
+            Record(McpActivityKind.SessionOpened, sessionId, "sse", context.User);
             opened = true;
         });
 
@@ -61,8 +62,8 @@ public sealed class McpSessionMiddleware
         {
             context.Response.Body = originalBody;
             if (!opened)
-                Record(McpActivityKind.SessionOpened, sessionId, "sse");
-            Record(McpActivityKind.SessionClosed, sessionId, "sse");
+                Record(McpActivityKind.SessionOpened, sessionId, "sse", context.User);
+            Record(McpActivityKind.SessionClosed, sessionId, "sse", context.User);
             _registry.Unregister(sessionId);
         }
     }
@@ -77,21 +78,22 @@ public sealed class McpSessionMiddleware
 
         // initialize issues a new Mcp-Session-Id; DELETE terminates it.
         if (HttpMethods.IsPost(context.Request.Method) && string.IsNullOrEmpty(requestSessionId) && !string.IsNullOrEmpty(responseSessionId))
-            Record(McpActivityKind.SessionOpened, responseSessionId, "streamable-http");
+            Record(McpActivityKind.SessionOpened, responseSessionId, "streamable-http", context.User);
         else if (HttpMethods.IsDelete(context.Request.Method) && !string.IsNullOrEmpty(sessionId))
         {
-            Record(McpActivityKind.SessionClosed, sessionId, "streamable-http");
+            Record(McpActivityKind.SessionClosed, sessionId, "streamable-http", context.User);
             _registry.Unregister(sessionId);
         }
     }
 
-    private void Record(McpActivityKind kind, string? sessionId, string transport) =>
+    private void Record(McpActivityKind kind, string? sessionId, string transport, ClaimsPrincipal? user = null) =>
         _feed.Record(new McpActivityEvent
         {
             Timestamp = DateTimeOffset.UtcNow,
             Kind = kind,
             SessionId = sessionId,
-            Transport = transport
+            Transport = transport,
+            Caller = CallerResolver.Resolve(user)
         });
 
     /// <summary>

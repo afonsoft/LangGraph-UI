@@ -23,4 +23,7 @@ public sealed record McpActivityEvent
     public double? DurationMs { get; init; }
     public bool? Succeeded { get; init; }
     public string? Error { get; init; }
+    /// <summary>Authenticated caller label for audit (user + auth method +
+    /// API-key fragment) — resolved from the ambient HTTP context.</summary>
+    public string? Caller { get; init; }
 }

@@ -26,6 +26,9 @@ public sealed record McpMonitorEventDto
 
     public double? DurationMs { get; init; }
     public bool? Succeeded { get; init; }
+
+    /// <summary>Authenticated caller label for audit (user + auth method).</summary>
+    public string? Caller { get; init; }
 }
 
 /// <summary>

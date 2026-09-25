@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.SignalR.Client;
 namespace KnowledgeHub.Client.Services;
 
 /// <summary>Hub event DTOs mirrored from SPEC-05 §5.</summary>
-public sealed record SessionOpenedEvent(string SessionId, DateTimeOffset ConnectedAt);
-public sealed record SessionClosedEvent(string SessionId);
+public sealed record SessionOpenedEvent(string SessionId, DateTimeOffset ConnectedAt, string? Caller);
+public sealed record SessionClosedEvent(string SessionId, string? Caller);
 
 /// <summary>SPEC-20260925-job-progress-feed: ingestion job tick/terminal event.</summary>
 public sealed record IngestionProgressEventDto(

@@ -25,7 +25,7 @@ public class ActivityEventContractTests
         var names = typeof(McpActivityEvent).GetProperties()
             .Select(p => p.Name).Order().ToList();
         Assert.Equal(
-            ["DurationMs", "Error", "Kind", "Method", "SessionId", "Succeeded", "Timestamp", "ToolName", "Transport"],
+            ["Caller", "DurationMs", "Error", "Kind", "Method", "SessionId", "Succeeded", "Timestamp", "ToolName", "Transport"],
             names);
     }
 
@@ -48,7 +48,7 @@ public class ActivityEventContractTests
         using var doc = JsonDocument.Parse(json);
         var props = doc.RootElement.EnumerateObject().Select(p => p.Name).Order().ToList();
         Assert.Equal(
-            ["durationMs", "error", "kind", "method", "sessionId", "succeeded", "timestamp", "toolName", "transport"],
+            ["caller", "durationMs", "error", "kind", "method", "sessionId", "succeeded", "timestamp", "toolName", "transport"],
             props);
     }
 }

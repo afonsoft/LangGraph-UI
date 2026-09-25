@@ -20,7 +20,7 @@ public class McpMonitorReplayTests
     [Fact]
     public void SessionOpened_AddsActiveSession()
     {
-        var sessions = new Dictionary<string, DateTimeOffset>();
+        var sessions = new Dictionary<string, McpMonitorReplay.SessionInfo>();
         var activity = new List<McpMonitorEventDto>();
 
         McpMonitorReplay.Apply(Event(McpMonitorEventKind.SessionOpened, "s1"), sessions, activity, 200);
@@ -32,7 +32,7 @@ public class McpMonitorReplayTests
     [Fact]
     public void SessionOpenedThenClosed_LeavesNoActiveSession()
     {
-        var sessions = new Dictionary<string, DateTimeOffset>();
+        var sessions = new Dictionary<string, McpMonitorReplay.SessionInfo>();
         var activity = new List<McpMonitorEventDto>();
 
         McpMonitorReplay.Apply(Event(McpMonitorEventKind.SessionOpened, "s1"), sessions, activity, 200);
@@ -45,7 +45,7 @@ public class McpMonitorReplayTests
     [Fact]
     public void ActivityKinds_AppendToList()
     {
-        var sessions = new Dictionary<string, DateTimeOffset>();
+        var sessions = new Dictionary<string, McpMonitorReplay.SessionInfo>();
         var activity = new List<McpMonitorEventDto>();
 
         McpMonitorReplay.Apply(Event(McpMonitorEventKind.Request, "s1", "initialize"), sessions, activity, 200);
@@ -58,7 +58,7 @@ public class McpMonitorReplayTests
     [Fact]
     public void NullSessionId_SkipsSessionBookkeeping()
     {
-        var sessions = new Dictionary<string, DateTimeOffset>();
+        var sessions = new Dictionary<string, McpMonitorReplay.SessionInfo>();
         var activity = new List<McpMonitorEventDto>();
 
         McpMonitorReplay.Apply(Event(McpMonitorEventKind.SessionOpened, sessionId: null), sessions, activity, 200);
@@ -69,7 +69,7 @@ public class McpMonitorReplayTests
     [Fact]
     public void ActivityList_IsCappedAtMax()
     {
-        var sessions = new Dictionary<string, DateTimeOffset>();
+        var sessions = new Dictionary<string, McpMonitorReplay.SessionInfo>();
         var activity = new List<McpMonitorEventDto>();
 
         for (var i = 0; i < 5; i++)

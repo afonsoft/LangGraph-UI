@@ -42,6 +42,16 @@
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js');
         }
+        // SPEC-20260925-mcp-monitor-audit: client-side CSV download helper.
+        window.khDownload = function (filename, text, mime) {
+            const blob = new Blob([text], { type: mime || 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
     </script>
 </body>
 

@@ -39,7 +39,8 @@ public static class McpActivityFilters
                 ToolName = toolName,
                 DurationMs = stopwatch.Elapsed.TotalMilliseconds,
                 Succeeded = succeeded,
-                Error = succeeded ? null : TryReadError(result)
+                Error = succeeded ? null : TryReadError(result),
+                Caller = CallerResolver.Resolve(request.Server.Services)
             });
             return result;
         }
@@ -54,7 +55,8 @@ public static class McpActivityFilters
                 ToolName = toolName,
                 DurationMs = stopwatch.Elapsed.TotalMilliseconds,
                 Succeeded = false,
-                Error = ex.Message
+                Error = ex.Message,
+                Caller = CallerResolver.Resolve(request.Server.Services)
             });
             throw;
         }
@@ -106,7 +108,8 @@ public static class McpActivityFilters
                 Method = request.Method,
                 DurationMs = stopwatch.Elapsed.TotalMilliseconds,
                 Succeeded = succeeded,
-                Error = error
+                Error = error,
+                Caller = CallerResolver.Resolve(context.Server.Services)
             });
         }
     };
