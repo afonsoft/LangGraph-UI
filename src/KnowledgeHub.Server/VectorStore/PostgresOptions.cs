@@ -37,4 +37,8 @@ public sealed class PostgresOptions
 
     /// <summary>Command timeout in seconds for vector queries.</summary>
     public int CommandTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>SPEC-20260925-pgvector-source-cascade RF-003: run ANALYZE after
+    /// batch upserts at or above this row count.</summary>
+    public int AnalyzeThresholdRows { get; set; } = 500;
 }

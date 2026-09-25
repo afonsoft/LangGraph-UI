@@ -11,7 +11,7 @@ namespace KnowledgeHub.McpEngine.Activity;
 /// not reference the server assembly, so the literals are duplicated here.
 /// Never throws — anonymous/missing context yields null.
 /// </summary>
-internal static class CallerResolver
+public static class CallerResolver
 {
     // Mirrors ApiKeyAuthenticationHandler.AuthMethodClaim / KeyIdClaim.
     private const string AuthMethodClaim = "auth_method";

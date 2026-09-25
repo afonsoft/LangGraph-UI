@@ -107,6 +107,11 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             }
             await tx.CommitAsync(cancellationToken);
 
+            // SPEC-20260925-pgvector-source-cascade RF-003: refresh planner stats
+            // after large bulk writes — the biggest table churn.
+            if (items.Count >= _options.AnalyzeThresholdRows)
+                await AnalyzeAsync(conn, cancellationToken);
+
             // SPEC-20260924-pgvector-rag-performance RF-002: auto-create HNSW index once threshold is reached
             if (!_hnswIndexCreated)
                 await MaybeCreateHnswIndexAsync(conn, cancellationToken);
@@ -144,6 +149,19 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         // chunk ids embed the document id via a companion table keyed by document
         cmd.CommandText = "DELETE FROM kh_embeddings WHERE document_id = $1";
         cmd.Parameters.AddWithValue(documentId);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>SPEC-20260925-pgvector-source-cascade RF-001: EF cascade on
+    /// <c>Sources → Documents → Chunks</c> never reaches this external table —
+    /// source deletion must purge its vectors explicitly or they orphan.</summary>
+    public async Task DeleteBySourceAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM kh_embeddings WHERE source_id = $1";
+        cmd.Parameters.AddWithValue(sourceId);
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -303,6 +321,55 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         {
             // Extension too old for hnsw / index build refused — exact scan stays.
         }
+    }
+
+    /// <summary>RF-003: ANALYZE after bulk upserts — planner stats go stale
+    /// exactly when the table changed the most.</summary>
+    private static async Task AnalyzeAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "ANALYZE kh_embeddings";
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>RF-003: weekly VACUUM ANALYZE via MaintenanceBackgroundService —
+    /// the store owns this DB exclusively (non-concurrent VACUUM is safe).</summary>
+    public async Task VacuumAnalyzeAsync(CancellationToken ct)
+    {
+        await EnsureInitializedAsync(ct);
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "VACUUM ANALYZE kh_embeddings";
+        cmd.CommandTimeout = 120;
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>RF-004: diagnostics for /api/diagnostics/vectorstore.</summary>
+    public async Task<object> GetDiagnosticsAsync(CancellationToken ct)
+    {
+        await EnsureInitializedAsync(ct);
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT count(*),
+                   pg_size_pretty(pg_total_relation_size('kh_embeddings')),
+                   EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = $1),
+                   (SELECT extversion FROM pg_extension WHERE extname = 'vector')
+            FROM kh_embeddings
+            """;
+        cmd.Parameters.AddWithValue(HnswIndexName);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return new { provider = "postgres", error = "no result" };
+        return new
+        {
+            provider = "postgres",
+            rows = reader.GetInt64(0),
+            size = reader.GetString(1),
+            hnswIndex = reader.GetBoolean(2),
+            pgvectorVersion = reader.IsDBNull(3) ? null : reader.GetString(3),
+            dimensions = _dimensions
+        };
     }
 
     public async ValueTask DisposeAsync()

@@ -26,6 +26,7 @@ public sealed class MaintenanceBackgroundService(
             try
             {
                 await PurgeOrphanedStagingAsync(stoppingToken);
+                await VacuumVectorStoreAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -51,5 +52,27 @@ public sealed class MaintenanceBackgroundService(
         var removed = await staging.CleanupOrphanedStagingAsync(knownIds, ct);
         if (removed > 0)
             logger.LogInformation("Maintenance purged {Count} orphaned staging directorie(s)", removed);
+    }
+
+    /// <summary>SPEC-20260925-pgvector-source-cascade RF-003: weekly VACUUM
+    /// ANALYZE on kh_embeddings — pgvector provider only.</summary>
+    private DateTimeOffset _lastVacuum = DateTimeOffset.MinValue;
+
+    private async Task VacuumVectorStoreAsync(CancellationToken ct)
+    {
+        if (!configuration.GetValue("VectorStore:Provider", "sqlite")
+                .Equals("postgres", StringComparison.OrdinalIgnoreCase))
+            return;
+        if (DateTimeOffset.UtcNow - _lastVacuum < TimeSpan.FromDays(7))
+            return;
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        if (scope.ServiceProvider.GetService<VectorStore.IVectorStore>()
+                is VectorStore.PostgresVectorStore pg)
+        {
+            await pg.VacuumAnalyzeAsync(ct);
+            _lastVacuum = DateTimeOffset.UtcNow;
+            logger.LogInformation("Maintenance VACUUM ANALYZE kh_embeddings completed");
+        }
     }
 }

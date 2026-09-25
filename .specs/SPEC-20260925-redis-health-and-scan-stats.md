@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `StackExchange.Redis`, health checks |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` |
+| Status | `Done` |
 | Origem | análise de cache 2026-09-25 |
 
 ## 1. User Story

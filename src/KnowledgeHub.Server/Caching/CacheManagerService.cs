@@ -20,6 +20,7 @@ public sealed class CacheManagerService : ICacheManagerService
     private readonly IMemoryCache? _memoryCache;
     private readonly CacheOptions _options;
     private readonly ILogger<CacheManagerService> _logger;
+    private readonly StackExchange.Redis.IConnectionMultiplexer? _redis;
     private long _hits;
     private long _misses;
 
@@ -29,12 +30,14 @@ public sealed class CacheManagerService : ICacheManagerService
         IDistributedCache cache,
         IOptions<CacheOptions> options,
         ILogger<CacheManagerService> logger,
-        IMemoryCache? memoryCache = null)
+        IMemoryCache? memoryCache = null,
+        StackExchange.Redis.IConnectionMultiplexer? redis = null)
     {
         _cache = cache;
         _memoryCache = memoryCache;
         _options = options.Value;
         _logger = logger;
+        _redis = redis;
         Current = this;
     }
 
@@ -56,7 +59,13 @@ public sealed class CacheManagerService : ICacheManagerService
         else Interlocked.Increment(ref _misses);
     }
 
-    public Task<CacheStatsDto> GetStatsAsync(CancellationToken ct = default)
+    /// <summary>SPEC-20260925-redis-health-and-scan-stats RF-003: SCAN caps —
+    /// bounded page size and total keys so stats never stall the endpoint.</summary>
+    private const int ScanMaxKeys = 500;
+    private const int ScanPageSize = 200;
+    private static readonly TimeSpan RedisPingTimeout = TimeSpan.FromSeconds(2);
+
+    public async Task<CacheStatsDto> GetStatsAsync(CancellationToken ct = default)
     {
         PruneExpired();
 
@@ -76,8 +85,7 @@ public sealed class CacheManagerService : ICacheManagerService
             .ToList();
 
         var totalSize = _trackedKeys.Values.Sum(k => k.SizeBytes);
-
-        return Task.FromResult(new CacheStatsDto
+        var stats = new CacheStatsDto
         {
             Provider = provider,
             IsConnected = true,
@@ -86,7 +94,64 @@ public sealed class CacheManagerService : ICacheManagerService
             Hits = _hits,
             Misses = _misses,
             Keys = keysList
-        });
+        };
+
+        // RF-002: with redis, overlay server-side stats — tracked keys reflect
+        // only this process; SCAN/INFO report the shared cache truth.
+        if (provider == "redis" && _redis is not null)
+            await EnrichFromRedisAsync(stats, ct);
+
+        return stats;
+    }
+
+    private async Task EnrichFromRedisAsync(CacheStatsDto stats, CancellationToken ct)
+    {
+        try
+        {
+            var ping = _redis!.GetDatabase().PingAsync();
+            var completed = await Task.WhenAny(ping, Task.Delay(RedisPingTimeout, ct));
+            stats.IsConnected = completed == ping && !ping.IsFaulted;
+
+            var server = _redis.GetEndPoints()
+                .Select(ep => _redis.GetServer(ep))
+                .FirstOrDefault(s => s.IsConnected);
+            if (server is null)
+                return;
+
+            // Bounded SCAN (never KEYS *) — cap both page size and total count.
+            var count = 0L;
+            var truncated = false;
+            foreach (var _ in server.Keys(pattern: "*", pageSize: ScanPageSize))
+            {
+                if (++count >= ScanMaxKeys) { truncated = true; break; }
+            }
+            stats.ServerKeys = count;
+            stats.Partial = truncated;
+            stats.ServerReported = true;
+
+            var info = await server.InfoAsync("memory");
+            var clients = await server.InfoAsync("clients");
+            stats.ServerUsedMemoryBytes = ParseInfoLong(info, "used_memory");
+            stats.ServerConnectedClients = (int?)ParseInfoLong(clients, "connected_clients");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            stats.IsConnected = false;
+            _logger.LogDebug(ex, "redis stats enrichment failed — returning process-local stats");
+        }
+    }
+
+    private static long? ParseInfoLong(
+        IGrouping<string, KeyValuePair<string, string>>[] info,
+        string key)
+    {
+        foreach (var section in info)
+            foreach (var kv in section)
+                if (kv.Key.Equals(key, StringComparison.OrdinalIgnoreCase)
+                    && long.TryParse(kv.Value, out var v))
+                    return v;
+        return null;
     }
 
     public async Task<ClearCacheResultDto> ClearAllAsync(CancellationToken ct = default)

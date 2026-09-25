@@ -309,6 +309,15 @@ public static class KnowledgeHubServiceCollectionExtensions
                 .GetValue<string>($"{Configuration.CacheOptions.SectionName}:Redis:ConnectionString")
                 ?? throw new InvalidOperationException(
                     "Cache:Redis:ConnectionString is required when Cache:Provider=redis");
+            // SPEC-20260925-redis-health-and-scan-stats RF-001: multiplexer as a
+            // named singleton — reused by the health check and server-side stats.
+            services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(_ =>
+            {
+                var parsed = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
+                parsed.AbortOnConnectFail = false;
+                parsed.ConnectTimeout = 3000;
+                return StackExchange.Redis.ConnectionMultiplexer.Connect(parsed);
+            });
             services.AddStackExchangeRedisCache(o =>
             {
                 o.Configuration = redisConnection;

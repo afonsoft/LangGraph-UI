@@ -17,9 +17,19 @@ var builder = WebApplication.CreateBuilder(args);
 
 // SPEC-20260924-hosted-services-and-serilog-logging RF-001: Serilog host
 // logger — console + rolling file under logs/, enriched with LogContext props.
-builder.Host.UseSerilog((ctx, cfg) => cfg
-    .ReadFrom.Configuration(ctx.Configuration)
-    .Enrich.FromLogContext());
+builder.Host.UseSerilog((ctx, cfg) =>
+{
+    cfg.ReadFrom.Configuration(ctx.Configuration)
+        .Enrich.FromLogContext()
+        // SPEC-20260925-log-sinks-and-redaction RF-002: secrets never reach a
+        // sink — redact sensitive property names and token-shaped values.
+        .Enrich.With(new KnowledgeHub.Server.Telemetry.SensitiveDataEnricher());
+
+    // RF-004: optional OTLP log sink — same collector as traces/metrics.
+    var otlp = ctx.Configuration.GetValue<string>("Telemetry:Otlp:Endpoint");
+    if (!string.IsNullOrEmpty(otlp))
+        cfg.WriteTo.OpenTelemetry(o => o.Endpoint = otlp);
+});
 
 // SPEC-20260914-config-validation: fail fast on invalid config before any work.
 ConfigurationValidator.Validate(builder.Configuration);
@@ -37,6 +47,21 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
     .AddCheck<EmbeddingHealthCheck>("embeddings", tags: ["ready"])
     .AddCheck<IngestionHealthCheck>("ingestion", tags: ["ready"]);
+
+// SPEC-20260925-redis-health-and-scan-stats RF-001: Redis is degraded-not-fatal
+// (cache is fail-soft) — the check reports Degraded so ready stays 200.
+if (builder.Configuration.GetValue("Cache:Provider", "memory")
+        .Equals("redis", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHealthChecks()
+        .Add(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckRegistration(
+            "redis",
+            sp => new KnowledgeHub.Server.Health.RedisHealthCheck(
+                sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>()),
+            failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+            tags: ["ready"],
+            timeout: TimeSpan.FromSeconds(2)));
+}
 
 builder.Services.AddKnowledgeHubServer(builder.Configuration);
 builder.Services.AddKnowledgeHubMcp(builder.Configuration);
@@ -222,6 +247,43 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// SPEC-20260925-serilog-request-logging RF-002: request correlation — stable id
+// on the response header + LogContext so app logs join the request event.
+app.Use(async (context, next) =>
+{
+    using (Serilog.Context.LogContext.PushProperty("RequestId", context.TraceIdentifier))
+    {
+        context.Response.Headers["x-request-id"] = context.TraceIdentifier;
+        await next();
+    }
+});
+
+// SPEC-20260925-serilog-request-logging RF-001: one structured event per
+// request; health/static noise stays at Debug, 5xx at Error.
+app.UseSerilogRequestLogging(o =>
+{
+    o.GetLevel = (ctx, _, ex) =>
+    {
+        if (ex is not null || ctx.Response.StatusCode >= 500)
+            return Serilog.Events.LogEventLevel.Error;
+        var path = ctx.Request.Path.Value ?? "";
+        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/_content", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/css", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/js", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/_vs", StringComparison.OrdinalIgnoreCase))
+            return Serilog.Events.LogEventLevel.Debug;
+        return Serilog.Events.LogEventLevel.Information;
+    };
+    o.EnrichDiagnosticContext = (diag, ctx) =>
+    {
+        diag.Set("Caller", KnowledgeHub.McpEngine.Activity.CallerResolver.Resolve(ctx.User));
+        diag.Set("ClientIp", ctx.Connection.RemoteIpAddress?.ToString());
+        diag.Set("ContentLength", ctx.Response.ContentLength);
+    };
+});
+
 // SPEC-20260915-apikey-usage-audit RF-002: audit every request whose principal
 // authenticated via an aft_* API key (needs the post-auth claims).
 app.UseMiddleware<KnowledgeHub.Server.Auth.ApiKeyUsageMiddleware>();
@@ -284,6 +346,7 @@ app.MapAuthApi().RequireRateLimiting("general");
 app.MapApiKeysApi().RequireRateLimiting("general");
 app.MapSourcesApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapIngestionApi().RequireAuthorization(AuthPolicies.Operational);
+app.MapDiagnosticsApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapSearchApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapAskApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
 app.MapAgentApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
@@ -302,6 +365,20 @@ app.MapKnowledgeHubMcp().RequireAuthorization(AuthPolicies.Operational);
 app.MapHub<McpMonitorHub>("/hubs/mcp").RequireAuthorization(AuthPolicies.Operational);
 app.MapFallbackToFile("index.html");
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (Exception ex) when (ex is not OperationCanceledException)
+{
+    // Bootstrap logger still active if host died before UseSerilog bound —
+    // CreateBootstrapLogger writes to console; config logger takes over after.
+    Log.Fatal(ex, "Host terminated unexpectedly");
+    throw;
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 public partial class Program;

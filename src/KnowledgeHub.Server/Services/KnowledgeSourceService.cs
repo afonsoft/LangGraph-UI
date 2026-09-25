@@ -15,7 +15,9 @@ public sealed class KnowledgeSourceService(
     KnowledgeHubDbContext db,
     IToolCatalogChangeNotifier catalogNotifier,
     IIntegrationSecretStore secrets,
-    Ingestion.Staging.IStagingStorageService? staging = null) : IKnowledgeSourceService
+    Ingestion.Staging.IStagingStorageService? staging = null,
+    VectorStore.IVectorStore? vectors = null,
+    ILogger<KnowledgeSourceService>? log = null) : IKnowledgeSourceService
 {
     /// <summary>Config keys that must never be echoed back to API consumers.</summary>
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -115,6 +117,18 @@ public sealed class KnowledgeSourceService(
         if (source is null)
             return ServiceResult<bool>.Fail(404, "Source not found");
         db.Sources.Remove(source); // cascade removes documents + chunks
+
+        // SPEC-20260925-pgvector-source-cascade RF-002: external vector tables
+        // (pgvector kh_embeddings / sqlite-vec vec_chunks) are outside the EF
+        // cascade — purge explicitly. Fail-soft: the source must still delete.
+        if (vectors is not null)
+        {
+            try { await vectors.DeleteBySourceAsync(id, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                log?.LogWarning(ex, "vector purge for deleted source {SourceId} failed — rows may be orphaned", id);
+            }
+        }
         if (source.SourceType == SourceType.McpProxy)
             await secrets.RemoveAsync(McpProxySession.SecretKey(source.Id), ct);
         if (source.SourceType == SourceType.Notion)

@@ -284,6 +284,8 @@ public sealed class TelemetryTests
             CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+        public Task DeleteBySourceAsync(Guid sourceId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
         public Task<IReadOnlyList<VectorHit>> SearchAsync(float[] queryVector, string model, int topK,
             IReadOnlyCollection<Guid>? sourceIds = null, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<VectorHit>>([hit]);

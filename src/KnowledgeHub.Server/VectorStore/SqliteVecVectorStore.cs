@@ -106,6 +106,17 @@ public sealed class SqliteVecVectorStore : IVectorStore
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>SPEC-20260925-pgvector-source-cascade RF-001: vec_chunks is a
+    /// separate table — purge by source_id when the source is deleted.</summary>
+    public async Task DeleteBySourceAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    {
+        var conn = await VecConnectionAsync(cancellationToken);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"DELETE FROM {TableName} WHERE source_id = $src";
+        cmd.Parameters.AddWithValue("$src", sourceId.ToString());
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<VectorHit>> SearchAsync(
         float[] queryVector, string model, int topK,
         IReadOnlyCollection<Guid>? sourceIds = null,

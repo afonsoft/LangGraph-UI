@@ -330,6 +330,23 @@ else
                         <div class="col-6 col-md-3"><strong>Hits</strong><br />@_cache.Hits</div>
                         <div class="col-6 col-md-3"><strong>Misses</strong><br />@_cache.Misses</div>
                     </div>
+                    @* SPEC-20260925-redis-health-and-scan-stats RF-002: server-side
+                       numbers overlay the process-local ones when provider=redis. *@
+                    @if (_cache.ServerReported)
+                    {
+                        <div class="row small mt-2 border-top pt-2">
+                            <div class="col-6 col-md-3">
+                                <strong>Keys (servidor)</strong><br />
+                                @_cache.ServerKeys@(_cache.Partial ? "+" : "")
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <strong>Memória (servidor)</strong><br />@FormatBytes(_cache.ServerUsedMemoryBytes ?? 0)
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <strong>Clientes</strong><br />@(_cache.ServerConnectedClients?.ToString() ?? "—")
+                            </div>
+                        </div>
+                    }
                     @if (_cache.Hits + _cache.Misses > 0)
                     {
                         <div class="small text-muted mt-2">
