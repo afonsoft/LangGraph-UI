@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `.NET 10`, `Microsoft.Extensions.Caching.Hybrid`, `IDistributedCache` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` |
+| Status | `Done` |
 | Origem | análise de cache 2026-09-25 |
 
 ## 1. User Story
