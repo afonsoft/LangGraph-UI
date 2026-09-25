@@ -75,8 +75,13 @@ public static class EvalEndpoints
             var runs = (await db.EvalRuns.AsNoTracking()
                     .Select(r => new
                     {
-                        r.Id, r.StartedAt, r.DurationMs, r.DatasetHash,
-                        r.MetricsJson, r.GateResultJson, r.BaselineName
+                        r.Id,
+                        r.StartedAt,
+                        r.DurationMs,
+                        r.DatasetHash,
+                        r.MetricsJson,
+                        r.GateResultJson,
+                        r.BaselineName
                     })
                     .ToListAsync(ct))
                 .OrderByDescending(r => r.StartedAt)

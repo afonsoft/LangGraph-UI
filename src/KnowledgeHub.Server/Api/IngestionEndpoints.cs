@@ -28,9 +28,18 @@ public static class IngestionEndpoints
                 .Take(take)
                 .Select(j => new
                 {
-                    j.Id, j.SourceId, j.Kind, j.Status,
-                    j.DocsProcessed, j.DocsSkipped, j.DocsFailed, j.ChunksCreated,
-                    j.Error, j.CreatedAt, j.StartedAt, j.FinishedAt,
+                    j.Id,
+                    j.SourceId,
+                    j.Kind,
+                    j.Status,
+                    j.DocsProcessed,
+                    j.DocsSkipped,
+                    j.DocsFailed,
+                    j.ChunksCreated,
+                    j.Error,
+                    j.CreatedAt,
+                    j.StartedAt,
+                    j.FinishedAt,
                     Warnings = DeserializeWarnings(j.WarningsJson)
                 });
             return Results.Ok(jobs);
@@ -43,9 +52,18 @@ public static class IngestionEndpoints
                 .ToListAsync(ct))
                 .Select(j => new
                 {
-                    j.Id, j.SourceId, j.Kind, j.Status,
-                    j.DocsProcessed, j.DocsSkipped, j.DocsFailed, j.ChunksCreated,
-                    j.Error, j.CreatedAt, j.StartedAt, j.FinishedAt,
+                    j.Id,
+                    j.SourceId,
+                    j.Kind,
+                    j.Status,
+                    j.DocsProcessed,
+                    j.DocsSkipped,
+                    j.DocsFailed,
+                    j.ChunksCreated,
+                    j.Error,
+                    j.CreatedAt,
+                    j.StartedAt,
+                    j.FinishedAt,
                     Warnings = DeserializeWarnings(j.WarningsJson)
                 })
                 .FirstOrDefault();

@@ -95,7 +95,8 @@ public sealed class HybridCacheAndTtlTests
         {
             RegionTtlMinutes = new(StringComparer.OrdinalIgnoreCase)
             {
-                ["search"] = 1, ["emb"] = 2
+                ["search"] = 1,
+                ["emb"] = 2
             }
         }));
         Assert.Equal(TimeSpan.FromMinutes(1), policy.For("search:x"));
