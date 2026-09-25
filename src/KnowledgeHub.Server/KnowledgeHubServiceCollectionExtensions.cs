@@ -192,19 +192,35 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<Auth.ICallerScopeProvider, Auth.CallerScopeProvider>();
         // SPEC-20260923-retrieval-quality: opt-in query rewriting + reranker.
         services.AddScoped<Search.IQueryRewriter, Search.LlmQueryRewriter>();
+        // SPEC-20260924-query-expansion-hyde: multi-query + HyDE (opt-in).
+        services.AddScoped<Search.IQueryExpander, Search.LlmQueryExpander>();
         services.AddScoped<Search.IReranker>(sp =>
             sp.GetRequiredService<IConfiguration>().GetValue("Search:Rerank:Enabled", false)
                 && sp.GetService<Microsoft.Extensions.AI.IChatClient>() is { } chat
                 ? new Search.LlmReranker(chat, sp.GetRequiredService<ILogger<Search.LlmReranker>>())
                 : Search.NoOpReranker.Instance);
+        // SPEC-20260924-corrective-rag RF-001: retrieval grading + corrective loop.
+        services.AddScoped<Search.IRetrievalGrader>(sp =>
+            string.Equals(
+                sp.GetRequiredService<IConfiguration>().GetValue("Search:Grading:Mode", "off"),
+                "llm", StringComparison.OrdinalIgnoreCase)
+                ? (Search.IRetrievalGrader)new Search.LlmRetrievalGrader(
+                    sp, sp.GetRequiredService<ILogger<Search.LlmRetrievalGrader>>())
+                : new Search.HeuristicRetrievalGrader(sp.GetRequiredService<IConfiguration>()));
+        services.AddScoped<CorrectiveRetrievalService>();
+
         // SPEC-20260923-eval-harness: read-only retrieval-quality runner.
         services.AddScoped<Eval.EvalRunner>();
+        // SPEC-20260924-eval-regression-gate RF-003: scheduled eval + gate alerts.
+        services.AddHostedService<Eval.EvalScheduleService>();
 
         // SPEC-20260923-graph-settings-ui: runtime-editable Graph:* overrides.
         services.AddSingleton<Settings.IGraphSettingsService, Settings.GraphSettingsService>();
 
         // SPEC-20260923-graphrag: adjacency-table store + LLM extractor.
         services.AddScoped<Graph.IKnowledgeGraphStore, Graph.SqliteKnowledgeGraphStore>();
+        // SPEC-20260924-graph-expanded-retrieval RF-001: lexical entity linker.
+        services.AddScoped<Graph.GraphEntityLinker>();
         services.AddScoped<Graph.EntityExtractor>(sp => new Graph.EntityExtractor(
             sp.GetService<Microsoft.Extensions.AI.IChatClient>(),
             sp.GetRequiredService<Settings.IGraphSettingsService>()));
@@ -213,6 +229,10 @@ public static class KnowledgeHubServiceCollectionExtensions
 
         services.AddSingleton<IngestionService>();
         services.AddSingleton<IIngestionService>(sp => sp.GetRequiredService<IngestionService>());
+        // SPEC-20260924-async-ingestion-queue RF-001/RF-002: bounded channel +
+        // sequential worker (SQLite write lock keeps MaxParallelJobs at 1).
+        services.AddSingleton<Ingestion.IIngestionQueue, Ingestion.IngestionQueue>();
+        services.AddHostedService<Ingestion.IngestionWorker>();
         services.AddHostedService<VaultWatcherService>();
 
         // SPEC-04: dynamic MCP tool catalog + handlers + change notifier.
@@ -269,12 +289,28 @@ public static class KnowledgeHubServiceCollectionExtensions
                 .GetValue<string>($"{Configuration.CacheOptions.SectionName}:Redis:ConnectionString")
                 ?? throw new InvalidOperationException(
                     "Cache:Redis:ConnectionString is required when Cache:Provider=redis");
-            services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
+            services.AddStackExchangeRedisCache(o =>
+            {
+                o.Configuration = redisConnection;
+                try
+                {
+                    var parsed = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
+                    parsed.AbortOnConnectFail = false;
+                    parsed.ConnectTimeout = 3000;
+                    o.ConfigurationOptions = parsed;
+                }
+                catch
+                {
+                    // If parsing fails fall back to connection string only
+                }
+            });
         }
         else
         {
             services.AddDistributedMemoryCache();
         }
+        services.AddSingleton<Caching.ICacheManagerService, Caching.CacheManagerService>();
+        services.AddSingleton<Caching.IToolCacheService, Caching.ToolCacheService>();
 
         // SPEC-20260916-tavily-mcp-proxy: Tavily proxy tools (tavily_*).
         services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.TavilyOptions>()
@@ -365,15 +401,30 @@ public static class KnowledgeHubServiceCollectionExtensions
                         }]
                     };
 
+                var toolCache = ctx.Services!.GetService<Caching.IToolCacheService>();
+                if (toolCache is not null && toolCache.IsCacheable(name!, tool.ReadOnly))
+                {
+                    var cached = await toolCache.GetCachedResultAsync(name!, ctx.Params?.Arguments, ct);
+                    if (cached is not null)
+                        return cached;
+                }
+
                 var toolSw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
-                    return await tool.Handler(
+                    var result = await tool.Handler(
                         new KnowledgeHub.Server.Mcp.ToolCallContext
                         {
                             Services = ctx.Services!,
                             Arguments = ctx.Params?.Arguments
                         }, ct);
+
+                    if (toolCache is not null && toolCache.IsCacheable(name!, tool.ReadOnly))
+                    {
+                        await toolCache.SetCachedResultAsync(name!, ctx.Params?.Arguments, result, ct);
+                    }
+
+                    return result;
                 }
                 finally
                 {

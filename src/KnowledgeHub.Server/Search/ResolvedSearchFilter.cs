@@ -11,15 +11,21 @@ public sealed record ResolvedSearchFilter(
     SourceType? SourceType,
     string? PathPrefix,
     DateTimeOffset? IndexedAfter,
-    string? Language)
+    string? Language,
+    string? Expansion = null,
+    string? ContextExpand = null,
+    bool? UseGraph = null)
 {
     public bool IsEmpty =>
         SourceType is null && PathPrefix is null && IndexedAfter is null && Language is null;
 
-    /// <summary>Stable fingerprint for the v2 result-cache key (RF-005).</summary>
-    public string Fingerprint() => IsEmpty
-        ? "-"
-        : $"{SourceType}|{PathPrefix}|{IndexedAfter:O}|{Language}";
+    /// <summary>Stable fingerprint for the v2 result-cache key (RF-005).
+    /// Expansion is part of result identity even when other filters are empty.</summary>
+    public string Fingerprint() =>
+        (IsEmpty ? "-" : $"{SourceType}|{PathPrefix}|{IndexedAfter:O}|{Language}")
+        + (Expansion is null ? "" : $"|expand:{Expansion}")
+        + (ContextExpand is null or "none" ? "" : $"|ctx:{ContextExpand}")
+        + (UseGraph is null ? "" : $"|graph:{(UseGraph.Value ? 1 : 0)}");
 
     public static bool TryResolve(
         SearchFilter? filter, out ResolvedSearchFilter resolved, out string? error)
@@ -51,11 +57,38 @@ public sealed record ResolvedSearchFilter(
             indexedAfter = parsedDate;
         }
 
+        // SPEC-20260924-query-expansion-hyde RF-003: per-call override.
+        string? expansion = null;
+        if (filter.Expand is { Length: > 0 } ex)
+        {
+            if (ex.ToLowerInvariant() is not ("off" or "multi" or "hyde" or "both"))
+            {
+                error = $"invalid expand '{ex}' (expected: off | multi | hyde | both)";
+                return false;
+            }
+            expansion = ex.ToLowerInvariant();
+        }
+
+        // SPEC-20260924-hierarchical-retrieval RF-001: per-call hit-context override.
+        string? contextExpand = null;
+        if (filter.ContextExpand is { Length: > 0 } ce)
+        {
+            if (ce.ToLowerInvariant() is not ("none" or "window" or "section"))
+            {
+                error = $"invalid contextExpand '{ce}' (expected: none | window | section)";
+                return false;
+            }
+            contextExpand = ce.ToLowerInvariant();
+        }
+
         resolved = new ResolvedSearchFilter(
             sourceType,
             string.IsNullOrWhiteSpace(filter.PathPrefix) ? null : filter.PathPrefix,
             indexedAfter,
-            string.IsNullOrWhiteSpace(filter.Language) ? null : filter.Language);
+            string.IsNullOrWhiteSpace(filter.Language) ? null : filter.Language,
+            expansion,
+            contextExpand,
+            filter.UseGraph);
         return true;
     }
 }

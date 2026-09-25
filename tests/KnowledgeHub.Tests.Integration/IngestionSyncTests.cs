@@ -62,7 +62,7 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
         await File.WriteAllTextAsync(Path.Combine(_vault, "c.md"), "sem header");
 
         var source = await CreateVaultSource();
-        var response = await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        var response = await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         var result = await response.Content.ReadFromJsonAsync<SyncResultDto>();
@@ -81,14 +81,14 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
         await File.WriteAllTextAsync(file, "# Keep\n\nestável");
         var source = await CreateVaultSource();
 
-        await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
-        var second = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
+        await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
+        var second = await (await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null))
             .Content.ReadFromJsonAsync<SyncResultDto>();
         Assert.Equal(1, second!.DocumentsSkipped);
         Assert.Equal(0, second.DocumentsProcessed);
 
         File.Delete(file);
-        var third = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
+        var third = await (await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null))
             .Content.ReadFromJsonAsync<SyncResultDto>();
         Assert.Equal(1, third!.DocumentsRemoved);
 
@@ -106,7 +106,7 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
         await File.WriteAllTextAsync(Path.Combine(_vault, "visible.md"), "# V\n\nok");
 
         var source = await CreateVaultSource();
-        var result = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
+        var result = await (await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null))
             .Content.ReadFromJsonAsync<SyncResultDto>();
 
         Assert.Equal(1, result!.DocumentsProcessed);
@@ -124,7 +124,7 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
         });
         var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
 
-        var result = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
+        var result = await (await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null))
             .Content.ReadFromJsonAsync<SyncResultDto>();
         Assert.Equal("failed", result!.Status);
 
@@ -138,7 +138,7 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
         try
         {
             await File.WriteAllTextAsync(Path.Combine(missing, "back.md"), "# Back\n\nmount recovered");
-            var result2 = await (await _client.PostAsync($"/api/sources/{source.Id}/sync", null))
+            var result2 = await (await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null))
                 .Content.ReadFromJsonAsync<SyncResultDto>();
             Assert.Equal("completed", result2!.Status);
 
@@ -161,7 +161,7 @@ public class IngestionSyncTests : IClassFixture<IngestionSyncTests.Fixture>, IDi
             "# Bolo\n\nreceita de bolo de chocolate com farinha");
 
         var source = await CreateVaultSource();
-        await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         var search = await _client.GetFromJsonAsync<SearchResponse>("/api/search?query=embeddings vetores&topK=5");
         Assert.NotEmpty(search!.Results);

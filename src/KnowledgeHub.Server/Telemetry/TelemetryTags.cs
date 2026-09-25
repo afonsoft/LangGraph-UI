@@ -11,7 +11,7 @@ public static class TelemetryTags
     public static readonly IReadOnlySet<string> AllowedMetricKeys = new HashSet<string>
     {
         "mode", "cache_hit", "provider", "model", "store", "kind", "tool",
-        "status", "region", "method", "session_mode", "succeeded"
+        "status", "region", "method", "session_mode", "succeeded", "reason"
     };
 
     /// <summary>Activity attribute keys — the complete allowlist.</summary>
@@ -19,7 +19,11 @@ public static class TelemetryTags
     {
         "search.mode", "search.topK", "vector.store", "llm.model", "llm.kind",
         "tool.name", "sync.sourceId", "sync.status", "agent.iteration",
-        "mcp.method", "cache.hit"
+        "mcp.method", "cache.hit", "search.floor.removed",
+        "search.diversity.removed", "search.grade", "search.retried",
+        "search.expansion.mode", "search.expansion.variants",
+        "search.expansion.cached", "search.expansion.chunks",
+        "search.graph.hits"
     };
 
     /// <summary>Cache region names derived from key prefixes — bounded set.</summary>
@@ -31,6 +35,7 @@ public static class TelemetryTags
         var k when k.StartsWith("rewrite:", StringComparison.Ordinal) => "rewrite",
         var k when k.StartsWith("index:", StringComparison.Ordinal) => "indexVersion",
         var k when k.StartsWith("secret:", StringComparison.Ordinal) => "secret",
+        var k when k.StartsWith("mcp:tool:", StringComparison.Ordinal) => "tool",
         _ => "other"
     };
 }

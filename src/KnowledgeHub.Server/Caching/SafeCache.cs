@@ -53,6 +53,8 @@ public static class SafeCache
             KnowledgeHubMetrics.CacheHits.Add(1, tag);
         else
             KnowledgeHubMetrics.CacheMisses.Add(1, tag);
+
+        (CacheManagerService.Current as CacheManagerService)?.RecordHit(hit);
     }
 
     public static async Task SetStringAsync(
@@ -63,6 +65,7 @@ public static class SafeCache
         {
             await cache.SetStringAsync(key, value,
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl }, ct);
+            CacheManagerService.Current?.TrackKey(key, System.Text.Encoding.UTF8.GetByteCount(value), ttl);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -78,10 +81,26 @@ public static class SafeCache
         {
             await cache.SetAsync(key, value,
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl }, ct);
+            CacheManagerService.Current?.TrackKey(key, value.Length, ttl);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning("cache set failed for {Key} — skipping: {Message}", key, ex.Message);
+        }
+    }
+
+    public static async Task RemoveAsync(
+        IDistributedCache cache, string key,
+        ILogger logger, CancellationToken ct = default)
+    {
+        try
+        {
+            await cache.RemoveAsync(key, ct);
+            CacheManagerService.Current?.RemoveKey(key);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning("cache remove failed for {Key} — skipping: {Message}", key, ex.Message);
         }
     }
 

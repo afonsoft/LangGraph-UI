@@ -19,10 +19,12 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
     public DbSet<GraphSettings> GraphSettings => Set<GraphSettings>();
     public DbSet<ApiKeyChatSettings> ApiKeyChatSettings => Set<ApiKeyChatSettings>();
     public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
+    public DbSet<EvalBaseline> EvalBaselines => Set<EvalBaseline>();
     public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
     public DbSet<KgNode> KgNodes => Set<KgNode>();
     public DbSet<KgEdge> KgEdges => Set<KgEdge>();
     public DbSet<KgAlias> KgAliases => Set<KgAlias>();
+    public DbSet<IngestionJob> IngestionJobs => Set<IngestionJob>();
 
     /// <summary>Configura as entidades do modelo: chaves, índices, tamanhos e relacionamentos.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -48,6 +50,18 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
             e.HasMany(d => d.Chunks)
                 .WithOne(c => c.Document)
                 .HasForeignKey(c => c.KnowledgeDocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IngestionJob>(e =>
+        {
+            e.HasKey(j => j.Id);
+            e.Property(j => j.Kind).IsRequired().HasMaxLength(16);
+            e.Property(j => j.Status).IsRequired().HasMaxLength(16);
+            e.HasIndex(j => new { j.SourceId, j.Status });
+            e.HasOne(j => j.Source)
+                .WithMany()
+                .HasForeignKey(j => j.SourceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -168,7 +182,16 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
         {
             e.HasKey(r => r.Id);
             e.Property(r => r.DatasetHash).IsRequired().HasMaxLength(64);
+            e.Property(r => r.BaselineName).HasMaxLength(100);
             e.HasIndex(r => r.StartedAt);
+        });
+
+        modelBuilder.Entity<EvalBaseline>(e =>
+        {
+            e.HasKey(b => b.Id);
+            e.Property(b => b.Name).IsRequired().HasMaxLength(100);
+            e.Property(b => b.DatasetHash).IsRequired().HasMaxLength(64);
+            e.HasIndex(b => b.Name).IsUnique();
         });
 
         modelBuilder.Entity<KgNode>(e =>

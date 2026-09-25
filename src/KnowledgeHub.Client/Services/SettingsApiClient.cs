@@ -102,6 +102,19 @@ public sealed class SettingsApiClient(HttpClient http)
         return await ReadAsync<object>(response, ct);
     }
 
+    // SPEC-20260924-redis-cache-and-tool-caching: cache inspection and clear.
+
+    /// <summary>Obtém estatísticas e chaves ativas do cache.</summary>
+    public Task<CacheStatsDto?> GetCacheStatsAsync(CancellationToken ct = default) =>
+        http.GetFromJsonAsync<CacheStatsDto>("api/settings/cache", ct);
+
+    /// <summary>Limpa todas as chaves do cache no backend ativo.</summary>
+    public async Task<ApiResult<ClearCacheResultDto>> ClearCacheAsync(CancellationToken ct = default)
+    {
+        var response = await http.PostAsync("api/settings/cache/clear", null, ct);
+        return await ReadAsync<ClearCacheResultDto>(response, ct);
+    }
+
     /// <summary>Lê a resposta HTTP num ApiResult: desserializa o corpo em sucesso
     /// e extrai o campo "error" (ou o status HTTP) em falha.</summary>
     private static async Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)

@@ -14,7 +14,8 @@ namespace KnowledgeHub.Server.Agent;
 public sealed class CatalogToolAIFunction(
     CatalogTool tool,
     IServiceProvider services,
-    int maxResultChars) : AIFunction
+    int maxResultChars,
+    string? conversationContext = null) : AIFunction
 {
     public override string Name => tool.Name;
     public override string Description => tool.Description;
@@ -31,20 +32,43 @@ public sealed class CatalogToolAIFunction(
 
         var started = System.Diagnostics.Stopwatch.StartNew();
         string? error = null;
+        var toolCache = services.GetService<Caching.IToolCacheService>();
+        // SPEC-20260924-conversational-query-context: identical args inside a
+        // conversation can legitimately yield different results (the query is
+        // contextualised by history) — bypass the args-keyed tool cache.
+        var cacheable = conversationContext is null;
         CallToolResult result;
-        try
+        if (cacheable && toolCache is not null && toolCache.IsCacheable(tool.Name, tool.ReadOnly)
+            && await toolCache.GetCachedResultAsync(tool.Name, args, cancellationToken) is { } cached)
         {
-            result = await tool.Handler(
-                new ToolCallContext { Services = services, Arguments = args }, cancellationToken);
+            result = cached;
         }
-        catch (Exception ex)
+        else
         {
-            error = ex.Message;
-            result = new CallToolResult
+            try
             {
-                Content = [new TextContentBlock { Text = $"ERROR: {ex.Message}" }],
-                IsError = true
-            };
+                result = await tool.Handler(
+                    new ToolCallContext
+                    {
+                        Services = services,
+                        Arguments = args,
+                        ConversationContext = conversationContext
+                    }, cancellationToken);
+
+                if (cacheable && toolCache is not null && toolCache.IsCacheable(tool.Name, tool.ReadOnly))
+                {
+                    await toolCache.SetCachedResultAsync(tool.Name, args, result, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                result = new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"ERROR: {ex.Message}" }],
+                    IsError = true
+                };
+            }
         }
 
         // RF-003: every internal tool call is observable on the MCP Monitor feed.

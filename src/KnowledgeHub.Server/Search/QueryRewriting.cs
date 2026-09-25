@@ -12,6 +12,12 @@ namespace KnowledgeHub.Server.Search;
 public interface IQueryRewriter
 {
     Task<string> RewriteAsync(string query, CancellationToken ct = default);
+
+    /// <summary>SPEC-20260924-conversational-query-context: rewrites the query as
+    /// standalone using the recent conversation (pronouns/references resolved).
+    /// Default ignores the context — same as the parameterless overload.</summary>
+    Task<string> RewriteAsync(string query, string? conversationContext, CancellationToken ct = default) =>
+        RewriteAsync(query, ct);
 }
 
 /// <summary>
@@ -34,7 +40,16 @@ public sealed class LlmQueryRewriter(
         "expand acronyms, normalize terminology, remove conversational filler. " +
         "Return only the rewritten query — no explanation, no quotes.";
 
-    public async Task<string> RewriteAsync(string query, CancellationToken ct = default)
+    private const string ContextualRewritePrompt =
+        "Given the conversation so far and the user's latest text, rewrite the " +
+        "latest text as a standalone search query for a knowledge base: resolve " +
+        "pronouns and references using the conversation, expand acronyms, " +
+        "normalize terminology. Return only the rewritten query — never answer it.";
+
+    public async Task<string> RewriteAsync(string query, CancellationToken ct = default) =>
+        await RewriteAsync(query, null, ct);
+
+    public async Task<string> RewriteAsync(string query, string? conversationContext, CancellationToken ct = default)
     {
         if (!configuration.GetValue("Search:QueryRewrite:Enabled", false))
             return query;
@@ -43,18 +58,26 @@ public sealed class LlmQueryRewriter(
         if (chat is null)
             return query;
 
-        var key = $"rewrite:{configuration.GetValue("Chat:Model", "default")}:{CacheKeys.Hash(query)}";
+        var useContext = !string.IsNullOrWhiteSpace(conversationContext)
+            && configuration.GetValue("Agent:QueryContext:Enabled", true);
+        var key = $"rewrite:{configuration.GetValue("Chat:Model", "default")}:{CacheKeys.Hash(query)}" +
+            (useContext ? $":{CacheKeys.Hash(conversationContext!)}" : "");
         var cached = await SafeCache.GetStringAsync(cache, key, logger, ct);
         if (cached is not null)
             return cached;
+
+        var userContent = useContext
+            ? $"Conversation so far:\n{conversationContext}\n\nLatest user text: {query}"
+            : query;
 
         var llmSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var response = await chat.GetResponseAsync(
                 [
-                    new ChatMessage(ChatRole.System, RewritePrompt),
-                    new ChatMessage(ChatRole.User, query)
+                    new ChatMessage(ChatRole.System,
+                        useContext ? ContextualRewritePrompt : RewritePrompt),
+                    new ChatMessage(ChatRole.User, userContent)
                 ],
                 new ChatOptions { Temperature = 0, MaxOutputTokens = 128 },
                 ct);

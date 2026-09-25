@@ -14,6 +14,9 @@ public sealed record EvalCaseResult
     public double? Faithfulness { get; init; }
     /// <summary>Per-case failure — the run continues (spec edge case).</summary>
     public string? Error { get; init; }
+    /// <summary>SPEC-20260924-eval-regression-gate RF-002: retrieval+generation
+    /// wall time for this case.</summary>
+    public double? LatencyMs { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = [];
 }
 
@@ -26,6 +29,35 @@ public sealed record EvalMetricsSummary
     /// <summary>null when faithfulness was skipped (none configured / no provider).</summary>
     public double? Faithfulness { get; init; }
     public string? FaithfulnessSkippedReason { get; init; }
+}
+
+/// <summary>SPEC-20260924-eval-regression-gate RF-002: per-run latency percentiles.</summary>
+public sealed record EvalLatencySummary
+{
+    public required double P50 { get; init; }
+    public required double P95 { get; init; }
+    public required double P99 { get; init; }
+    public required double Mean { get; init; }
+}
+
+/// <summary>SPEC-20260924-eval-regression-gate RF-001: one pass/fail rule —
+/// metric name (recall_at_k|precision_at_k|mrr|faithfulness|p50_ms|p95_ms|p99_ms|
+/// mean_ms|duration_ms) + direction (gte|lte|gt|lt) + threshold.</summary>
+public sealed record EvalGateRule
+{
+    public required string Metric { get; init; }
+    public required string Direction { get; init; }
+    public required double Threshold { get; init; }
+}
+
+/// <summary>Gate outcome persisted with the run.</summary>
+public sealed record EvalGateResult
+{
+    /// <summary>pass | fail</summary>
+    public required string Status { get; init; }
+    public IReadOnlyList<string> Violations { get; init; } = [];
+    /// <summary>Baseline run this gate compared against (when named).</summary>
+    public string? BaselineName { get; init; }
 }
 
 /// <summary>Delta vs. a reference run (RF-005).</summary>
@@ -50,4 +82,10 @@ public sealed record EvalReport
     public required EvalMetricsSummary Metrics { get; init; }
     public required IReadOnlyList<EvalCaseResult> Results { get; init; }
     public EvalDelta? Delta { get; init; }
+    /// <summary>SPEC-20260924-eval-regression-gate RF-002: per-case latency percentiles.</summary>
+    public EvalLatencySummary? Latency { get; init; }
+    /// <summary>Gate outcome when the run carried gate rules.</summary>
+    public EvalGateResult? Gate { get; init; }
+    /// <summary>Named baseline this run compared/gated against.</summary>
+    public string? BaselineName { get; init; }
 }

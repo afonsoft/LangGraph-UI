@@ -30,7 +30,8 @@ public sealed class EvalRunner(
     public async Task<EvalReport> RunAsync(
         IReadOnlyList<EvalCase> cases, string datasetJson,
         string? mode, int? topK, string? faithfulness, Guid? compareTo,
-        CancellationToken ct)
+        string? baselineName = null, IReadOnlyList<EvalGateRule>? gate = null,
+        CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
         var startedAt = DateTimeOffset.UtcNow;
@@ -38,13 +39,25 @@ public sealed class EvalRunner(
         var defaultK = topK is > 0 ? topK.Value : DefaultTopK;
         var faith = faithfulness?.ToLowerInvariant() ?? "none";
 
+        // SPEC-20260924-eval-regression-gate RF-001: named baseline resolves to
+        // its run id — and pins the dataset fingerprint.
+        if (baselineName is { } bn)
+        {
+            var baseline = await db.EvalBaselines.AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Name == bn, ct)
+                ?? throw new KeyNotFoundException($"baseline '{bn}' not found");
+            compareTo = baseline.EvalRunId;
+        }
+
         var results = new List<EvalCaseResult>(cases.Count);
         foreach (var evalCase in cases)
         {
             ct.ThrowIfCancellationRequested();
+            var caseSw = Stopwatch.StartNew();
             try
             {
-                results.Add(await RunCaseAsync(evalCase, defaultMode, defaultK, faith, ct));
+                var r = await RunCaseAsync(evalCase, defaultMode, defaultK, faith, ct);
+                results.Add(r with { LatencyMs = caseSw.Elapsed.TotalMilliseconds });
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -58,6 +71,7 @@ public sealed class EvalRunner(
                     Precision = 0,
                     ReciprocalRank = 0,
                     Error = ex.Message,
+                    LatencyMs = caseSw.Elapsed.TotalMilliseconds,
                     Tags = evalCase.Tags
                 });
             }
@@ -73,6 +87,9 @@ public sealed class EvalRunner(
             FaithfulnessSkippedReason = FaithSkipReason(faith, faithValues.Count)
         };
 
+        // RF-002: latency percentiles over per-case wall time.
+        var latency = LatencySummary(results);
+
         var report = new EvalReport
         {
             RunId = Guid.NewGuid(),
@@ -81,8 +98,15 @@ public sealed class EvalRunner(
             DatasetHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(datasetJson))),
             Cases = cases.Count,
             Metrics = metrics,
-            Results = results
+            Results = results,
+            Latency = latency,
+            BaselineName = baselineName
         };
+
+        // RF-001: gate evaluation on the computed metrics.
+        EvalGateResult? gateResult = null;
+        if (gate is { Count: > 0 })
+            gateResult = EvaluateGate(gate, metrics, latency, report.DurationMs, baselineName);
 
         db.EvalRuns.Add(new EvalRun
         {
@@ -91,7 +115,10 @@ public sealed class EvalRunner(
             DurationMs = report.DurationMs,
             DatasetHash = report.DatasetHash,
             MetricsJson = JsonSerializer.Serialize(metrics, Json),
-            PerCaseJson = JsonSerializer.Serialize(results, Json)
+            PerCaseJson = JsonSerializer.Serialize(results, Json),
+            LatencyJson = latency is null ? null : JsonSerializer.Serialize(latency, Json),
+            GateResultJson = gateResult is null ? null : JsonSerializer.Serialize(gateResult, Json),
+            BaselineName = baselineName
         });
         await db.SaveChangesAsync(CancellationToken.None);
 
@@ -102,15 +129,90 @@ public sealed class EvalRunner(
                 throw new KeyNotFoundException($"compareTo run '{prevId}' not found");
             report = report with { Delta = delta };
         }
-        return report;
+        return report with { Gate = gateResult };
     }
+
+    /// <summary>RF-002: p50/p95/p99/mean over per-case latencies.</summary>
+    private static EvalLatencySummary? LatencySummary(IReadOnlyList<EvalCaseResult> results)
+    {
+        var ms = results.Where(r => r.LatencyMs is not null)
+            .Select(r => r.LatencyMs!.Value).OrderBy(v => v).ToList();
+        if (ms.Count == 0)
+            return null;
+        return new EvalLatencySummary
+        {
+            P50 = EvalMetrics.Round(PercentileOf(ms, 50)),
+            P95 = EvalMetrics.Round(PercentileOf(ms, 95)),
+            P99 = EvalMetrics.Round(PercentileOf(ms, 99)),
+            Mean = EvalMetrics.Round(ms.Average())
+        };
+    }
+
+    private static double PercentileOf(IReadOnlyList<double> sorted, int p)
+    {
+        var rank = (p / 100.0) * (sorted.Count - 1);
+        var lo = (int)Math.Floor(rank);
+        var hi = (int)Math.Ceiling(rank);
+        return lo == hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo);
+    }
+
+    /// <summary>RF-001: evaluate gate rules against the run's metrics — every
+    /// violation is listed, never silently swallowed.</summary>
+    internal static EvalGateResult EvaluateGate(
+        IReadOnlyList<EvalGateRule> rules, EvalMetricsSummary metrics,
+        EvalLatencySummary? latency, long durationMs, string? baselineName)
+    {
+        var violations = new List<string>();
+        foreach (var rule in rules)
+        {
+            var value = MetricValue(rule.Metric, metrics, latency, durationMs);
+            if (value is null)
+            {
+                violations.Add($"{rule.Metric}: metric unavailable (skipped — value is null)");
+                continue;
+            }
+            var pass = rule.Direction.ToLowerInvariant() switch
+            {
+                "gte" => value >= rule.Threshold,
+                "lte" => value <= rule.Threshold,
+                "gt" => value > rule.Threshold,
+                "lt" => value < rule.Threshold,
+                _ => false
+            };
+            if (!pass)
+                violations.Add(
+                    $"{rule.Metric} {rule.Direction} {rule.Threshold}: actual {EvalMetrics.Round(value.Value)}");
+        }
+        return new EvalGateResult
+        {
+            Status = violations.Count == 0 ? "pass" : "fail",
+            Violations = violations,
+            BaselineName = baselineName
+        };
+    }
+
+    internal static double? MetricValue(
+        string metric, EvalMetricsSummary metrics, EvalLatencySummary? latency, long durationMs) =>
+        metric.ToLowerInvariant() switch
+        {
+            "recall_at_k" or "recall" => metrics.RecallAtK,
+            "precision_at_k" or "precision" => metrics.PrecisionAtK,
+            "mrr" => metrics.Mrr,
+            "faithfulness" => metrics.Faithfulness,
+            "p50_ms" => latency?.P50,
+            "p95_ms" => latency?.P95,
+            "p99_ms" => latency?.P99,
+            "mean_ms" => latency?.Mean,
+            "duration_ms" => durationMs,
+            _ => null
+        };
 
     private async Task<EvalCaseResult> RunCaseAsync(
         EvalCase evalCase, SearchMode defaultMode, int defaultK, string faith, CancellationToken ct)
     {
         var mode = ParseMode(evalCase.Mode) ?? defaultMode;
         var k = evalCase.TopK is > 0 ? evalCase.TopK.Value : defaultK;
-        var results = await search.SearchAsync(evalCase.Question, k, null, mode, filter: null, ct);
+        var results = await search.SearchAsync(evalCase.Question, k, null, mode, filter: null, ct: ct);
 
         var recall = EvalMetrics.RecallAtK(results, evalCase);
         var precision = EvalMetrics.PrecisionAtK(results, evalCase);

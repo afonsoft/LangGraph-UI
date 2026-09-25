@@ -123,7 +123,7 @@ public sealed class LexicalSearchService(
         await db.Database.ExecuteSqlRawAsync(
             $"""
             INSERT INTO {TableName} (chunk_id, text)
-            SELECT Id, TextContent FROM Chunks
+            SELECT Id, COALESCE(EnrichedText, TextContent) FROM Chunks
             WHERE Id NOT IN (SELECT chunk_id FROM {TableName});
             """, cancellationToken);
     }

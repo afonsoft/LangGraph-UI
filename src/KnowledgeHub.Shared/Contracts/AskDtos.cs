@@ -44,6 +44,14 @@ public sealed record AskResponse
     public required string? Model { get; init; }
     /// <summary>True when the answer was synthesized by the configured chat provider.</summary>
     public required bool Generated { get; init; }
+    /// <summary>SPEC-20260924-corrective-rag RF-003: true when retrieval grading
+    /// found insufficient evidence and no synthesis was attempted.</summary>
+    public bool InsufficientEvidence { get; init; }
+    /// <summary>Retrieval grade that grounded (or blocked) this answer:
+    /// sufficient|weak|insufficient. Null when grading is off.</summary>
+    public string? RetrievalGrade { get; init; }
+    /// <summary>True when weak evidence triggered a corrective re-search.</summary>
+    public bool Retried { get; init; }
     /// <summary>True when served from the answer cache (SPEC-20260923
     /// agent-runtime-hardening RF-003 — opt-in via Cache:AnswerCache:Enabled).</summary>
     public bool Cached { get; init; }

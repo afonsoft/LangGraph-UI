@@ -8,6 +8,7 @@ using KnowledgeHub.Server.Chat;
 using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Server.Embeddings;
+using KnowledgeHub.Server.Graph;
 using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Server.Search;
 using KnowledgeHub.Server.Services;
@@ -92,7 +93,7 @@ public sealed class TelemetryTests
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, new StubEmbeddings(),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
-            new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var samples = CollectMetrics(() =>
@@ -233,7 +234,7 @@ public sealed class TelemetryTests
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
         var search = new SearchService(db, new StubEmbeddings(),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
-            new ConfigurationBuilder().Build(), new PassthroughRewriter(),
+            new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
         var samples = CollectMetrics(() =>

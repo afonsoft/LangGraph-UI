@@ -24,4 +24,32 @@ public sealed class EmbeddingOptions
     /// (SPEC-20260917-onnx-local-embeddings RF-002). Relative paths resolve
     /// against the working directory; default <c>models/all-MiniLM-L6-v2</c>.</summary>
     public string? ModelPath { get; set; }
+
+    /// <summary>SPEC-20260924-asymmetric-embeddings: role-aware embeddings
+    /// (query vs document). Enabling on an existing corpus requires reindex —
+    /// document vectors produced without prefixes are not comparable.</summary>
+    public AsymmetricOptions Asymmetric { get; set; } = new();
+
+    /// <summary>OpenAI-compatible <c>input_type</c> sent with query embeddings
+    /// (providers that support it, e.g. Voyage via compatible endpoint).</summary>
+    public string? QueryInputType { get; set; }
+
+    /// <summary>OpenAI-compatible <c>input_type</c> sent with document embeddings.</summary>
+    public string? DocumentInputType { get; set; }
+
+    public sealed class AsymmetricOptions
+    {
+        /// <summary>Master switch — default off so existing corpora keep working.</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>Derive prefixes from the model name (nomic/e5/bge) when the
+        /// explicit prefixes are unset.</summary>
+        public bool Auto { get; set; } = true;
+
+        /// <summary>Explicit query prefix — wins over auto-detection.</summary>
+        public string? QueryPrefix { get; set; }
+
+        /// <summary>Explicit document prefix — wins over auto-detection.</summary>
+        public string? DocumentPrefix { get; set; }
+    }
 }

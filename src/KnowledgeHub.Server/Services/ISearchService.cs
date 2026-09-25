@@ -11,5 +11,5 @@ public interface ISearchService
     Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query, int topK, Guid? sourceId = null,
         SearchMode mode = SearchMode.Hybrid, Search.ResolvedSearchFilter? filter = null,
-        CancellationToken ct = default);
+        string? conversationContext = null, CancellationToken ct = default);
 }

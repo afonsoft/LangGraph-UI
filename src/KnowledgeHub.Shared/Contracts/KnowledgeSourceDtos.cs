@@ -63,6 +63,9 @@ public sealed record SyncResultDto
     public Guid? SourceId { get; init; }
     public int DocumentsProcessed { get; init; }
     public int DocumentsSkipped { get; init; }
+    /// <summary>SPEC-20260924-async-ingestion-queue RF-002: per-document failures
+    /// isolated from the rest of the run.</summary>
+    public int DocumentsFailed { get; init; }
     public int DocumentsRemoved { get; init; }
     public int ChunksCreated { get; init; }
     public double DurationMs { get; init; }

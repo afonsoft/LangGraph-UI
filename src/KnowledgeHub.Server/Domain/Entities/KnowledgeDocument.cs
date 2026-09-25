@@ -9,6 +9,13 @@ public sealed class KnowledgeDocument
     public required string UriReference { get; set; }
     /// <summary>SHA-256 hex of the raw content; unchanged docs are skipped on sync.</summary>
     public string? ContentHash { get; set; }
+    /// <summary>SPEC-20260924-async-ingestion-queue RF-003: chunker version that
+    /// produced this doc's chunks — a chunker change re-chunks even when the
+    /// content hash matches.</summary>
+    public int ChunkerVersion { get; set; }
+    /// <summary>Hash of the chunking-relevant config (maxTokens/overlap/
+    /// enrichment/strategy) used for this doc.</summary>
+    public string? ChunkerConfigHash { get; set; }
     public string? RawContent { get; set; }
     public DateTimeOffset IndexedAt { get; set; } = DateTimeOffset.UtcNow;
 

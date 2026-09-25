@@ -1,7 +1,8 @@
 namespace KnowledgeHub.Server.Search;
 
 /// <summary>One fused ranking entry: chunk id + per-ranker provenance + RRF score.</summary>
-public sealed record FusedHit(Guid ChunkId, int? VectorRank, int? LexicalRank, double Fused);
+public sealed record FusedHit(
+    Guid ChunkId, int? VectorRank, int? LexicalRank, double Fused, int? GraphRank = null);
 
 /// <summary>
 /// Reciprocal Rank Fusion (SPEC-20260914-hybrid-retrieval RF-002):
@@ -16,12 +17,25 @@ public static class RrfFuser
     public static IReadOnlyList<FusedHit> Fuse(
         IReadOnlyList<Guid> vectorRanked,
         IReadOnlyList<Guid> lexicalRanked,
-        int topK)
+        int topK) =>
+        Fuse(
+            [("vector", vectorRanked), ("lexical", lexicalRanked)],
+            topK);
+
+    /// <summary>
+    /// N-list fusion (SPEC-20260924-query-expansion-hyde RF-001,
+    /// SPEC-20260924-graph-expanded-retrieval RF-002): each ranked list
+    /// contributes 1/(k+rank) per entry; the per-arm rank fields record the best
+    /// rank achieved on each arm across all variant lists.
+    /// Arms: "vector" | "lexical" | "graph".
+    /// </summary>
+    public static IReadOnlyList<FusedHit> Fuse(
+        IReadOnlyList<(string Arm, IReadOnlyList<Guid> Ranked)> lists, int topK)
     {
         var scores = new Dictionary<Guid, FusedHit>();
 
-        Accumulate(vectorRanked, isVector: true);
-        Accumulate(lexicalRanked, isVector: false);
+        foreach (var (arm, ranked) in lists)
+            Accumulate(ranked, arm);
 
         return scores.Values
             .OrderByDescending(h => h.Fused)
@@ -29,7 +43,7 @@ public static class RrfFuser
             .Take(topK)
             .ToList();
 
-        void Accumulate(IReadOnlyList<Guid> ranked, bool isVector)
+        void Accumulate(IReadOnlyList<Guid> ranked, string arm)
         {
             for (var i = 0; i < ranked.Count; i++)
             {
@@ -38,16 +52,24 @@ public static class RrfFuser
                 if (scores.TryGetValue(ranked[i], out var hit))
                     scores[ranked[i]] = hit with
                     {
-                        VectorRank = isVector ? rank : hit.VectorRank,
-                        LexicalRank = isVector ? hit.LexicalRank : rank,
+                        VectorRank = arm == "vector"
+                            ? hit.VectorRank is null ? rank : Math.Min(hit.VectorRank.Value, rank)
+                            : hit.VectorRank,
+                        LexicalRank = arm == "lexical"
+                            ? hit.LexicalRank is null ? rank : Math.Min(hit.LexicalRank.Value, rank)
+                            : hit.LexicalRank,
+                        GraphRank = arm == "graph"
+                            ? hit.GraphRank is null ? rank : Math.Min(hit.GraphRank.Value, rank)
+                            : hit.GraphRank,
                         Fused = hit.Fused + contribution
                     };
                 else
                     scores[ranked[i]] = new FusedHit(
                         ranked[i],
-                        isVector ? rank : null,
-                        isVector ? null : rank,
-                        contribution);
+                        arm == "vector" ? rank : null,
+                        arm == "lexical" ? rank : null,
+                        contribution,
+                        arm == "graph" ? rank : null);
             }
         }
     }

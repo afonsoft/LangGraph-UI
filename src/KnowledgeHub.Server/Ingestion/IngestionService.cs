@@ -32,14 +32,15 @@ public sealed class IngestionService(
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SourceLocks = new();
 
-    public Task<SyncResultDto> SyncAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    public Task<SyncResultDto> SyncAsync(
+        Guid sourceId, SyncOptions? options = null, CancellationToken cancellationToken = default)
     {
         // SPEC-20260923-observability-metrics: span + duration/chunk metrics
         // around the whole sync, whichever status it returns with.
         var span = Telemetry.KnowledgeHubActivity.Start("sync");
         span?.SetTag("sync.sourceId", sourceId.ToString("N"));
         var sw = Stopwatch.StartNew();
-        return TrackSyncAsync(SyncCoreAsync(sourceId, cancellationToken), span, sw);
+        return TrackSyncAsync(SyncCoreAsync(sourceId, options, cancellationToken), span, sw);
     }
 
     private static async Task<SyncResultDto> TrackSyncAsync(
@@ -71,7 +72,8 @@ public sealed class IngestionService(
         }
     }
 
-    private async Task<SyncResultDto> SyncCoreAsync(Guid sourceId, CancellationToken cancellationToken = default)
+    private async Task<SyncResultDto> SyncCoreAsync(
+        Guid sourceId, SyncOptions? options, CancellationToken cancellationToken = default)
     {
         var gate = SourceLocks.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
         if (!await gate.WaitAsync(0, cancellationToken))
@@ -102,7 +104,7 @@ public sealed class IngestionService(
                     return new SyncResultDto { Status = "skipped", Reason = skipReason, SourceId = sourceId, DurationMs = stopwatch.Elapsed.TotalMilliseconds };
                 }
 
-                return await SyncViaConnectorAsync(source, connector, db, vectors, scope, stopwatch, cancellationToken);
+                return await SyncViaConnectorAsync(source, connector, db, vectors, scope, stopwatch, options, cancellationToken);
             }
 
             var root = ResolveVaultRoot(source.ConfigurationJson);
@@ -125,10 +127,23 @@ public sealed class IngestionService(
                 .Where(d => d.KnowledgeSourceId == sourceId)
                 .ToDictionaryAsync(d => d.UriReference, cancellationToken);
 
-            var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
+            var processed = 0; var skipped = 0; var removed = 0; var failed = 0; var chunksCreated = 0;
             var warnings = new List<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var graphBudget = graphSettings.GetEffective().MaxChunksPerSync;
+
+            // SPEC-20260924-async-ingestion-queue RF-003: chunker versioning —
+            // content-identical docs are still re-chunked when the chunker
+            // version or chunking-relevant config changed.
+            var maxTokens = configuration.GetValue("Ingestion:MaxTokens", 500);
+            var overlapTokens = configuration.GetValue("Ingestion:OverlapTokens", 50);
+            var chunkStrategy = Chunking.ChunkerSelector.StrategyFor(source.ConfigurationJson);
+            var configHash = Chunking.ChunkerSelector.ConfigHash(
+                maxTokens, overlapTokens,
+                configuration.GetValue("Ingestion:ContextualEnrichment", "structural"),
+                configuration.GetValue("Ingestion:ContextualEnrichment:MinTokens", 40),
+                chunkStrategy);
+            var forceReindex = options?.ForceReindex == true;
 
             foreach (var file in files)
             {
@@ -136,64 +151,84 @@ public sealed class IngestionService(
                 var relative = Path.GetRelativePath(root, file);
                 seen.Add(relative);
 
-                var content = await File.ReadAllTextAsync(file, cancellationToken);
-                var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)));
-
-                if (existing.TryGetValue(relative, out var doc) && doc.ContentHash == hash)
+                try
                 {
-                    skipped++;
-                    continue;
-                }
+                    var content = await File.ReadAllTextAsync(file, cancellationToken);
+                    var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)));
 
-                var note = MarkdownNoteParser.Parse(content, Path.GetFileName(file));
-                // SPEC-20260923-code-aware-chunking: kind from the file extension.
-                var (kind, pieces) = Chunking.ChunkerSelector.Chunk(
-                    relative,
-                    note.Body,
-                    configuration.GetValue("Ingestion:MaxTokens", 500),
-                    configuration.GetValue("Ingestion:OverlapTokens", 50));
-
-                if (doc is null)
-                {
-                    doc = new KnowledgeDocument
+                    if (existing.TryGetValue(relative, out var doc) && doc.ContentHash == hash
+                        && !forceReindex
+                        && doc.ChunkerVersion == Chunking.ChunkerSelector.CurrentVersion
+                        && doc.ChunkerConfigHash == configHash)
                     {
-                        KnowledgeSourceId = sourceId,
-                        Title = note.Title,
-                        UriReference = relative
-                    };
-                    db.Documents.Add(doc);
+                        skipped++;
+                        continue;
+                    }
+
+                    var note = MarkdownNoteParser.Parse(content, Path.GetFileName(file));
+                    // SPEC-20260923-code-aware-chunking: kind from the file extension.
+                    var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
+                        relative,
+                        note.Body,
+                        maxTokens, overlapTokens,
+                        embeddings, configuration, chunkStrategy, logger, cancellationToken);
+
+                    if (doc is null)
+                    {
+                        doc = new KnowledgeDocument
+                        {
+                            KnowledgeSourceId = sourceId,
+                            Title = note.Title,
+                            UriReference = relative
+                        };
+                        db.Documents.Add(doc);
+                    }
+                    else
+                    {
+                        doc.Title = note.Title;
+                        // Purge old chunks with a direct DELETE — no BLOB/text
+                        // materialization, no tracked-collection pitfalls.
+                        await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                            .ExecuteDeleteAsync(cancellationToken);
+                    }
+
+                    doc.RawContent = content;
+                    doc.ContentHash = hash;
+                    doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
+                    doc.ChunkerConfigHash = configHash;
+                    doc.IndexedAt = DateTimeOffset.UtcNow;
+
+                    // AddRange via DbSet — reassigning doc.Chunks after RemoveRange makes EF Core
+                    // emit an UPDATE for the deleted rows inside the same batch (concurrency error).
+                    var newChunks = pieces.Select((piece, i) => new DocumentChunk
+                    {
+                        KnowledgeDocumentId = doc.Id,
+                        ChunkIndex = i,
+                        TextContent = piece.Text,
+                        ChunkKind = kind.ToString().ToLowerInvariant(),
+                        SymbolPath = piece.SymbolPath,
+                        SectionPath = piece.SectionPath,
+                        EnrichedText = EnrichPiece(source.Name, note.Title, piece)
+                    }).ToList();
+                    db.Chunks.AddRange(newChunks);
+                    ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
+
+                    await db.SaveChangesAsync(cancellationToken);
+                    chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
+                    graphBudget -= await ExtractGraphAsync(
+                        source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
+                    processed++;
                 }
-                else
+                catch (OperationCanceledException) { throw; }
+                // SPEC-20260924-async-ingestion-queue RF-002: one bad document
+                // never aborts the job — recorded and the loop continues.
+                catch (Exception ex)
                 {
-                    doc.Title = note.Title;
-                    // Purge old chunks with a direct DELETE — no BLOB/text
-                    // materialization, no tracked-collection pitfalls.
-                    await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
-                        .ExecuteDeleteAsync(cancellationToken);
+                    logger.LogWarning(ex, "Document '{Path}' failed during sync — continuing", relative);
+                    warnings.Add($"{relative}: {ex.Message}");
+                    failed++;
                 }
-
-                doc.RawContent = content;
-                doc.ContentHash = hash;
-                doc.IndexedAt = DateTimeOffset.UtcNow;
-
-                // AddRange via DbSet — reassigning doc.Chunks after RemoveRange makes EF Core
-                // emit an UPDATE for the deleted rows inside the same batch (concurrency error).
-                var newChunks = pieces.Select((piece, i) => new DocumentChunk
-                {
-                    KnowledgeDocumentId = doc.Id,
-                    ChunkIndex = i,
-                    TextContent = piece.Text,
-                    ChunkKind = kind.ToString().ToLowerInvariant(),
-                    SymbolPath = piece.SymbolPath
-                }).ToList();
-                db.Chunks.AddRange(newChunks);
-                ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
-
-                await db.SaveChangesAsync(cancellationToken);
-                chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
-                graphBudget -= await ExtractGraphAsync(
-                    source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
-                processed++;
+                options?.Progress?.Report(new SyncProgress(processed, skipped, failed, chunksCreated));
             }
 
             // Remove documents whose files disappeared from the vault.
@@ -222,6 +257,7 @@ public sealed class IngestionService(
                 SourceId = sourceId,
                 DocumentsProcessed = processed,
                 DocumentsSkipped = skipped,
+                DocumentsFailed = failed,
                 DocumentsRemoved = removed,
                 ChunksCreated = chunksCreated,
                 DurationMs = stopwatch.Elapsed.TotalMilliseconds,
@@ -252,6 +288,7 @@ public sealed class IngestionService(
         IVectorStore vectors,
         AsyncServiceScope scope,
         Stopwatch stopwatch,
+        SyncOptions? options,
         CancellationToken cancellationToken)
     {
         // SPEC-20260919-notion-connector RF-007: load existing hashes before the
@@ -268,72 +305,101 @@ public sealed class IngestionService(
                 cancellationToken)
             : await connector.FetchAsync(source, cancellationToken);
 
-        var processed = 0; var skipped = 0; var removed = 0; var chunksCreated = 0;
+        var processed = 0; var skipped = 0; var removed = 0; var failed = 0; var chunksCreated = 0;
         var warnings = new List<string>(fetch.Warnings);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var graphBudget = graphSettings.GetEffective().MaxChunksPerSync;
+
+        // SPEC-20260924-async-ingestion-queue RF-003: chunker versioning.
+        var maxTokens = configuration.GetValue("Ingestion:MaxTokens", 500);
+        var overlapTokens = configuration.GetValue("Ingestion:OverlapTokens", 50);
+        var chunkStrategy = Chunking.ChunkerSelector.StrategyFor(source.ConfigurationJson);
+        var configHash = Chunking.ChunkerSelector.ConfigHash(
+            maxTokens, overlapTokens,
+            configuration.GetValue("Ingestion:ContextualEnrichment", "structural"),
+            configuration.GetValue("Ingestion:ContextualEnrichment:MinTokens", 40),
+            chunkStrategy);
+        var forceReindex = options?.ForceReindex == true;
 
         foreach (var raw in fetch.Documents)
         {
             cancellationToken.ThrowIfCancellationRequested();
             seen.Add(raw.UriReference);
 
-            // RF-007: a connector-supplied fingerprint (upstream change marker)
-            // replaces the content hash for dedup — unchanged items arrive with
-            // empty TextContent and must not overwrite stored RawContent.
-            var hash = raw.Fingerprint
-                ?? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw.TextContent)));
-            if (existing.TryGetValue(raw.UriReference, out var doc) && doc.ContentHash == hash)
+            try
             {
-                skipped++;
-                continue;
-            }
-
-            if (doc is null)
-            {
-                doc = new KnowledgeDocument
+                // RF-007: a connector-supplied fingerprint (upstream change marker)
+                // replaces the content hash for dedup — unchanged items arrive with
+                // empty TextContent and must not overwrite stored RawContent.
+                var hash = raw.Fingerprint
+                    ?? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw.TextContent)));
+                if (existing.TryGetValue(raw.UriReference, out var doc) && doc.ContentHash == hash
+                    && !forceReindex
+                    && doc.ChunkerVersion == Chunking.ChunkerSelector.CurrentVersion
+                    && doc.ChunkerConfigHash == configHash)
                 {
-                    KnowledgeSourceId = source.Id,
-                    Title = raw.Title,
-                    UriReference = raw.UriReference
-                };
-                db.Documents.Add(doc);
-            }
-            else
-            {
-                doc.Title = raw.Title;
-                await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
-                    .ExecuteDeleteAsync(cancellationToken);
-            }
+                    skipped++;
+                    continue;
+                }
 
-            doc.RawContent = raw.TextContent;
-            doc.ContentHash = hash;
-            doc.IndexedAt = DateTimeOffset.UtcNow;
-
-            // AddRange via DbSet — see vault path above; nav reassignment after
-            // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
-            var (kind, pieces) = Chunking.ChunkerSelector.Chunk(
-                raw.UriReference,
-                raw.TextContent,
-                configuration.GetValue("Ingestion:MaxTokens", 500),
-                configuration.GetValue("Ingestion:OverlapTokens", 50));
-            var newChunks = pieces
-                .Select((piece, i) => new DocumentChunk
+                if (doc is null)
                 {
-                    KnowledgeDocumentId = doc.Id,
-                    ChunkIndex = i,
-                    TextContent = piece.Text,
-                    ChunkKind = kind.ToString().ToLowerInvariant(),
-                    SymbolPath = piece.SymbolPath
-                }).ToList();
-            db.Chunks.AddRange(newChunks);
-            ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
+                    doc = new KnowledgeDocument
+                    {
+                        KnowledgeSourceId = source.Id,
+                        Title = raw.Title,
+                        UriReference = raw.UriReference
+                    };
+                    db.Documents.Add(doc);
+                }
+                else
+                {
+                    doc.Title = raw.Title;
+                    await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
 
-            await db.SaveChangesAsync(cancellationToken);
-            chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
-            graphBudget -= await ExtractGraphAsync(
-                source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
-            processed++;
+                doc.RawContent = raw.TextContent;
+                doc.ContentHash = hash;
+                doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
+                doc.ChunkerConfigHash = configHash;
+                doc.IndexedAt = DateTimeOffset.UtcNow;
+
+                // AddRange via DbSet — see vault path above; nav reassignment after
+                // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
+                var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
+                    raw.UriReference,
+                    raw.TextContent,
+                    maxTokens, overlapTokens,
+                    embeddings, configuration, chunkStrategy, logger, cancellationToken);
+                var newChunks = pieces
+                    .Select((piece, i) => new DocumentChunk
+                    {
+                        KnowledgeDocumentId = doc.Id,
+                        ChunkIndex = i,
+                        TextContent = piece.Text,
+                        ChunkKind = kind.ToString().ToLowerInvariant(),
+                        SymbolPath = piece.SymbolPath,
+                        SectionPath = piece.SectionPath,
+                        EnrichedText = EnrichPiece(source.Name, raw.Title, piece)
+                    }).ToList();
+                db.Chunks.AddRange(newChunks);
+                ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
+
+                await db.SaveChangesAsync(cancellationToken);
+                chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
+                graphBudget -= await ExtractGraphAsync(
+                    source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
+                processed++;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Document '{Uri}' failed during sync — continuing", raw.UriReference);
+                warnings.Add($"{raw.UriReference}: {ex.Message}");
+                failed++;
+            }
+            options?.Progress?.Report(new SyncProgress(processed, skipped, failed, chunksCreated));
         }
 
         foreach (var (uri, doc) in existing)
@@ -360,6 +426,7 @@ public sealed class IngestionService(
             SourceId = source.Id,
             DocumentsProcessed = processed,
             DocumentsSkipped = skipped,
+            DocumentsFailed = failed,
             DocumentsRemoved = removed,
             ChunksCreated = chunksCreated,
             DurationMs = stopwatch.Elapsed.TotalMilliseconds,
@@ -407,6 +474,17 @@ public sealed class IngestionService(
         }
     }
 
+    /// <summary>SPEC-20260924-contextual-chunk-enrichment: structural prefix
+    /// (Source | Document | Section) for the embedded/indexed text — display
+    /// text stays untouched.</summary>
+    private string? EnrichPiece(string sourceName, string documentTitle, Chunking.ChunkPiece piece) =>
+        ContextEnricher.Compose(
+            sourceName, documentTitle,
+            piece.SectionPath ?? piece.SymbolPath,
+            piece.Text,
+            configuration.GetValue("Ingestion:ContextualEnrichment", "structural"),
+            configuration.GetValue("Ingestion:ContextualEnrichment:MinTokens", 40));
+
     /// <summary>Embed + upsert chunks in one batch — a single provider call for
     /// N texts and a single store batch (SPEC-20260916-performance-memory-cache
     /// RF-004). Batch failure falls back to per-chunk so one bad text doesn't
@@ -425,8 +503,8 @@ public sealed class IngestionService(
         IReadOnlyList<float[]> batchVectors;
         try
         {
-            batchVectors = await embeddings.EmbedBatchAsync(
-                chunks.Select(c => c.TextContent).ToList(), cancellationToken);
+            batchVectors = await embeddings.EmbedDocumentBatchAsync(
+                chunks.Select(c => c.EnrichedText ?? c.TextContent).ToList(), cancellationToken);
         }
         catch (EmbeddingProviderException ex)
         {
@@ -461,7 +539,7 @@ public sealed class IngestionService(
         {
             try
             {
-                var vector = await embeddings.EmbedAsync(chunk.TextContent, cancellationToken);
+                var vector = await embeddings.EmbedDocumentAsync(chunk.EnrichedText ?? chunk.TextContent, cancellationToken);
                 await vectors.UpsertAsync(chunk.Id, documentId, sourceId, vector, embeddings.ModelId,
                     metadata, cancellationToken);
                 created++;
@@ -670,11 +748,14 @@ public sealed class IngestionService(
             if (doc?.ContentHash == hash)
                 return;
 
-            var (kind, pieces) = Chunking.ChunkerSelector.Chunk(
+            var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
                 relativePath,
                 body,
                 configuration.GetValue("Ingestion:MaxTokens", 500),
-                configuration.GetValue("Ingestion:OverlapTokens", 50));
+                configuration.GetValue("Ingestion:OverlapTokens", 50),
+                embeddings, configuration,
+                Chunking.ChunkerSelector.StrategyFor(source.ConfigurationJson),
+                logger, cancellationToken);
 
             if (doc is null)
             {
@@ -700,7 +781,9 @@ public sealed class IngestionService(
                 ChunkIndex = i,
                 TextContent = piece.Text,
                 ChunkKind = kind.ToString().ToLowerInvariant(),
-                SymbolPath = piece.SymbolPath
+                SymbolPath = piece.SymbolPath,
+                SectionPath = piece.SectionPath,
+                EnrichedText = EnrichPiece(source.Name, title, piece)
             }).ToList();
             db.Chunks.AddRange(newChunks);
             ScanChunks(newChunks, doc.Id, sourceId, title, db, watcherWarnings);

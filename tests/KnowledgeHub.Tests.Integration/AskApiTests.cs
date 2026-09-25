@@ -75,7 +75,7 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
         });
         response.EnsureSuccessStatusCode();
         var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
         return source.Id;
     }
 
@@ -177,7 +177,7 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
         });
         src.EnsureSuccessStatusCode();
         var source = (await src.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         await using var mcp = await TestMcp.ConnectAsync(_factory);
         var result = await mcp.SendAsync("tools/call", new
@@ -247,7 +247,7 @@ public class AskApiTests : IClassFixture<AskApiTests.Fixture>, IClassFixture<Ask
             isActive = true
         });
         var source = (await src.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         var response = await client.PostAsJsonAsync("/api/ask", new { question = "NOCHATTOKEN" });
         var result = (await response.Content.ReadFromJsonAsync<AskResponse>())!;

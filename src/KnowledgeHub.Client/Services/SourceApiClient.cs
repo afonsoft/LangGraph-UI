@@ -29,11 +29,24 @@ public sealed class SourceApiClient(HttpClient http)
         return await ReadResultAsync<KnowledgeSourceDto>(response, ct);
     }
 
+    /// <summary>Legacy synchronous sync — <c>?wait=true</c> (detail dialog needs
+    /// the full SyncResult). The grid uses <see cref="EnqueueSyncAsync"/>.</summary>
     public async Task<ApiResult<SyncResultDto>> SyncAsync(Guid id, CancellationToken ct = default)
     {
-        var response = await http.PostAsync($"api/sources/{id}/sync", null, ct);
+        var response = await http.PostAsync($"api/sources/{id}/sync?wait=true", null, ct);
         return await ReadResultAsync<SyncResultDto>(response, ct);
     }
+
+    /// <summary>SPEC-20260924-async-ingestion-queue: enqueue a sync job (202).</summary>
+    public async Task<ApiResult<SyncJobEnqueueDto>> EnqueueSyncAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await http.PostAsync($"api/sources/{id}/sync", null, ct);
+        return await ReadResultAsync<SyncJobEnqueueDto>(response, ct);
+    }
+
+    /// <summary>Poll a queued/running ingestion job.</summary>
+    public Task<IngestionJobDto?> GetJobAsync(Guid jobId, CancellationToken ct = default) =>
+        http.GetFromJsonAsync<IngestionJobDto>($"api/ingestion/jobs/{jobId}", ct);
 
     public async Task<ApiResult<object>> DeleteAsync(Guid id, CancellationToken ct = default)
     {
@@ -80,4 +93,19 @@ public sealed class SourceApiClient(HttpClient http)
 public sealed record ApiResult<T>(T? Value, string? Error, string? Detail = null)
 {
     public bool IsSuccess => Error is null;
+}
+
+/// <summary>202 response from POST /api/sources/{id}/sync (queued mode).</summary>
+public sealed record SyncJobEnqueueDto(Guid JobId, string Status, bool Existing);
+
+/// <summary>GET /api/ingestion/jobs/{id} response.</summary>
+public sealed record IngestionJobDto
+{
+    public Guid Id { get; init; }
+    public string Status { get; init; } = "";
+    public int DocsProcessed { get; init; }
+    public int DocsSkipped { get; init; }
+    public int DocsFailed { get; init; }
+    public int ChunksCreated { get; init; }
+    public string? Error { get; init; }
 }

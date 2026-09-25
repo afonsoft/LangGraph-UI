@@ -8,7 +8,7 @@ public static class EmbeddingProviderFactory
     public static IEmbeddingProvider Create(EmbeddingOptions options, IHttpClientFactory httpClientFactory)
     {
         var http = httpClientFactory.CreateClient("embeddings");
-        return options.Provider.ToLowerInvariant() switch
+        IEmbeddingProvider inner = options.Provider.ToLowerInvariant() switch
         {
             "ollama" => new OllamaEmbeddingProvider(http, options),
             "openai" => new OpenAiEmbeddingProvider(http, options),
@@ -17,5 +17,9 @@ public static class EmbeddingProviderFactory
             "onnx" => OnnxEmbeddingProvider.Load(options.ModelPath),
             _ => new DeterministicEmbeddingProvider(options.Dimensions)
         };
+        // SPEC-20260924-asymmetric-embeddings: role prefixes wrap any provider.
+        return options.Asymmetric.Enabled
+            ? new AsymmetricEmbeddingProvider(inner, options)
+            : inner;
     }
 }

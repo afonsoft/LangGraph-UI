@@ -9,8 +9,9 @@ public enum ChunkKind
     Prose
 }
 
-/// <summary>One chunk of text plus its structural context (symbol path / config path).</summary>
-public sealed record ChunkPiece(string Text, string? SymbolPath = null);
+/// <summary>One chunk of text plus its structural context (symbol path / config path /
+/// section path — SPEC-20260924-contextual-chunk-enrichment).</summary>
+public sealed record ChunkPiece(string Text, string? SymbolPath = null, string? SectionPath = null);
 
 /// <summary>
 /// Pluggable text chunker (SPEC-20260923-code-aware-chunking RF-001).
@@ -23,4 +24,10 @@ public interface ITextChunker
     /// <summary>Splits <paramref name="text"/> into pieces ≤ roughly
     /// <paramref name="maxTokens"/> tokens (chars/4 approximation).</summary>
     IReadOnlyList<ChunkPiece> Chunk(string text, int maxTokens, int overlapTokens);
+
+    /// <summary>Async variant — needed by embedding-driven chunkers
+    /// (SPEC-20260924-semantic-chunking). Default delegates to <see cref="Chunk"/>.</summary>
+    Task<IReadOnlyList<ChunkPiece>> ChunkAsync(
+        string text, int maxTokens, int overlapTokens, CancellationToken ct = default) =>
+        Task.FromResult(Chunk(text, maxTokens, overlapTokens));
 }

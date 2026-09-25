@@ -121,7 +121,7 @@ public sealed class ApiKeyChatSettingsService(
                 row.UpdatedAt = DateTimeOffset.UtcNow;
             }
 
-            if (db.Entry(row!).State != EntityState.Detached || row!.Endpoint is not null || row.Model is not null)
+            if (row is not null)
                 await db.SaveChangesAsync(cancellationToken);
 
             if (apiKey is not null && !string.IsNullOrWhiteSpace(apiKey))

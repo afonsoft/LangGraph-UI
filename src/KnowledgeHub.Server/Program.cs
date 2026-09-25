@@ -275,6 +275,7 @@ app.MapFrameworkAssetsApi();
 app.MapAuthApi().RequireRateLimiting("general");
 app.MapApiKeysApi().RequireRateLimiting("general");
 app.MapSourcesApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
+app.MapIngestionApi().RequireAuthorization(AuthPolicies.Operational);
 app.MapSearchApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("general");
 app.MapAskApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");
 app.MapAgentApi().RequireAuthorization(AuthPolicies.Operational).RequireRateLimiting("llm");

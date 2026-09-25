@@ -204,9 +204,14 @@ public sealed partial class AnswerService(
             var r = context[i];
             // SPEC-20260923-prompt-injection-guard RF-001: explicit boundary
             // delimiters; chunk text is escaped so it cannot forge a boundary.
+            // SPEC-20260924-hierarchical-retrieval: expanded context rides inside
+            // the same wrapped chunk — still untrusted data.
+            var body = r.Context is { Length: > 0 } surrounding
+                ? $"{r.ChunkText}\n\n(surrounding context — same document)\n{surrounding}"
+                : r.ChunkText;
             sb.Append(Security.PromptBoundary.WrapChunk(
                       i + 1, $"{r.SourceName}/{r.UriReference}",
-                      $"[{i + 1}] {r.DocumentTitle} — {r.SourceName} ({r.UriReference})\n{r.ChunkText}",
+                      $"[{i + 1}] {r.DocumentTitle} — {r.SourceName} ({r.UriReference})\n{body}",
                       r.SuspicionFlags is not null))
               .Append("\n\n");
         }

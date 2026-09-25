@@ -23,6 +23,19 @@ public static class EvalEndpoints
         public string? Mode { get; init; }
         public string? Faithfulness { get; init; }
         public Guid? CompareTo { get; init; }
+        /// <summary>SPEC-20260924-eval-regression-gate: named baseline — resolves
+        /// to its run for compareTo + stamps the run.</summary>
+        public string? Baseline { get; init; }
+        /// <summary>Gate rules evaluated against the run's metrics.</summary>
+        public List<EvalGateRule>? Gate { get; init; }
+    }
+
+    public sealed record BaselineRequest
+    {
+        /// <summary>Baseline name (unique).</summary>
+        public required string Name { get; init; }
+        /// <summary>Run to promote.</summary>
+        public required Guid RunId { get; init; }
     }
 
     public static RouteGroupBuilder MapEvalApi(this IEndpointRouteBuilder app)
@@ -45,7 +58,8 @@ public static class EvalEndpoints
             {
                 var report = await runner.RunAsync(
                     cases, datasetJson!, request.Mode, request.TopK,
-                    request.Faithfulness, request.CompareTo, ct);
+                    request.Faithfulness, request.CompareTo,
+                    request.Baseline, request.Gate, ct);
                 return Results.Ok(report);
             }
             catch (KeyNotFoundException ex)
@@ -111,8 +125,56 @@ public static class EvalEndpoints
                 Cases = results.Count,
                 Metrics = metrics,
                 Results = results,
-                Delta = delta
+                Delta = delta,
+                Latency = run.LatencyJson is null
+                    ? null
+                    : JsonSerializer.Deserialize<EvalLatencySummary>(run.LatencyJson, Json),
+                Gate = run.GateResultJson is null
+                    ? null
+                    : JsonSerializer.Deserialize<EvalGateResult>(run.GateResultJson, Json),
+                BaselineName = run.BaselineName
             });
+        });
+
+        // SPEC-20260924-eval-regression-gate RF-001: named baselines.
+        group.MapGet("/baselines", async (KnowledgeHubDbContext db, CancellationToken ct) =>
+        {
+            var baselines = await db.EvalBaselines.AsNoTracking()
+                .OrderBy(b => b.Name)
+                .Select(b => new { b.Name, b.EvalRunId, b.DatasetHash, b.CreatedAt })
+                .ToListAsync(ct);
+            return Results.Ok(baselines);
+        });
+
+        /// <summary>Promote a run to a named baseline (upsert by name).</summary>
+        group.MapPost("/baselines", async (
+            BaselineRequest request, KnowledgeHubDbContext db, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
+                return Results.BadRequest(new { error = "name is required (max 100 chars)" });
+            var run = await db.EvalRuns.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == request.RunId, ct);
+            if (run is null)
+                return Results.NotFound(new { error = $"run '{request.RunId}' not found" });
+
+            var existing = await db.EvalBaselines
+                .FirstOrDefaultAsync(b => b.Name == request.Name, ct);
+            if (existing is null)
+            {
+                db.EvalBaselines.Add(new Domain.Entities.EvalBaseline
+                {
+                    Name = request.Name,
+                    EvalRunId = request.RunId,
+                    DatasetHash = run.DatasetHash
+                });
+            }
+            else
+            {
+                existing.EvalRunId = request.RunId;
+                existing.DatasetHash = run.DatasetHash;
+            }
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { request.Name, request.RunId });
         });
 
         return group;
@@ -122,7 +184,7 @@ public static class EvalEndpoints
     /// Resolves the dataset: inline JSON array, or a name looked up under
     /// <c>tests/eval/</c> walking up from the content root (repo layout).
     /// </summary>
-    private static (string? Json, string? Error) ResolveDataset(string dataset, string contentRoot)
+    internal static (string? Json, string? Error) ResolveDataset(string dataset, string contentRoot)
     {
         var trimmed = dataset.Trim();
         if (trimmed.StartsWith('['))
