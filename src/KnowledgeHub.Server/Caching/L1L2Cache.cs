@@ -1,6 +1,6 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 
 namespace KnowledgeHub.Server.Caching;
 
@@ -16,16 +16,23 @@ public sealed class L1L2Cache : IDistributedCache
     private readonly IMemoryCache _l1;
     private readonly IDistributedCache _l2;
     private readonly TimeSpan _l1MaxTtl;
+    private readonly Microsoft.Extensions.Logging.ILogger<L1L2Cache>? _logger;
 
-    /// <summary>SPEC-20260925-hybrid-cache-l1l2 RF-002: per-key locks serialize
-    /// concurrent miss-fills so a hot key never spawns N producers.</summary>
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _keyLocks = new(StringComparer.Ordinal);
+    /// <summary>SPEC-20260925-hybrid-cache-l1l2 RF-002: locks serialize
+    /// concurrent miss-fills so a hot key never spawns N producers.
+    /// SPEC-20260926-cache-coherence-and-ttl RF-002: FIXED striped table — a
+    /// per-key ConcurrentDictionary would grow unbounded with key cardinality.</summary>
+    private const int LockStripes = 256;
+    private readonly SemaphoreSlim[] _keyLocks =
+        Enumerable.Range(0, LockStripes).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
-    public L1L2Cache(IMemoryCache l1, IDistributedCache l2, TimeSpan l1MaxTtl)
+    public L1L2Cache(IMemoryCache l1, IDistributedCache l2, TimeSpan l1MaxTtl,
+        Microsoft.Extensions.Logging.ILogger<L1L2Cache>? logger = null)
     {
         _l1 = l1;
         _l2 = l2;
         _l1MaxTtl = l1MaxTtl;
+        _logger = logger;
     }
 
     /// <summary>The distributed tier — pub/sub invalidation and server stats
@@ -51,7 +58,16 @@ public sealed class L1L2Cache : IDistributedCache
     public async Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options,
         CancellationToken token = default)
     {
-        await _l2.SetAsync(key, value, options, token);
+        try
+        {
+            await _l2.SetAsync(key, value, options, token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // RF-006 (SPEC-20260926-cache-coherence-and-ttl): L2 down degrades to
+            // local-only caching — better than losing the cache entirely.
+            _logger?.LogWarning(ex, "L2 write failed — entry cached in L1 only");
+        }
         var l1Ttl = options.AbsoluteExpirationRelativeToNow is { } ttl
             ? (ttl < _l1MaxTtl ? ttl : _l1MaxTtl)
             : _l1MaxTtl;
@@ -71,10 +87,10 @@ public sealed class L1L2Cache : IDistributedCache
         await _l2.RemoveAsync(key, token);
     }
 
-    /// <summary>RF-002: wait on the per-key fill lock; used by
+    /// <summary>RF-002: wait on the striped fill lock; used by
     /// <see cref="SafeCache.GetOrCreateAsync"/> to collapse concurrent misses.</summary>
     internal SemaphoreSlim LockFor(string key) =>
-        _keyLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        _keyLocks[(int)((uint)key.GetHashCode() % LockStripes)];
 
     /// <summary>SPEC-20260925-distributed-invalidation-pubsub RF-003: drop one
     /// L1 entry (the L2 is the source of truth — next read re-fetches).</summary>

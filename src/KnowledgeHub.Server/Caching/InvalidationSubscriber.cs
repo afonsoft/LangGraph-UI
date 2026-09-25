@@ -10,15 +10,18 @@ public sealed class InvalidationSubscriber : BackgroundService
 {
     private readonly ICacheInvalidationBus _bus;
     private readonly Microsoft.Extensions.Caching.Distributed.IDistributedCache _cache;
+    private readonly ICacheManagerService? _manager;
     private readonly ILogger<InvalidationSubscriber> _logger;
 
     public InvalidationSubscriber(
         ICacheInvalidationBus bus,
         Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
-        ILogger<InvalidationSubscriber> logger)
+        ILogger<InvalidationSubscriber> logger,
+        ICacheManagerService? manager = null)
     {
         _bus = bus;
         _cache = cache;
+        _manager = manager;
         _logger = logger;
         _bus.Received += OnReceived;
     }
@@ -36,7 +39,12 @@ public sealed class InvalidationSubscriber : BackgroundService
                 break;
             case "cache-clear":
                 l1.InvalidateAllLocal();
-                _logger.LogInformation("remote cache-clear — L1 compacted");
+                // RF-004 (SPEC-20260926-cache-coherence-and-ttl): drop the keys
+                // THIS replica wrote to the shared L2 — otherwise the clear
+                // only emptied L1s and the next read repopulates stale data.
+                if (_manager is not null)
+                    _ = ClearTrackedSafeAsync();
+                _logger.LogInformation("remote cache-clear — L1 compacted, tracked L2 keys dropping");
                 break;
             default:
                 // SPEC-20260926-cache-key-consistency RF-001: per-key eviction
@@ -49,6 +57,12 @@ public sealed class InvalidationSubscriber : BackgroundService
                 }
                 break;
         }
+    }
+
+    private async Task ClearTrackedSafeAsync()
+    {
+        try { await _manager!.ClearLocalTrackedAsync(); }
+        catch (Exception ex) { _logger.LogWarning(ex, "remote-clear: tracked L2 cleanup failed"); }
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>

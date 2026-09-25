@@ -38,6 +38,11 @@ public sealed class SearchService(
     private const int CandidateWindowFactor = 4;
     // TTLs: region policy (emb:/search: prefixes) — SPEC-20260925-cache-region-ttl-policies.
 
+    /// <summary>SPEC-20260926-cache-coherence-and-ttl RF-005: set by
+    /// <see cref="VectorSearchAsync"/> when an arm fails-soft — the caller
+    /// still returns the degraded result but never caches it.</summary>
+    private sealed class DegradationState { public bool Any; }
+
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query, int topK, Guid? sourceId = null,
         SearchMode mode = SearchMode.Hybrid, ResolvedSearchFilter? filter = null,
@@ -72,8 +77,13 @@ public sealed class SearchService(
                 }
             }
 
-            var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, conversationContext, ct);
-            await SafeCache.SetJsonAsync(cache, resultKey, results, null, logger, ct);
+            var degraded = new DegradationState();
+            var results = await ExecuteAsync(query, topK, sourceId, mode, filter, scope, conversationContext, degraded, ct);
+            // RF-005: a result produced while a search arm was degraded is
+            // served but never cached — a transient vector-store outage must
+            // not poison the result cache for the normal TTL.
+            if (!degraded.Any)
+                await SafeCache.SetJsonAsync(cache, resultKey, results, null, logger, ct);
             return results;
         }
         catch (Exception ex)
@@ -92,7 +102,8 @@ public sealed class SearchService(
     private async Task<IReadOnlyList<SearchResultItem>> ExecuteAsync(
         string query, int topK, Guid? sourceId,
         SearchMode mode, ResolvedSearchFilter? filter,
-        Auth.CallerScope scope, string? conversationContext, CancellationToken ct)
+        Auth.CallerScope scope, string? conversationContext,
+        DegradationState degraded, CancellationToken ct)
     {
         var activeSourceIds = sourceId is null
             ? await db.Sources.Where(s => s.IsActive).Select(s => s.Id).ToListAsync(ct)
@@ -156,13 +167,13 @@ public sealed class SearchService(
         if (mode == SearchMode.Semantic && expansionMode == "off" && !graphEnabled)
         {
             var queryVector = await EmbedQueryAsync(effectiveQuery, ct);
-            windowed = (await VectorSearchAsync(queryVector, fetchLimit, activeSourceIds, ct)).ToList();
+            windowed = (await VectorSearchAsync(queryVector, fetchLimit, activeSourceIds, degraded, ct)).ToList();
         }
         else
         {
             var (vectorLabels, vectorLists, lexicalLabels, lexicalLists) =
                 await ExpandAndSearchAsync(query, effectiveQuery, mode, expansionMode,
-                    window, activeSourceIds, ct);
+                    window, activeSourceIds, degraded, ct);
 
             var graphArm = graphEnabled
                 ? await GraphRankedAsync(query, ct)
@@ -455,7 +466,8 @@ public sealed class SearchService(
         ExpandAndSearchAsync(
             string rawQuery, string effectiveQuery, SearchMode mode,
             string expansionMode, int window,
-            IReadOnlyCollection<Guid> activeSourceIds, CancellationToken ct)
+            IReadOnlyCollection<Guid> activeSourceIds,
+            DegradationState degraded, CancellationToken ct)
     {
         IReadOnlyList<string> variants = [];
         string? hydeText = null;
@@ -502,7 +514,7 @@ public sealed class SearchService(
         if (mode != SearchMode.Lexical)
         {
             var tasks = vectorTexts.Select(async t =>
-                (await VectorSearchAsync(await EmbedQueryAsync(t.Text, ct), window, activeSourceIds, ct))
+                (await VectorSearchAsync(await EmbedQueryAsync(t.Text, ct), window, activeSourceIds, degraded, ct))
                     .Select(h => h.ChunkId).ToList() as IReadOnlyList<Guid>);
             vectorLists.AddRange(await Task.WhenAll(tasks));
             vectorLabels.AddRange(vectorTexts.Select(t => t.Label));
@@ -564,7 +576,8 @@ public sealed class SearchService(
 
     /// <summary>Vector store call wrapped in a span + duration histogram.</summary>
     private async Task<IReadOnlyList<VectorHit>> VectorSearchAsync(
-        float[] queryVector, int topK, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct)
+        float[] queryVector, int topK, IReadOnlyCollection<Guid> sourceIds,
+        DegradationState degraded, CancellationToken ct)
     {
         var store = vectors.GetType().Name;
         using var span = KnowledgeHubActivity.Start("vector_search");
@@ -588,6 +601,7 @@ public sealed class SearchService(
                 new KeyValuePair<string, object?>("op", "search"));
             KnowledgeHubActivity.Fail(span, ex);
             logger.LogWarning(ex, "vector search failed ({Store}) — continuing with lexical only", store);
+            degraded.Any = true; // RF-005: this result must not be cached
             return [];
         }
         finally

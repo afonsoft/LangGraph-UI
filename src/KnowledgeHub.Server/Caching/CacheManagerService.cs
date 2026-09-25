@@ -143,10 +143,13 @@ public sealed class CacheManagerService : ICacheManagerService
             }
 
             // Bounded SCAN (never KEYS *) — cap both page size and total count.
+            // RF-006 (SPEC-20260926-cache-coherence-and-ttl): honor the caller's
+            // cancellation — a stalled SCAN must not pin the settings endpoint.
             var count = 0L;
             var truncated = false;
             foreach (var _ in server.Keys(pattern: "*", pageSize: ScanPageSize))
             {
+                ct.ThrowIfCancellationRequested();
                 if (++count >= ScanMaxKeys) { truncated = true; break; }
             }
             stats.ServerKeys = count;
@@ -269,6 +272,20 @@ public sealed class CacheManagerService : ICacheManagerService
             ClearedKeys = count,
             Message = $"Cache completamente limpo ({count} chaves purgadas com sucesso)."
         };
+    }
+
+    /// <inheritdoc />
+    public async Task ClearLocalTrackedAsync(CancellationToken ct = default)
+    {
+        foreach (var key in _trackedKeys.Keys)
+        {
+            try { await _cache.RemoveAsync(key, ct); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "remote-clear: failed to remove {Key} from cache", SafeCache.LogSafe(key));
+            }
+        }
+        _trackedKeys.Clear();
     }
 
     private void PruneExpired()

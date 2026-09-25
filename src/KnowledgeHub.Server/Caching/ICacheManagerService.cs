@@ -18,6 +18,12 @@ public interface ICacheManagerService
     /// only when the removal succeeds; publishes <c>cache-key:</c> on the
     /// invalidation bus so replicas drop their L1 copy too.</summary>
     Task<CacheKeyRemovalResult> RemoveEntryAsync(string key, CancellationToken ct = default);
+
+    /// <summary>SPEC-20260926-cache-coherence-and-ttl RF-004: on a REMOTE
+    /// <c>cache-clear</c>, drops every key THIS process tracked — otherwise the
+    /// entries this replica wrote stay in the shared L2 and the next read
+    /// repopulates stale data.</summary>
+    Task ClearLocalTrackedAsync(CancellationToken ct = default);
 }
 
 /// <summary>Result of a per-key eviction — never lies about backend failures.</summary>
