@@ -8,7 +8,7 @@
 | Stack | `KnowledgeHub.Server` (SettingsEndpoints, EmbeddingProviderResolver, EmbeddingSettingsService, EmbeddingOptions) + `KnowledgeHub.Client` (Settings.razor) |
 | Repository | `afonsoft/LangGraph-UI` |
 | Status | `Approved` |
-| Ticket | devin-ai-integration review — PR #205 (4 findings 🔴/🟡) + PR #184 (input_type) + #190 (role na key) |
+| Ticket | #211 ([E22] Epic #208) — devin-ai-integration review — PR #205 (4 findings 🔴/🟡) + PR #184 (input_type) + #190 (role na key) |
 | Origem | `.claude/memory/devin-review-triage-20260925.md` — cluster C (C1–C5) |
 
 ## 1. User Story

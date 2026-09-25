@@ -8,7 +8,7 @@
 | Stack | `KnowledgeHub.Server` (SearchService, LexicalSearchService, SqliteVecVectorStore, StreamingEndpoints, CorrectiveRetrievalService, EvalRunner) |
 | Repository | `afonsoft/LangGraph-UI` |
 | Status | `Approved` |
-| Ticket | devin-ai-integration review — PR #184 (4 findings: 1🔴 + 3🔍) |
+| Ticket | #212 ([E22] Epic #208) — devin-ai-integration review — PR #184 (4 findings: 1🔴 + 3🔍) |
 | Origem | `.claude/memory/devin-review-triage-20260925.md` — cluster D (D1–D4) |
 
 ## 1. User Story

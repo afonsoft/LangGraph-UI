@@ -8,7 +8,7 @@
 | Stack | `KnowledgeHub.Server` (IngestionService, IngestionQueue, CloudConnectorBase, AzureShareGateway, GoogleDriveGateway, DocumentFileConnector, KnowledgeSourceService, PostgresVectorStore) + `KnowledgeHub.Client` (SourceEditDialog) |
 | Repository | `afonsoft/LangGraph-UI` |
 | Status | `Approved` |
-| Ticket | devin-ai-integration review — PRs #184 (3), #187 (4), #188 (4), #195 (3) |
+| Ticket | #209 ([E22] Epic #208) — devin-ai-integration review — PRs #184 (3), #187 (4), #188 (4), #195 (3) |
 | Origem | `.claude/memory/devin-review-triage-20260925.md` — cluster A (A1–A9) |
 
 ## 1. User Story
