@@ -81,6 +81,11 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.WebPageConnector>();
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.DocumentFileConnector>();
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.NotionConnector>();
+        // SPEC-20260924-cloud-storage-connectors: remote object stores staged locally.
+        services.AddSingleton<Ingestion.Staging.IStagingStorageService, Ingestion.Staging.StagingStorageService>();
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.AwsS3Connector>();
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.AzureFilesConnector>();
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.OciStorageConnector>();
         services.AddSingleton<IEmbeddingProvider>(sp =>
             EmbeddingProviderFactory.Create(
                 sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value,

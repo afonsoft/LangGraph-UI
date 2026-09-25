@@ -14,11 +14,13 @@ namespace KnowledgeHub.Server.Services;
 public sealed class KnowledgeSourceService(
     KnowledgeHubDbContext db,
     IToolCatalogChangeNotifier catalogNotifier,
-    IIntegrationSecretStore secrets) : IKnowledgeSourceService
+    IIntegrationSecretStore secrets,
+    Ingestion.Staging.IStagingStorageService? staging = null) : IKnowledgeSourceService
 {
     /// <summary>Config keys that must never be echoed back to API consumers.</summary>
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
-        { "connectionString", "apiKey", "key", "headers", "token", "password", "secret" };
+        { "connectionString", "apiKey", "key", "headers", "token", "password", "secret",
+          "secretAccessKey", "accountKey" };
 
     /// <summary>Required configuration keys per connector type (SPEC-02 §Scope).</summary>
     private static readonly Dictionary<SourceType, string[]> RequiredKeys = new()
@@ -29,7 +31,10 @@ public sealed class KnowledgeSourceService(
         [SourceType.SqlDatabase] = ["connectionString", "query"],
         [SourceType.DocumentFile] = ["path"],
         [SourceType.McpProxy] = ["endpoint"],
-        [SourceType.Notion] = []
+        [SourceType.Notion] = [],
+        [SourceType.AwsS3] = ["bucketName", "region", "accessKeyId"],
+        [SourceType.AzureFiles] = ["shareName"],
+        [SourceType.OciStorage] = ["namespace", "region", "bucketName", "accessKeyId"]
     };
 
     public async Task<IReadOnlyList<KnowledgeSourceDto>> ListAsync(SourceType? type, bool? active, CancellationToken ct = default)
@@ -113,6 +118,14 @@ public sealed class KnowledgeSourceService(
             await secrets.RemoveAsync(McpProxySession.SecretKey(source.Id), ct);
         if (source.SourceType == SourceType.Notion)
             await secrets.RemoveAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct);
+        // SPEC-20260924-cloud-storage-connectors RF-006: purge cloud secrets + staging.
+        if (source.SourceType is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+        {
+            foreach (var key in CloudSecretKeys(source.SourceType, source.Id))
+                await secrets.RemoveAsync(key, ct);
+            if (staging is not null)
+                await staging.CleanupStagingAsync(source.Id, ct);
+        }
         await db.SaveChangesAsync(ct);
         await NotifyCatalogChanged(ct);
         return ServiceResult<bool>.Ok(true);
@@ -129,26 +142,69 @@ public sealed class KnowledgeSourceService(
         return ServiceResult<KnowledgeSourceDto>.Ok(ToDto(source));
     }
 
-    /// <summary>Notion secret check (SPEC-20260919-notion-connector RF-001):
-    /// a config carrying no usable token is only valid when an encrypted token
-    /// already exists for this source — <c>hasKey:true</c> without a stored
-    /// secret is rejected, otherwise the source could never sync. An empty
-    /// token is allowed through when a secret exists (explicit removal).</summary>
+    /// <summary>Notion secret check (SPEC-20260919-notion-connector RF-001) and
+    /// cloud credential check (SPEC-20260924-cloud-storage-connectors RF-006):
+    /// a config carrying no usable secret field is only valid when an encrypted
+    /// secret already exists for this source — <c>hasKey:true</c> without a
+    /// stored secret is rejected, otherwise the source could never sync.</summary>
     private async Task<string?> ValidateConnectorSecretAsync(
         KnowledgeSource source, JsonObject? configuration, CancellationToken ct)
     {
-        if (source.SourceType != SourceType.Notion || configuration is null)
+        if (configuration is null)
             return null;
 
-        var usable = configuration["token"] is JsonValue tv
-            && tv.TryGetValue<string>(out var token)
-            && token.Length > 0 && token != "***";
-        if (usable)
-            return null;
+        if (source.SourceType == SourceType.Notion)
+        {
+            var usable = configuration["token"] is JsonValue tv
+                && tv.TryGetValue<string>(out var token)
+                && token.Length > 0 && token != "***";
+            if (usable)
+                return null;
+            return await secrets.GetAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct) is null
+                ? "Configuration key 'token' is required for Notion — no stored token for this source"
+                : null;
+        }
 
-        return await secrets.GetAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct) is null
-            ? "Configuration key 'token' is required for Notion — no stored token for this source"
-            : null;
+        if (source.SourceType is SourceType.AwsS3 or SourceType.OciStorage)
+        {
+            if (UsableSecret(configuration, "secretAccessKey"))
+                return null;
+            return await secrets.GetAsync(CloudSecretKey(source.SourceType, source.Id), ct) is null
+                ? $"Configuration key 'secretAccessKey' is required for {source.SourceType} — no stored secret for this source"
+                : null;
+        }
+
+        if (source.SourceType == SourceType.AzureFiles)
+        {
+            if (UsableSecret(configuration, "connectionString") || UsableSecret(configuration, "accountKey"))
+                return null;
+            return await secrets.GetAsync(CloudSecretKey(source.SourceType, source.Id), ct) is null
+                ? "A 'connectionString' or 'accountKey' is required for AzureFiles — no stored secret for this source"
+                : null;
+        }
+
+        return null;
+    }
+
+    private static bool UsableSecret(JsonObject configuration, string key) =>
+        configuration[key] is JsonValue v
+        && v.TryGetValue<string>(out var s)
+        && s.Length > 0 && s != "***";
+
+    /// <summary>Secret-store key for a cloud source — one slot per source.</summary>
+    private static string CloudSecretKey(SourceType type, Guid sourceId) => type switch
+    {
+        SourceType.AwsS3 => $"s3:{sourceId}",
+        SourceType.AzureFiles => $"azure:{sourceId}",
+        SourceType.OciStorage => $"oci:{sourceId}",
+        _ => throw new ArgumentOutOfRangeException(nameof(type))
+    };
+
+    /// <summary>All secret-store keys a source type may hold (delete cleanup).</summary>
+    private static IEnumerable<string> CloudSecretKeys(SourceType type, Guid sourceId)
+    {
+        if (type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+            yield return CloudSecretKey(type, sourceId);
     }
 
     /// <summary>Moves the connector's secret field to the encrypted store —
@@ -165,33 +221,85 @@ public sealed class KnowledgeSourceService(
             SourceType.Notion => ("token", Ingestion.Connectors.NotionConnector.SecretKey(source.Id)),
             _ => (null, null)
         };
-        if (configKey is null || secretKey is null || configuration is null)
-            return;
-
-        var config = JsonNode.Parse(source.ConfigurationJson ?? "{}") as JsonObject ?? new JsonObject();
-        config.Remove(configKey);
-
-        if (configuration.TryGetPropertyValue(configKey, out var keyNode)
-            && keyNode?.GetValue<string>() is { } key
-            && key != "***")
+        if (configKey is not null && secretKey is not null && configuration is not null)
         {
-            if (key.Length == 0)
+            var singleConfig = JsonNode.Parse(source.ConfigurationJson ?? "{}") as JsonObject ?? new JsonObject();
+            singleConfig.Remove(configKey);
+
+            if (configuration.TryGetPropertyValue(configKey, out var keyNode)
+                && keyNode?.GetValue<string>() is { } key
+                && key != "***")
             {
-                await secrets.RemoveAsync(secretKey, ct);
-                config["hasKey"] = false;
+                if (key.Length == 0)
+                {
+                    await secrets.RemoveAsync(secretKey, ct);
+                    singleConfig["hasKey"] = false;
+                }
+                else
+                {
+                    await secrets.SetAsync(secretKey, key, ct);
+                    singleConfig["hasKey"] = true;
+                }
             }
             else
             {
-                await secrets.SetAsync(secretKey, key, ct);
-                config["hasKey"] = true;
+                singleConfig["hasKey"] = await secrets.GetAsync(secretKey, ct) is not null;
             }
-        }
-        else
-        {
-            config["hasKey"] = await secrets.GetAsync(secretKey, ct) is not null;
+
+            source.ConfigurationJson = singleConfig.ToJsonString();
+            return;
         }
 
-        source.ConfigurationJson = config.ToJsonString();
+        // SPEC-20260924-cloud-storage-connectors RF-006: cloud credential fields
+        // move to the encrypted store — AzureFiles packs both optional fields
+        // into a JSON payload under one slot.
+        if (source.SourceType is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage
+            && configuration is not null)
+        {
+            var fields = source.SourceType == SourceType.AzureFiles
+                ? new[] { "connectionString", "accountKey" }
+                : new[] { "secretAccessKey" };
+            var cloudKey = CloudSecretKey(source.SourceType, source.Id);
+            var config = JsonNode.Parse(source.ConfigurationJson ?? "{}") as JsonObject ?? new JsonObject();
+            foreach (var f in fields)
+                config.Remove(f);
+
+            var changed = fields.Any(f =>
+                configuration.TryGetPropertyValue(f, out var n)
+                && n?.GetValue<string>() is { } v && v != "***");
+            if (changed)
+            {
+                var payload = new JsonObject();
+                var anyValue = false;
+                foreach (var f in fields)
+                {
+                    if (configuration.TryGetPropertyValue(f, out var n)
+                        && n?.GetValue<string>() is { } fv
+                        && fv != "***" && fv.Length > 0)
+                    {
+                        payload[f] = fv;
+                        anyValue = true;
+                    }
+                }
+                if (anyValue)
+                {
+                    await secrets.SetAsync(cloudKey,
+                        source.SourceType == SourceType.AzureFiles ? payload.ToJsonString() : payload[fields[0]]!.GetValue<string>(), ct);
+                    config["hasKey"] = true;
+                }
+                else
+                {
+                    await secrets.RemoveAsync(cloudKey, ct);
+                    config["hasKey"] = false;
+                }
+            }
+            else
+            {
+                config["hasKey"] = await secrets.GetAsync(cloudKey, ct) is not null;
+            }
+
+            source.ConfigurationJson = config.ToJsonString();
+        }
     }
 
     /// <summary>Catalog mutations must never fail the REST call — notification is best-effort.</summary>
