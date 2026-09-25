@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `System.Diagnostics.ActivitySource`, `OpenTelemetry` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Approved` |
 | Origem | análise de observabilidade 2026-09-25 |
 
 ## 1. User Story

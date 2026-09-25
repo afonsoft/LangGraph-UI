@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `Blazor WASM`, `Bootstrap 5 grid`, `BootstrapBlazor` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `InProgress` |
+| Status | `Done` |
 | Origem | pedido do usuário 2026-09-26 |
 
 ## 1. User Story
