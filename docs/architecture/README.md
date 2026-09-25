@@ -18,6 +18,9 @@ Architecture deliverables for KnowledgeHub. Source of truth for decisions:
 | [AD-0008](AD-0008-prompt-injection-guard.md) | Prompt-injection guard (flag, exclude, provenance) |
 | [AD-0009](AD-0009-opentelemetry-observability.md) | OpenTelemetry metrics/traces, opt-in OTLP/Prometheus |
 | [AD-0010](AD-0010-upstream-mcp-proxies.md) | Upstream MCP proxies with encrypted per-scope secrets |
+| [AD-0011](AD-0011-async-ingestion-queue.md) | Persisted async ingestion queue (202+jobId, cancel, selective reindex) |
+| [AD-0012](AD-0012-hybrid-cache-l1l2-invalidation.md) | Hybrid L1/L2 cache, per-region TTLs, `kh:invalidate` pub/sub |
+| [AD-0013](AD-0013-env-composed-postgres-vector-store.md) | `.env`-composed `POSTGRES_*` connection string for external/host pgvector |
 
 ## Diagrams
 

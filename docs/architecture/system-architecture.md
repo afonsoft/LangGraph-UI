@@ -1,6 +1,6 @@
 # KnowledgeHub — System Architecture
 
-All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP in hybrid session mode — `initialize` clients get sessions, `2026-07-28` clients are served statelessly — plus legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, document files, Notion, REST APIs, SQL) with **GraphRAG** entity/relation extraction, prompt-injection defense, partitioned rate limiting, and OpenTelemetry observability.
+All-in-one standalone .NET 10 platform: a **single Kestrel process** serves the Blazor WebAssembly admin SPA, the REST management API, a native **MCP server** (Streamable HTTP in hybrid session mode — `initialize` clients get sessions, `2026-07-28` clients are served statelessly — plus legacy HTTP/SSE) and a SignalR monitor hub. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, document files, Notion, REST APIs, SQL, cloud storage — AWS S3, Azure Files, OCI Object Storage, Google Drive) ingested through a **persisted async job queue**, with **GraphRAG** entity/relation extraction, prompt-injection defense, partitioned rate limiting, hybrid L1/L2 distributed cache, structured Serilog logging, and OpenTelemetry observability.
 
 > Source of truth: `.specs/` (SPEC-*, all `Done`). Diagram sources: `*.mmd` (Mermaid) + `knowledge-hub-architecture.drawio` (editable XML). Decisions: `AD-*.md` in this directory.
 
@@ -24,13 +24,16 @@ flowchart TB
         AUTH["Auth<br/>cookie session + aft_* API keys"]
         RL["Rate limiter<br/>key → user → IP partitions"]
         CAT["DynamicToolCatalog<br/>IToolProviders (live)"]
+        QUEUE["IngestionQueue +<br/>IngestionWorker<br/>persisted jobs · cancel · reindex"]
         ING["IngestionService<br/>connectors · chunkers · watcher"]
         SEC["ContentSanitizer<br/>prompt-injection scan"]
         GRAPH["EntityExtractor +<br/>IKnowledgeGraphStore"]
-        SRCH["SearchService<br/>hybrid FTS5+vector RRF<br/>rewrite · rerank · filters"]
+        SRCH["SearchService<br/>FTS5+vector RRF · MMR · corrective<br/>expand · contextExpand · useGraph"]
         ANS["AnswerService /<br/>AgentService<br/>(bounded SSE, HITL)"]
         EMB["IEmbeddingProvider<br/>deterministic · ollama · openai · onnx"]
         VEC["IVectorStore<br/>sqlite · sqlite-vec · pgvector"]
+        CACHE["HybridCache L1→L2<br/>region TTLs · kh:invalidate"]
+        LOG["Serilog<br/>request log · file sink<br/>redaction · LogLevelSwitch"]
         TEL["OpenTelemetry<br/>metrics + traces"]
         FEED["IMcpActivityFeed<br/>ring buffer 500"]
     end
@@ -44,6 +47,7 @@ flowchart TB
 
     UP["Upstream MCP<br/>DeepWiki · Firecrawl · Tavily · Context7"]
     LLM["AI endpoints<br/>Ollama · OpenAI-compat"]
+    CLOUD["Cloud storage<br/>AWS S3 · Azure Files · OCI · Google Drive"]
 
     UI -->|HTTPS+WS| SPA
     UI -->|REST| API
@@ -64,32 +68,40 @@ flowchart TB
     CAT --> GRAPH
     API --> SRCH
     API --> ANS
-    API --> ING
+    API --> QUEUE
+    QUEUE --> ING
     ING --> SEC
     ING --> EMB
     ING --> GRAPH
     ING --> VAULT
+    ING --> CLOUD
     ING --> VEC
+    ING --> SQL
     SRCH --> VEC
+    SRCH -.-> CACHE
+    EMB -.-> CACHE
     ANS --> SRCH
     ANS --> LLM
     EMB --> LLM
     VEC --> SQL
     GRAPH --> SQL
+    QUEUE --> SQL
     VEC --> PG
-    VEC -.-> REDIS
+    CACHE -.-> REDIS
     CAT -.->|upstream tools passthrough| UP
     API --> TEL
     MCP --> TEL
+    API -.-> LOG
+    MCP -.-> LOG
 
     classDef client fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     classDef core fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:darkgreen
     classDef store fill:#f5f5f5,stroke:#666666,stroke-width:2px,color:black
     classDef ext fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#7f4d00
     class UI,CUR,AG client
-    class SPA,API,MCP,HUB,AUTH,RL,CAT,ING,SEC,GRAPH,SRCH,ANS,EMB,VEC,TEL,FEED core
+    class SPA,API,MCP,HUB,AUTH,RL,CAT,QUEUE,ING,SEC,GRAPH,SRCH,ANS,EMB,VEC,CACHE,LOG,TEL,FEED core
     class SQL,PG,VAULT,REDIS store
-    class UP,LLM ext
+    class UP,LLM,CLOUD ext
 ```
 
 | Layer | Component | Responsibility |
@@ -105,20 +117,23 @@ flowchart TB
 | | `ContentSanitizer` | Heuristic injection scan at ingest → `DocumentChunk.SuspicionFlags` + `security_events`; exclusion default-on |
 | | Source authorization | Per-key `AllowedSourceIdsJson`/`AllowedToolsJson` enforcement in `SearchService` |
 | Core | `DynamicToolCatalog` | Live tool resolution per `tools/list`; `IToolCatalogChangeNotifier` pushes `tools/list_changed` |
-| | `IngestionService` | Connector → chunker (markdown/code/config) → injection scan → embed → vector upsert → optional graph extraction |
-| | `SearchService` | Hybrid FTS5 + vector (RRF), optional query rewriting + LLM reranker, metadata filters, source authz, flagged-chunk exclusion |
+| | `IngestionQueue` + `IngestionWorker` | Persisted async sync jobs (`202+jobId`) — per-doc counters, cancel, selective reindex by chunker version, auto-sync routed through the queue |
+| | `IngestionService` | Connector (Obsidian/WebDAV, web, docs, Notion, REST, SQL, S3, Azure Files, OCI, Google Drive) → chunker (markdown/code/config, semantic opt-in) → injection scan → embed → vector upsert → optional graph extraction |
+| | `SearchService` | Hybrid FTS5 + vector (RRF), MMR + per-doc quota + score floor, corrective-RAG, query rewriting + expansion (multi-query/HyDE) + LLM reranker, contextual enrichment + `contextExpand`, `useGraph` arm, metadata filters, source authz, flagged-chunk exclusion |
 | | `AnswerService` / `AgentService` | LLM synthesis with `[n]` citations; agent loop with tool-calling, HITL approvals, bounded SSE, conversation threads + summarization |
 | | `EntityExtractor` + `IKnowledgeGraphStore` | LLM entity/relation extraction → `KgNodes`/`KgEdges`/`KgAliases` (SQLite adjacency); tools `find_dependencies`/`find_dependents`/`find_path`/`analyze_impact` |
 | | `IEmbeddingProvider` | `deterministic` · `ollama` · `openai` · `onnx` (local all-MiniLM-L6-v2) |
 | | `IVectorStore` | `sqlite` (chunk columns) · `sqlite-vec` (KNN) · `postgres`/pgvector (HNSW, batched upserts, metadata jsonb) |
 | | `EvalRunner` | Versioned eval datasets → Recall@K / P@K / MRR / faithfulness reports |
-| | `IDistributedCache` | `memory` (default) · `redis`; search/embedding/answer cache regions |
+| | `IDistributedCache` | `memory` (default) · `redis` — hybrid L1(in-process)→L2(Redis), per-region TTLs, `mcp:tool` region, pub/sub invalidation (`kh:invalidate`) |
+| | Serilog | Structured request logging (health/static → Debug, 5xx → Error, `x-request-id`), daily rolling file sink (14 d) + opt-in OTLP sink, secret redaction (`***REDACTED***`), runtime `LoggingLevelSwitch` via `/api/settings/log-level` (auto-reset 0–120 min) |
 | | `IMcpActivityFeed` | Ring buffer (500) → SignalR broadcast |
 | | Telemetry | `System.Diagnostics` `Meter`/`ActivitySource` → OTLP/Prometheus opt-in |
 | Storage | SQLite `knowledgehub.db` | Catalog, documents, chunks (FTS5), vectors (default), knowledge graph, settings, eval runs, security events — beside the executable |
-| | PostgreSQL + pgvector | Optional vector backend (catalog stays in SQLite) |
+| | PostgreSQL + pgvector | Optional vector backend (catalog stays in SQLite) — HNSW, `halfvec` storage, iterative filtered scans; host/external instances reached via `.env`-composed `POSTGRES_*` connection string |
 | | Redis | Optional `IDistributedCache` backend |
 | External | Upstream MCP proxies | DeepWiki (public + private), Firecrawl, Tavily, Context7 — secrets encrypted at rest |
+| | Cloud storage | AWS S3, Azure Files, OCI Object Storage (S3-compatible), Google Drive — staged ingestion with ETag diffs, secrets in the integration-secret store |
 | | Ollama / OpenAI-compat | Chat + embedding generation endpoints (HTTP resilience: retry + circuit breaker) |
 
 ## 2. MCP request flow (tools/call)
@@ -203,12 +218,21 @@ flowchart LR
     subgraph Host["Single host (container or bare binary)"]
         EXE["KnowledgeHub<br/>single-file binary or<br/>knowledgehub:latest image"]
         DB[("knowledgehub.db<br/>./data volume")]
+        LOGV[("./logs volume<br/>Serilog file sink")]
         EXT["%TMP%/.net extraction<br/>native libs"]
-        CFG["appsettings.json + env vars<br/>(__ nesting) + .env"]
+        CFG["appsettings.json + env vars<br/>(__ nesting) + .env (env_file)"]
         EXE --> DB
+        EXE --> LOGV
         EXE -.->|self-extract| EXT
         CFG -.->|config| EXE
     end
+
+    subgraph HostSvc["Host / external services (opt-in)"]
+        PG2[("PostgreSQL + pgvector<br/>POSTGRES_* in .env<br/>host.docker.internal")]
+        RDS[("Redis<br/>REDIS_CONNECTIONSTRING")]
+    end
+    EXE -.->|"VectorStore__*"| PG2
+    EXE -.->|"Cache__*"| RDS
 
     DEV["docker compose build<br/>or dotnet publish -r <RID>"] -->|produces| EXE
 
@@ -227,11 +251,12 @@ flowchart LR
     classDef data fill:#f5f5f5,stroke:#666666,stroke-width:2px,color:black
     classDef net fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     class EXE bin
-    class DB,EXT,CFG data
+    class DB,LOGV,EXT,CFG,PG2,RDS data
     class R1,R2,R3,R4,R5,R6,R7 net
 ```
 
-- `docker compose up -d` builds `knowledgehub:latest`; `./data` persists SQLite + uploads; EF migrations run at startup (`DatabaseMigrator`).
+- `docker compose up -d` builds `knowledgehub:latest`; `./data` persists SQLite + uploads, `./logs` persists the Serilog file sink (pre-create both as uid 1654); EF migrations run at startup (`DatabaseMigrator`).
+- `docker-compose.yml` reads `.env` (`env_file`, `required: false`); `VectorStore__ConnectionString` is composed from `POSTGRES_HOST/PORT/DB/USER/PASSWORD` (`VECTORSTORE_CONNECTIONSTRING` wins when set). Host Postgres needs `pgvector` installed + a `pg_hba.conf` rule for the container subnet.
 - `dotnet publish -r <RID>` produces a single-file self-contained binary; `install.sh --host --systemd` installs a hardened systemd unit.
 - `backup.sh`/`restore.sh` cover SQLite + uploads.
 
@@ -268,6 +293,8 @@ flowchart LR
   "Security":    { "Injection": { "ExcludeFlagged": true } },
   "Graph":       { "Enabled": true, "MaxChunksPerSync": 200,
                    "MaxChunkChars": 2000, "MaxResults": 200 },
+  "Ingestion":   { "QueueSize": 100, "MaxTokens": 500, "OverlapTokens": 50,
+                   "Semantic": { "BreakpointPercentile": 95 } },
   "Telemetry":   { "Otlp": { "Endpoint": "" }, "Metrics": { "Prometheus": false } },
   "Mcp":         { "SessionMode": "StatefulForInitializeClients",
                    "MaxConcurrentCallsPerSession": 8, "ActivityFeedCapacity": 500 },
@@ -280,7 +307,7 @@ flowchart LR
 }
 ```
 
-Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), **runtime log level** (`/api/settings/log-level`, `minutes` 0–120), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
+Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Embeddings** (`/api/settings/embeddings` — provider swap with drain + model stamping), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), **runtime log level** (`/api/settings/log-level`, `minutes` 0–120), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
 
 Security boundaries: source configs are **redacted** in API responses; vault paths reject `..`; `AllowedHosts` restricted to localhost; secrets live in env vars or the encrypted `IntegrationSecrets` store; embedding model changes are detected via `EmbeddingModel` stamping so stale vectors are never mixed.
 
