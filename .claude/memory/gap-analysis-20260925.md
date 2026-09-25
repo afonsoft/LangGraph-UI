@@ -84,3 +84,17 @@ Suite: 613 unit + 229 integration green.
   switch. OTel: pipeline RAG sem spans.
 - Prioridade sugerida: pgvector-source-cascade (bug) > request-logging >
   redis-health > hybrid-cache > region-ttl > resto.
+
+## Incident (2026-09-25/26): KgAliases UNIQUE violation — 465 docs falhos
+
+- Root cause dupla: (a) conflict-alias loop em ResolveNodeAsync sem check de
+  existência (entidade ganhando 3º tipo re-inseria par já salvo); (b) graph
+  store compartilhava o DbContext do sync — entries Added inválidas
+  envenenavam o tracker e toda SaveChanges posterior re-falhava.
+- Fix (PR #191, 4c929c4): AliasExistsOrPendingAsync (DB + tracker) nos dois
+  branches; ExtractGraphAsync com scope dedicado; warnings com
+  GetBaseException().Message; IngestionJob.WarningsJson (migration) +
+  warnings[] na API + popup agrupado por causa; job.Error com digest real.
+- Pós-deploy: autosync em curso com 0 failed (8 proc/355 skip) — bug morto.
+- Lição: qualquer catch que engole DbUpdateException num contexto
+  compartilhado deve detachar os Added pendentes — ou isolar o scope.
