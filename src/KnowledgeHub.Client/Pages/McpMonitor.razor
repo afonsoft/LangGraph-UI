@@ -49,32 +49,83 @@
                         @foreach (var s in _sessions)
                         {
                             <li class="list-group-item">
-                                <div><code>@s.Key</code></div>
-                                <small class="text-muted">desde @s.Value.LocalDateTime.ToString("T")</small>
+                                <div><code title="@s.Key">@ShortId(s.Key)</code></div>
+                                <small class="text-muted">
+                                    @(s.Value.Caller ?? "anônimo") · desde @s.Value.ConnectedAt.LocalDateTime.ToString("T")
+                                    (@FormatAge(DateTimeOffset.UtcNow - s.Value.ConnectedAt))
+                                </small>
                             </li>
                         }
                     </ul>
                 }
             </BodyTemplate>
         </Card>
+
+        @* SPEC-20260925-mcp-monitor-audit: resumo agregado do feed em buffer. *@
+        <Card class="mt-3">
+            <HeaderTemplate>Resumo (buffer)</HeaderTemplate>
+            <BodyTemplate>
+                <div class="row small text-center">
+                    <div class="col-4"><strong>@_activity.Count</strong><br />eventos</div>
+                    <div class="col-4"><strong class="text-success">@OkCount</strong><br />ok</div>
+                    <div class="col-4"><strong class="text-danger">@ErrorCount</strong><br />erros</div>
+                </div>
+                @if (AvgMs is { } avg)
+                {
+                    <div class="small text-muted mt-2">latência média: @avg.ToString("F0")ms</div>
+                }
+                @if (TopTools.Count > 0)
+                {
+                    <div class="mt-2">
+                        <div class="small text-muted mb-1">tools mais chamadas:</div>
+                        @foreach (var t in TopTools)
+                        {
+                            <Badge Color="Color.Secondary" class="me-1 mb-1">@t.Key (@t.Value)</Badge>
+                        }
+                    </div>
+                }
+                <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-file-csv"
+                        Text="Exportar CSV" IsDisabled="_activity.Count == 0"
+                        OnClick="ExportCsvAsync" class="mt-2" />
+            </BodyTemplate>
+        </Card>
     </div>
     <div class="col-12 col-lg-8">
         <Card>
-            <HeaderTemplate>Atividade (@_activity.Count)</HeaderTemplate>
+            <HeaderTemplate>Atividade (@FilteredActivity.Count() de @_activity.Count)</HeaderTemplate>
             <BodyTemplate>
+                @* SPEC-20260925-mcp-monitor-audit: filtros de auditoria. *@
+                <div class="d-flex gap-2 mb-2 flex-wrap">
+                    <select class="form-select form-select-sm" style="max-width:170px" @bind="_kindFilter">
+                        <option value="">tipo: todos</option>
+                        <option value="ToolCall">tools/call</option>
+                        <option value="Request">requests</option>
+                        <option value="Approval">aprovações</option>
+                        <option value="Session">sessões</option>
+                    </select>
+                    <select class="form-select form-select-sm" style="max-width:140px" @bind="_outcomeFilter">
+                        <option value="">resultado: todos</option>
+                        <option value="ok">somente ok</option>
+                        <option value="erro">somente erros</option>
+                    </select>
+                    <input class="form-control form-control-sm" style="max-width:240px"
+                           placeholder="buscar método/detalhe/quem…" @bind="_textFilter" @bind:event="oninput" />
+                </div>
                 <div style="max-height: 480px; overflow-y: auto;">
                     <div class="table-responsive-wrapper">
                         <table class="table table-sm table-striped mb-0">
                         <thead>
-                            <tr><th>Hora</th><th>Método</th><th>Detalhe</th><th>ms</th><th></th></tr>
+                            <tr><th>Hora</th><th>Quem</th><th>Sessão</th><th>Método</th><th>Detalhe</th><th>ms</th><th></th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var a in _activity.AsEnumerable().Reverse())
+                            @foreach (var a in FilteredActivity)
                             {
                                 <tr>
-                                    <td>@a.Timestamp.LocalDateTime.ToString("T")</td>
+                                    <td class="text-nowrap">@a.Timestamp.LocalDateTime.ToString("T")</td>
+                                    <td class="small">@(a.Caller ?? "—")</td>
+                                    <td class="small"><code title="@a.SessionId">@(a.SessionId is null ? "—" : ShortId(a.SessionId))</code></td>
                                     <td><code>@a.Method</code></td>
-                                    <td>@a.Detail</td>
+                                    <td class="small">@a.Detail</td>
                                     <td>@(a.DurationMs?.ToString("F0") ?? "—")</td>
                                     <td>
                                         @if (a.Succeeded == true)
@@ -94,6 +145,10 @@
                     @if (_activity.Count == 0)
                     {
                         <div class="text-muted p-2">Aguardando chamadas MCP…</div>
+                    }
+                    else if (!FilteredActivity.Any())
+                    {
+                        <div class="text-muted p-2">Nenhum evento corresponde aos filtros.</div>
                     }
                 </div>
             </BodyTemplate>
@@ -143,11 +198,86 @@
 </Card>
 
 @code {
-    private readonly Dictionary<string, DateTimeOffset> _sessions = new();
+    private readonly Dictionary<string, McpMonitorReplay.SessionInfo> _sessions = new();
     private readonly List<McpMonitorEventDto> _activity = new();
     private const int MaxActivity = 200;
     private bool? _healthy;
     private bool _disposed;
+
+    // SPEC-20260925-mcp-monitor-audit: filter state.
+    private string _kindFilter = "";
+    private string _outcomeFilter = "";
+    private string _textFilter = "";
+
+    private IEnumerable<McpMonitorEventDto> FilteredActivity =>
+        _activity.AsEnumerable().Reverse().Where(MatchesFilters);
+
+    private bool MatchesFilters(McpMonitorEventDto a)
+    {
+        if (_kindFilter.Length > 0 && !a.Kind.StartsWith(_kindFilter, StringComparison.Ordinal))
+            return false;
+        if (_outcomeFilter == "ok" && a.Succeeded != true)
+            return false;
+        if (_outcomeFilter == "erro" && a.Succeeded != false)
+            return false;
+        if (_textFilter.Length > 0
+            && !(a.Method?.Contains(_textFilter, StringComparison.OrdinalIgnoreCase) == true
+                 || a.Detail?.Contains(_textFilter, StringComparison.OrdinalIgnoreCase) == true
+                 || a.Caller?.Contains(_textFilter, StringComparison.OrdinalIgnoreCase) == true))
+            return false;
+        return true;
+    }
+
+    private int OkCount => _activity.Count(a => a.Succeeded == true);
+    private int ErrorCount => _activity.Count(a => a.Succeeded == false);
+
+    private double? AvgMs =>
+        _activity.Where(a => a.DurationMs is not null).ToList() is { Count: > 0 } timed
+            ? timed.Average(a => a.DurationMs!.Value) : null;
+
+    private List<KeyValuePair<string, int>> TopTools => _activity
+        .Where(a => a.Kind == McpMonitorEventKind.ToolCall && a.Method is not null)
+        .GroupBy(a => a.Method!)
+        .OrderByDescending(g => g.Count())
+        .Take(5)
+        .Select(g => new KeyValuePair<string, int>(g.Key, g.Count()))
+        .ToList();
+
+    private static string ShortId(string id) =>
+        id.Length <= 8 ? id : $"{id[..8]}…";
+
+    private static string FormatAge(TimeSpan age) => age switch
+    {
+        { TotalMinutes: < 1 } => $"{age.TotalSeconds:F0}s",
+        { TotalHours: < 1 } => $"{age.TotalMinutes:F0}min",
+        _ => $"{age.TotalHours:F1}h"
+    };
+
+    /// <summary>SPEC-20260925-mcp-monitor-audit RF: CSV export of the filtered feed.</summary>
+    private async Task ExportCsvAsync()
+    {
+        var sb = new System.Text.StringBuilder("timestamp,kind,caller,sessionId,method,detail,durationMs,succeeded\n");
+        foreach (var a in FilteredActivity)
+        {
+            sb.Append(a.Timestamp.ToString("O")).Append(',')
+                .Append(a.Kind).Append(',')
+                .Append(CsvField(a.Caller)).Append(',')
+                .Append(CsvField(a.SessionId)).Append(',')
+                .Append(CsvField(a.Method)).Append(',')
+                .Append(CsvField(a.Detail)).Append(',')
+                .Append(a.DurationMs?.ToString("F0")).Append(',')
+                .Append(a.Succeeded).Append('\n');
+        }
+        await JS.InvokeVoidAsync("khDownload",
+            $"mcp-activity-{DateTime.Now:yyyyMMdd-HHmmss}.csv", sb.ToString());
+    }
+
+    private static string CsvField(string? v)
+    {
+        if (v is null) return "";
+        var esc = v.Replace("\"", "\"\"");
+        return esc.Contains(',') || esc.Contains('"') || esc.Contains('\n') ? $"\"{esc}\"" : esc;
+    }
 
     private string McpUrl => $"{Nav.BaseUri.TrimEnd('/')}/mcp";
     private string SseUrl => $"{Nav.BaseUri.TrimEnd('/')}/mcp/sse";
@@ -252,7 +382,7 @@
         };
         Monitor.SessionOpened += e =>
         {
-            _sessions[e.SessionId] = e.ConnectedAt;
+            _sessions[e.SessionId] = new McpMonitorReplay.SessionInfo(e.ConnectedAt, e.Caller);
             NotifyStateChanged();
         };
         Monitor.SessionClosed += e =>

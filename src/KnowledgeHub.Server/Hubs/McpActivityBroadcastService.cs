@@ -38,11 +38,11 @@ public sealed class McpActivityBroadcastService(
             {
                 case McpActivityKind.SessionOpened:
                     await hub.Clients.All.SendAsync("SessionOpened",
-                        new { sessionId = e.SessionId, connectedAt = e.Timestamp });
+                        new { sessionId = e.SessionId, connectedAt = e.Timestamp, caller = e.Caller });
                     break;
                 case McpActivityKind.SessionClosed:
                     await hub.Clients.All.SendAsync("SessionClosed",
-                        new { sessionId = e.SessionId });
+                        new { sessionId = e.SessionId, caller = e.Caller });
                     break;
                 default:
                     // SPEC-20260915-mcp-monitor-activity RF-002: shared mapper —

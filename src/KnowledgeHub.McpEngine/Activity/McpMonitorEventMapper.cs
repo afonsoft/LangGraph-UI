@@ -17,6 +17,7 @@ public static class McpMonitorEventMapper
         Method = e.ToolName is null ? e.Method : $"{e.Method}:{e.ToolName}",
         Detail = e.Error ?? e.Transport,
         DurationMs = e.DurationMs,
-        Succeeded = e.Succeeded
+        Succeeded = e.Succeeded,
+        Caller = e.Caller
     };
 }

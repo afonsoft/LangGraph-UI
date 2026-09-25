@@ -82,7 +82,7 @@ public class McpMonitorEventMapperTests
         using var doc = JsonDocument.Parse(json);
         var props = doc.RootElement.EnumerateObject().Select(p => p.Name).Order().ToList();
         Assert.Equal(
-            ["detail", "durationMs", "kind", "method", "sessionId", "succeeded", "timestamp"],
+            ["caller", "detail", "durationMs", "kind", "method", "sessionId", "succeeded", "timestamp"],
             props);
     }
 }

@@ -10,9 +10,12 @@ namespace KnowledgeHub.Client.Services;
 /// </summary>
 public static class McpMonitorReplay
 {
+    /// <summary>Session row state — connect time + authenticated caller.</summary>
+    public sealed record SessionInfo(DateTimeOffset ConnectedAt, string? Caller);
+
     public static void Apply(
         McpMonitorEventDto e,
-        IDictionary<string, DateTimeOffset> sessions,
+        IDictionary<string, SessionInfo> sessions,
         IList<McpMonitorEventDto> activity,
         int maxActivity)
     {
@@ -20,7 +23,7 @@ public static class McpMonitorReplay
         {
             case McpMonitorEventKind.SessionOpened:
                 if (e.SessionId is not null)
-                    sessions[e.SessionId] = e.Timestamp;
+                    sessions[e.SessionId] = new SessionInfo(e.Timestamp, e.Caller);
                 break;
             case McpMonitorEventKind.SessionClosed:
                 if (e.SessionId is not null)
