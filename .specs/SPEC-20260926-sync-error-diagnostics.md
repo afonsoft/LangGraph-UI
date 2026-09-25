@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Server` (IngestionService, IngestionWorker), `KnowledgeHub.Shared` (SyncResultDto), `KnowledgeHub.Client` (Sources card) |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` — aprovada pelo owner 2026-09-26 |
+| Status | `Done` |
 | Ticket | BUG-sync-generic-error-message |
 | Origem | fonte "Knowledge" exibe `LastError` = "An error occurred while saving the entity changes. See the inner exception for details." — mensagem inútil persistida |
 

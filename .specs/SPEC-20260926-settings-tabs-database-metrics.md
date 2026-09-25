@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Client` (Settings.razor, SettingsApiClient), `KnowledgeHub.Server` (SettingsEndpoints/DiagnosticsEndpoints), `KnowledgeHub.Shared` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` — aprovada pelo owner 2026-09-26 |
+| Status | `Done` |
 | Ticket | GAP-UX-settings-tabs (user request 2026-09-26) |
 | Origem | pedido direto do usuário — settings monolítica + visibilidade de banco |
 
