@@ -8,7 +8,7 @@
 | Stack | `Blazor WASM`, `BootstrapBlazor`, `app.css`, `IngestionJobs` API |
 | Repository | `afonsoft/LangGraph-UI` |
 | Branch | `feature/Devin-20260924-sources-grid-ux` |
-| Status | `In implementation` |
+| Status | `Done` |
 | Ticket | — |
 | Origem | feedback de UX do operador — grid "Fontes de conhecimento" |
 
