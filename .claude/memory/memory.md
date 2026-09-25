@@ -28,4 +28,5 @@ Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
 - pg_hba.conf: adicionado `host rag_db rag_user 172.22.0.0/16 md5` (subnet langgraph-ui_default; host-gateway resolve 172.17.0.1 mas client_ip é do container).
 - Branch `feature/Devin-20260925-postgres-vectorstore` (commit 3d072c3): compose `env_file: .env` (required:false) + `VectorStore__ConnectionString` composta de POSTGRES_*; install.sh idem; .env.example documenta.
 - **Bug real achado**: `PostgresVectorStore.SearchAsync` commitava tx com reader aberto → Npgsql 10 `OperationInProgress` em TODA busca. Fix: `await using` no reader antes do Commit. `/health/ready` Healthy pós-redeploy.
-- Pendente: `kh_embeddings` vazia — embeddings legados estão no SQLite; precisa reindex das fontes (UI/API) para popular pgvector. PR não aberto ainda.
+- Resolvido: 2136 embeddings migrados do SQLite (`Chunks`, float32 LE) para `kh_embeddings` via TSV — model `deterministic:hash384`, dims 384, metadata no formato do IngestionService. HNSW auto-criado (2136 > threshold 1000, `vector_cosine_ops` m=16/ef=64). PR #227 squash-merged (`2edd0ae`).
+- Pós-verificado (sessão seguinte): `/health/ready` Healthy, "Embedding store OK (2136 chunks)", 961 testes verdes, counts rag_db == SQLite (2136/2136), 7 índices presentes.
