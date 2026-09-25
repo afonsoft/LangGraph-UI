@@ -46,12 +46,20 @@ DB_PATH="${DB_PATH:-$DATA_DIR/knowledgehub.db}"
 stop_service() {
     if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' | grep -qx knowledgehub; then
         echo "==> Stopping docker container knowledgehub"
-        docker stop knowledgehub
+        # RF-703 (SPEC-20260926-review-backlog-remediation): a FAILED stop must
+        # abort the restore — overwriting a live SQLite risks corruption.
+        if ! docker stop knowledgehub; then
+            echo "ERROR: could not stop container — refusing to restore over a live database" >&2
+            exit 1
+        fi
         return 0
     fi
     if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files knowledgehub.service >/dev/null 2>&1; then
         echo "==> Stopping systemd unit knowledgehub.service"
-        sudo systemctl stop knowledgehub.service || true
+        if ! sudo systemctl stop knowledgehub.service; then
+            echo "ERROR: could not stop service — refusing to restore over a live database" >&2
+            exit 1
+        fi
         return 0
     fi
     echo "warn: no knowledgehub container/service found — restore is file-only" >&2

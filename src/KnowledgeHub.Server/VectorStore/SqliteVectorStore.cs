@@ -75,37 +75,50 @@ public sealed class SqliteVectorStore(KnowledgeHubDbContext db) : IVectorStore
         if (topK <= 0)
             return [];
 
-        var query = db.Chunks
+        // RF-401 (SPEC-20260926-review-backlog-remediation): the scoped
+        // DbContext cannot serve the N concurrent expansion calls — serialize
+        // on the connection's gate (a dedicated connection wouldn't help; it
+        // is the DbContext itself that disallows concurrent operations).
+        var gate = Data.SqliteConnectionLease.GateFor(db.Database.GetDbConnection());
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var query = db.Chunks
             .Where(c => c.Embedding != null && c.EmbeddingModel == model)
             .Join(db.Documents, c => c.KnowledgeDocumentId, d => d.Id, (c, d) => new { c.Id, c.Embedding, d.KnowledgeSourceId });
 
-        if (sourceIds is { Count: > 0 })
-            query = query.Where(x => sourceIds.Contains(x.KnowledgeSourceId));
-        else if (sourceIds is { Count: 0 })
-            return [];
+            if (sourceIds is { Count: > 0 })
+                query = query.Where(x => sourceIds.Contains(x.KnowledgeSourceId));
+            else if (sourceIds is { Count: 0 })
+                return [];
 
-        // SPEC-20260916-performance-memory-cache RF-002: stream rows instead of
-        // materializing every embedding BLOB, and keep a bounded min-heap of the
-        // top-K hits — peak memory is O(topK·dims), not O(N·dims + N·blobBytes).
-        var heap = new PriorityQueue<VectorHit, double>(topK);
-        await foreach (var row in query.AsNoTracking().AsAsyncEnumerable().WithCancellation(cancellationToken))
-        {
-            var score = EmbeddingVectorCodec.CosineSimilarity(queryVector, row.Embedding!);
-            if (heap.Count < topK)
+            // SPEC-20260916-performance-memory-cache RF-002: stream rows instead of
+            // materializing every embedding BLOB, and keep a bounded min-heap of the
+            // top-K hits — peak memory is O(topK·dims), not O(N·dims + N·blobBytes).
+            var heap = new PriorityQueue<VectorHit, double>(topK);
+            await foreach (var row in query.AsNoTracking().AsAsyncEnumerable().WithCancellation(cancellationToken))
             {
-                heap.Enqueue(new VectorHit(row.Id, score), score);
+                var score = EmbeddingVectorCodec.CosineSimilarity(queryVector, row.Embedding!);
+                if (heap.Count < topK)
+                {
+                    heap.Enqueue(new VectorHit(row.Id, score), score);
+                }
+                else if (score > heap.Peek().Score)
+                {
+                    heap.Dequeue();
+                    heap.Enqueue(new VectorHit(row.Id, score), score);
+                }
             }
-            else if (score > heap.Peek().Score)
-            {
-                heap.Dequeue();
-                heap.Enqueue(new VectorHit(row.Id, score), score);
-            }
+
+            var hits = new List<VectorHit>(heap.Count);
+            while (heap.TryDequeue(out var hit, out _))
+                hits.Add(hit);
+            hits.Sort(static (a, b) => b.Score.CompareTo(a.Score));
+            return hits;
         }
-
-        var hits = new List<VectorHit>(heap.Count);
-        while (heap.TryDequeue(out var hit, out _))
-            hits.Add(hit);
-        hits.Sort(static (a, b) => b.Score.CompareTo(a.Score));
-        return hits;
+        finally
+        {
+            gate.Release();
+        }
     }
 }

@@ -14,6 +14,9 @@ public static class MarkdownChunker
 
     public static IReadOnlyList<string> Chunk(string body, int maxTokens = 500, int overlapTokens = 50)
     {
+        // RF-207: maxTokens=0 makes the hard-split increment 0 → infinite loop.
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxTokens, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(overlapTokens);
         if (string.IsNullOrWhiteSpace(body))
             return [];
 

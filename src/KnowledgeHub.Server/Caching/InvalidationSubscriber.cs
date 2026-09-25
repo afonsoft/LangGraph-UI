@@ -11,24 +11,44 @@ public sealed class InvalidationSubscriber : BackgroundService
     private readonly ICacheInvalidationBus _bus;
     private readonly Microsoft.Extensions.Caching.Distributed.IDistributedCache _cache;
     private readonly ICacheManagerService? _manager;
+    private readonly Settings.IEmbeddingSettingsService? _embeddingSettings;
     private readonly ILogger<InvalidationSubscriber> _logger;
 
     public InvalidationSubscriber(
         ICacheInvalidationBus bus,
         Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
         ILogger<InvalidationSubscriber> logger,
-        ICacheManagerService? manager = null)
+        ICacheManagerService? manager = null,
+        Settings.IEmbeddingSettingsService? embeddingSettings = null)
     {
         _bus = bus;
         _cache = cache;
         _manager = manager;
+        _embeddingSettings = embeddingSettings;
         _logger = logger;
         _bus.Received += OnReceived;
     }
 
     private void OnReceived(object? sender, string topic)
     {
-        if (_cache is not L1L2Cache l1)
+        var l1 = _cache as L1L2Cache;
+
+        // RF-301 (SPEC-20260926-review-backlog-remediation): the tracked-L2
+        // cleanup must run regardless of cache TYPE — with L1Enabled=false the
+        // cache is Redis-backed and the early return left replica keys alive.
+        if (topic == "cache-clear" && _manager is not null)
+            _ = ClearTrackedSafeAsync();
+
+        // RF-606: another replica changed embedding settings — drop this
+        // instance's snapshot so the next resolve re-reads its local store
+        // and operators see a staleness signal.
+        if (topic == "settings-changed" && _embeddingSettings is not null)
+        {
+            _embeddingSettings.Invalidate();
+            _logger.LogInformation("settings-changed on another replica — embedding settings snapshot invalidated");
+        }
+
+        if (l1 is null)
             return; // no local tier to invalidate (memory provider: single process)
 
         switch (topic)
@@ -39,11 +59,6 @@ public sealed class InvalidationSubscriber : BackgroundService
                 break;
             case "cache-clear":
                 l1.InvalidateAllLocal();
-                // RF-004 (SPEC-20260926-cache-coherence-and-ttl): drop the keys
-                // THIS replica wrote to the shared L2 — otherwise the clear
-                // only emptied L1s and the next read repopulates stale data.
-                if (_manager is not null)
-                    _ = ClearTrackedSafeAsync();
                 _logger.LogInformation("remote cache-clear — L1 compacted, tracked L2 keys dropping");
                 break;
             default:

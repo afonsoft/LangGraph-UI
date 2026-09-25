@@ -36,14 +36,17 @@ public sealed class AsymmetricEmbeddingProvider : IEmbeddingProvider, IDisposabl
     public Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken = default) =>
         _inner.EmbedBatchAsync(texts, cancellationToken);
 
+    // RF-605 (SPEC-20260926-review-backlog-remediation): delegate to the
+    // INNER provider's role-aware methods — they carry input_type for
+    // OpenAI-compatible gateways; calling EmbedAsync silently dropped it.
     public Task<float[]> EmbedQueryAsync(string text, CancellationToken cancellationToken = default) =>
-        _inner.EmbedAsync(ApplyPrefix(_queryPrefix, text), cancellationToken);
+        _inner.EmbedQueryAsync(ApplyPrefix(_queryPrefix, text), cancellationToken);
 
     public Task<float[]> EmbedDocumentAsync(string text, CancellationToken cancellationToken = default) =>
-        _inner.EmbedAsync(ApplyPrefix(_documentPrefix, text), cancellationToken);
+        _inner.EmbedDocumentAsync(ApplyPrefix(_documentPrefix, text), cancellationToken);
 
     public Task<IReadOnlyList<float[]>> EmbedDocumentBatchAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken = default) =>
-        _inner.EmbedBatchAsync(
+        _inner.EmbedDocumentBatchAsync(
             texts.Select(t => ApplyPrefix(_documentPrefix, t)).ToList(), cancellationToken);
 
     /// <summary>Fingerprint of the embedding configuration — persisted alongside

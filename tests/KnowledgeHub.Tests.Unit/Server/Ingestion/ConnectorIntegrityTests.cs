@@ -116,10 +116,14 @@ public sealed class ConnectorIntegrityTests : IDisposable
 
     private static KnowledgeSource S3Source() => new()
     {
-        Id = Guid.NewGuid(), Name = "s3", SourceType = SourceType.AwsS3,
+        Id = Guid.NewGuid(),
+        Name = "s3",
+        SourceType = SourceType.AwsS3,
         ConfigurationJson = JsonSerializer.Serialize(new
         {
-            bucketName = "b", region = "us-east-1", accessKeyId = "ak"
+            bucketName = "b",
+            region = "us-east-1",
+            accessKeyId = "ak"
         })
     };
 
@@ -221,8 +225,12 @@ public sealed class ConnectorIntegrityTests : IDisposable
         public Task<GraphSettingsDto> DescribeAsync(CancellationToken ct = default) =>
             Task.FromResult(new GraphSettingsDto
             {
-                Enabled = false, MaxChunksPerSync = 0, MaxChunkChars = 0,
-                MaxResults = 0, Source = "test", EnvConfigured = false
+                Enabled = false,
+                MaxChunksPerSync = 0,
+                MaxChunkChars = 0,
+                MaxResults = 0,
+                Source = "test",
+                EnvConfigured = false
             });
         public Task SaveAsync(SaveGraphSettingsRequest request, CancellationToken ct = default) => Task.CompletedTask;
         public Task ClearAsync(CancellationToken ct = default) => Task.CompletedTask;
@@ -236,8 +244,13 @@ public sealed class ConnectorIntegrityTests : IDisposable
         public Task<EmbeddingSettingsDto> DescribeAsync(CancellationToken ct = default) =>
             Task.FromResult(new EmbeddingSettingsDto
             {
-                Provider = "deterministic", Dimensions = 384, MaxTokens = 500,
-                OverlapTokens = 50, HasApiKey = false, ApiKeySource = "none", Source = "env"
+                Provider = "deterministic",
+                Dimensions = 384,
+                MaxTokens = 500,
+                OverlapTokens = 50,
+                HasApiKey = false,
+                ApiKeySource = "none",
+                Source = "env"
             });
         public Task SaveAsync(SaveEmbeddingSettingsRequest request, CancellationToken ct = default) => Task.CompletedTask;
         public Task ClearAsync(CancellationToken ct = default) => Task.CompletedTask;
@@ -288,16 +301,24 @@ public sealed class ConnectorIntegrityTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
         var source = new KnowledgeSource
         {
-            Id = Guid.NewGuid(), Name = "src", SourceType = SourceType.AwsS3,
-            ConfigurationJson = "{}", IsActive = true
+            Id = Guid.NewGuid(),
+            Name = "src",
+            SourceType = SourceType.AwsS3,
+            ConfigurationJson = "{}",
+            IsActive = true
         };
         db.Sources.Add(source);
         db.Documents.Add(new KnowledgeDocument
         {
-            Id = Guid.NewGuid(), KnowledgeSourceId = source.Id, Title = "t",
-            UriReference = uri, RawContent = content, ContentHash = hash,
+            Id = Guid.NewGuid(),
+            KnowledgeSourceId = source.Id,
+            Title = "t",
+            UriReference = uri,
+            RawContent = content,
+            ContentHash = hash,
             ChunkerVersion = ServerChunking.ChunkerSelector.CurrentVersion,
-            ChunkerConfigHash = chunkerConfigHash, IndexedAt = DateTimeOffset.UtcNow
+            ChunkerConfigHash = chunkerConfigHash,
+            IndexedAt = DateTimeOffset.UtcNow
         });
         await db.SaveChangesAsync();
         return source;
@@ -475,8 +496,11 @@ public sealed class ConnectorIntegrityTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
         var source = new KnowledgeSource
         {
-            Id = Guid.NewGuid(), Name = "s", SourceType = SourceType.WebPage,
-            ConfigurationJson = "{\"url\":\"https://x\"}", IsActive = true
+            Id = Guid.NewGuid(),
+            Name = "s",
+            SourceType = SourceType.WebPage,
+            ConfigurationJson = "{\"url\":\"https://x\"}",
+            IsActive = true
         };
         db.Sources.Add(source);
         await db.SaveChangesAsync();

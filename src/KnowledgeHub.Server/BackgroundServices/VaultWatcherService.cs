@@ -27,13 +27,23 @@ public sealed class VaultWatcherService(
 
     private sealed record VaultWatch(string Root, FileSystemWatcher Watcher, SourceType Type);
 
+    private DateTimeOffset _nextRefresh = DateTimeOffset.MinValue;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await RefreshWatchersAsync(stoppingToken);
+                // RF-208 (SPEC-20260926-review-backlog-remediation): the watcher
+                // refresh used to SLEEP RefreshInterval inside the loop — every
+                // debounced file waited ~10s to sync. Refresh on its own
+                // cadence; flush pending files every iteration.
+                if (DateTimeOffset.UtcNow >= _nextRefresh)
+                {
+                    await RefreshWatchersAsync(stoppingToken);
+                    _nextRefresh = DateTimeOffset.UtcNow + RefreshInterval;
+                }
                 await FlushPendingFilesAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -63,10 +73,12 @@ public sealed class VaultWatcherService(
             .Where(x => x.Root is not null && Directory.Exists(x.Root))
             .ToDictionary(x => x.Source.Id, x => (x.Source, x.Root!));
 
-        // drop watchers for deactivated/removed sources
+        // drop watchers for deactivated/removed sources — and for sources
+        // whose ROOT changed: id-only matching kept the old directory watched.
         foreach (var id in _watches.Keys.ToList())
         {
-            if (wanted.ContainsKey(id))
+            if (wanted.TryGetValue(id, out var want)
+                && string.Equals(_watches[id].Root, want.Item2, StringComparison.OrdinalIgnoreCase))
                 continue;
             if (_watches.TryRemove(id, out var watch))
                 watch.Watcher.Dispose();
@@ -91,8 +103,6 @@ public sealed class VaultWatcherService(
             _watches[id] = new VaultWatch(root, watcher, source.SourceType);
             logger.LogInformation("Watching vault '{Name}' at {Root}", source.Name, root);
         }
-
-        await Task.Delay(RefreshInterval, ct);
     }
 
     private void Enqueue(Guid sourceId, SourceType type, string root, FileSystemEventArgs e)

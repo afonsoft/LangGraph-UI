@@ -64,7 +64,8 @@ public sealed class OpsUiPolishTests
         {
             Timestamp = DateTimeOffset.UtcNow,
             Kind = McpMonitorEventKind.SessionOpened,
-            SessionId = "s1", Caller = "alice (cookie)"
+            SessionId = "s1",
+            Caller = "alice (cookie)"
         }, sessions, activity, 10);
         KnowledgeHub.Client.Services.McpMonitorReplay.Apply(new McpMonitorEventDto
         {
@@ -149,7 +150,11 @@ public sealed class OpsUiPolishTests
             await Task.Delay(300, ct); // LLM time must not inflate search p95
             return new AskResponse
             {
-                Answer = "a", Citations = [], LatencyMs = 0, Model = null, Generated = true
+                Answer = "a",
+                Citations = [],
+                LatencyMs = 0,
+                Model = null,
+                Generated = true
             };
         }
 

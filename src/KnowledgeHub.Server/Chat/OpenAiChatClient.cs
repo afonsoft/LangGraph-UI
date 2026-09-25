@@ -59,9 +59,12 @@ public sealed class OpenAiChatClient : HttpChatClient
         {
             var calls = m.Contents.OfType<FunctionCallContent>().ToList();
             var results = m.Contents.OfType<FunctionResultContent>().ToList();
+            // RF-101 (SPEC-20260926-review-backlog-remediation): a tool message's
+            // payload lives in FunctionResultContent.Result — m.Text only sees
+            // TextContent and serialized the result as "" to the provider.
             yield return new OpenAiChatMessage(
                 m.Role == ChatRole.Tool ? "tool" : m.Role.Value,
-                m.Text ?? "",
+                results.Count > 0 ? ResultText(results[0]) : m.Text ?? "",
                 calls.Count == 0 ? []
                     : calls.Select(c => new OpenAiToolCall(c.CallId ?? "", new OpenAiToolCallFunction(
                         c.Name ?? "",
@@ -79,6 +82,16 @@ public sealed class OpenAiChatClient : HttpChatClient
 
     /// <summary>Arguments default para tool calls sem argumentos serializáveis.</summary>
     private static readonly Dictionary<string, object?> EmptyArguments = new();
+
+    /// <summary>Wire form of a tool result — strings pass through, other
+    /// payload types serialize as JSON.</summary>
+    internal static string ResultText(FunctionResultContent result) =>
+        result.Result switch
+        {
+            null => "",
+            string s => s,
+            var other => JsonSerializer.Serialize(other, JsonSerializerOptions.Web)
+        };
 
     private static ChatMessage ToChatMessage(OpenAiChatMessage message)
     {

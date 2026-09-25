@@ -34,12 +34,16 @@ public sealed class SearchCorrectnessTests
         db.Sources.Add(source);
         var doc = new KnowledgeDocument
         {
-            Title = "d", UriReference = "u", KnowledgeSourceId = source.Id
+            Title = "d",
+            UriReference = "u",
+            KnowledgeSourceId = source.Id
         };
         db.Documents.Add(doc);
         db.Chunks.Add(new DocumentChunk
         {
-            KnowledgeDocumentId = doc.Id, ChunkIndex = 0, TextContent = "persistent text"
+            KnowledgeDocumentId = doc.Id,
+            ChunkIndex = 0,
+            TextContent = "persistent text"
         });
         await db.SaveChangesAsync();
         await db.Database.ExecuteSqlRawAsync(
@@ -78,11 +82,15 @@ public sealed class SearchCorrectnessTests
         var source = new KnowledgeSource { Name = "s", SourceType = SourceType.ObsidianVault };
         var doc = new KnowledgeDocument
         {
-            Title = "d", UriReference = "u", KnowledgeSourceId = source.Id
+            Title = "d",
+            UriReference = "u",
+            KnowledgeSourceId = source.Id
         };
         var chunk = new DocumentChunk
         {
-            KnowledgeDocumentId = doc.Id, ChunkIndex = 0, TextContent = "t"
+            KnowledgeDocumentId = doc.Id,
+            ChunkIndex = 0,
+            TextContent = "t"
         };
         db.Sources.Add(source);
         db.Documents.Add(doc);
@@ -168,7 +176,9 @@ public sealed class SearchCorrectnessTests
         db.EvalRuns.Add(run);
         db.EvalBaselines.Add(new EvalBaseline
         {
-            Name = "golden", EvalRunId = run.Id, DatasetHash = "DEADBEEF"
+            Name = "golden",
+            EvalRunId = run.Id,
+            DatasetHash = "DEADBEEF"
         });
         await db.SaveChangesAsync();
 

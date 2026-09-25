@@ -29,11 +29,13 @@ public static class ToolSlugger
         foreach (var (id, name) in sources)
         {
             var slug = Slugify(name);
-            if (used.TryGetValue(slug, out var count))
-            {
-                used[slug] = count + 1;
-                slug = $"{slug}_{count + 1}";
-            }
+            // RF-704 (SPEC-20260926-review-backlog-remediation): keep suffixing
+            // until free — a natural "foo_2" must not collide with the suffix
+            // a second "foo" would get.
+            var baseSlug = slug;
+            var suffix = 1;
+            while (used.ContainsKey(slug))
+                slug = $"{baseSlug}_{++suffix}";
             used[slug] = 1;
             result[id] = slug;
         }

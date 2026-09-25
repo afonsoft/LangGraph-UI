@@ -35,10 +35,11 @@ internal sealed class GoogleDriveGateway(
         string? prefix, [EnumeratorCancellation] CancellationToken ct)
     {
         var seen = 0;
-        IEnumerable<RemoteObject> Emit(GoogleDriveApiClient.DriveFileMeta meta, string dir)
+        IEnumerable<RemoteObject> Emit(GoogleDriveApiClient.DriveFileMeta meta, string dir,
+            bool probeOnly = false)
         {
             // Truncated only when a (maxFiles+1)-th object actually exists.
-            foreach (var o in Yield(meta, dir))
+            foreach (var o in Yield(meta, dir, probeOnly))
             {
                 if (seen >= maxFiles) { Truncated = true; yield break; }
                 seen++;
@@ -53,9 +54,10 @@ internal sealed class GoogleDriveGateway(
                 : null;
             // Public single-file links: probe Content-Disposition for the real
             // name — an id-as-name has no extension and never indexes (RF-005).
-            var m = meta ?? await client.TryGetPublicFileMetaAsync(rootId, ct)
+            GoogleDriveApiClient.DriveFileMeta? probed = null;
+            var m = meta ?? (probed = await client.TryGetPublicFileMetaAsync(rootId, ct))
                 ?? new GoogleDriveApiClient.DriveFileMeta(rootId, rootId, "", null, null, null);
-            foreach (var o in Emit(m, "")) yield return o;
+            foreach (var o in Emit(m, "", probeOnly: probed is not null)) yield return o;
             yield break;
         }
 
@@ -77,7 +79,7 @@ internal sealed class GoogleDriveGateway(
     }
 
     private IEnumerable<RemoteObject> Yield(
-        GoogleDriveApiClient.DriveFileMeta meta, string dir)
+        GoogleDriveApiClient.DriveFileMeta meta, string dir, bool probeOnly = false)
     {
         var key = $"{dir}{meta.Name}";
         if (NativeMap.TryGetValue(meta.MimeType, out var native))
@@ -88,9 +90,10 @@ internal sealed class GoogleDriveGateway(
         _byKey[key] = meta;
         // RF-005: fingerprint combines modifiedTime + md5Checksum (size
         // fallback — natives have no md5).
-        // RF-005: no usable marker at all (scraped public listing) → etag ""
-        // + MinValue → empty Fingerprint → always reprocessed, never "unchanged".
-        var etag = meta.Md5Checksum ?? meta.Size?.ToString() ?? "";
+        // RF-205: a public-probe meta carries SIZE only — using it as etag
+        // makes a same-size edit look "unchanged". No reliable marker → empty
+        // fingerprint → always re-downloaded, never skipped as unchanged.
+        var etag = probeOnly ? "" : meta.Md5Checksum ?? meta.Size?.ToString() ?? "";
         // Natives/listing-scraped items have no size — report 1 so the base
         // loop does not skip them as empty; the real byte limit is enforced
         // at download time by maxFileSizeMB.

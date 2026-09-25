@@ -54,9 +54,11 @@ public sealed class OllamaChatClient : HttpChatClient
         {
             var calls = m.Contents.OfType<FunctionCallContent>().ToList();
             var results = m.Contents.OfType<FunctionResultContent>().ToList();
+            // RF-101: tool result payload is FunctionResultContent.Result,
+            // not m.Text — the provider was receiving an empty result.
             yield return new OllamaChatMessage(
                 m.Role == ChatRole.Tool ? "tool" : m.Role.Value,
-                m.Text ?? "",
+                results.Count > 0 ? ResultText(results[0]) : m.Text ?? "",
                 calls.Count == 0 ? []
                     : calls.Select(c => new OllamaToolCall(new OllamaToolCallFunction(
                         c.Name ?? "", ToJsonObject(c.Arguments)))).ToArray(),
@@ -87,6 +89,16 @@ public sealed class OllamaChatClient : HttpChatClient
         }
         return new ChatMessage(ChatRole.Assistant, contents);
     }
+
+    /// <summary>Wire form of a tool result — strings pass through, other
+    /// payload types serialize as JSON.</summary>
+    internal static string ResultText(FunctionResultContent result) =>
+        result.Result switch
+        {
+            null => "",
+            string s => s,
+            var other => JsonSerializer.Serialize(other, JsonSerializerOptions.Web)
+        };
 
     private static JsonElement ToJsonObject(IDictionary<string, object?>? arguments) =>
         JsonSerializer.SerializeToElement(

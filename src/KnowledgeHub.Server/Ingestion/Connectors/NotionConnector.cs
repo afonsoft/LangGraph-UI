@@ -79,8 +79,11 @@ public sealed class NotionConnector(
             ctx.ResetPageBudget(pageId);
             var tree = await BuildTreeAsync(pageId, 0, ctx, cancellationToken);
             var title = NotionBlockRenderer.ExtractPageTitle(page);
+            // RF-204: database rows are pages too — their searchable content
+            // lives in properties; rendering without them would silently
+            // unindex fields during on-demand reindex.
             return new RawDocument(
-                uriReference, title, Render(page, tree, includeProperties: false),
+                uriReference, title, Render(page, tree, includeProperties: true),
                 $"notion:{ReadEditedTime(page)}");
         }
         catch (NotionApiException ex)
@@ -198,6 +201,10 @@ public sealed class NotionConnector(
         {
             logger.LogWarning("Notion database {DatabaseId} query failed: {Message}", databaseId, ex.Message);
             ctx.Warnings.Add($"database {databaseId}: {ex.Message}");
+            // RF-203: a failed/partial query hides rows the pipeline would then
+            // DELETE as "remotely removed" — mark the listing incomplete so
+            // reconciliation skips the unseen-deletion pass for this fetch.
+            ctx.Truncated = true;
         }
     }
 

@@ -84,7 +84,10 @@ public sealed class IngestionQueue(
             job.Status = "failed";
             job.Error = "ingestion queue is full";
             job.FinishedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(ct);
+            // RF-206: repair must not inherit the request token — a client
+            // disconnect between the persist and this save would otherwise
+            // leave "queued" forever and deadlock the dedup check.
+            await db.SaveChangesAsync(CancellationToken.None);
             throw new QueueFullException();
         }
         return new IngestionJobEnqueueResult(job, Existing: false);

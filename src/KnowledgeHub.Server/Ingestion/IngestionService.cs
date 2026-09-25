@@ -177,47 +177,62 @@ public sealed class IngestionService(
                         maxTokens, overlapTokens,
                         embeddings, configuration, chunkStrategy, logger, cancellationToken);
 
-                    if (doc is null)
+                    // RF-201: delete + replace inside a transaction — same
+                    // zero-chunks-on-failure fix as the remote path.
+                    List<DocumentChunk> newChunks;
+                    await using (var tx = await db.Database.BeginTransactionAsync(cancellationToken))
                     {
-                        doc = new KnowledgeDocument
+                        try
                         {
-                            KnowledgeSourceId = sourceId,
-                            Title = note.Title,
-                            UriReference = relative
-                        };
-                        db.Documents.Add(doc);
+                            if (doc is null)
+                            {
+                                doc = new KnowledgeDocument
+                                {
+                                    KnowledgeSourceId = sourceId,
+                                    Title = note.Title,
+                                    UriReference = relative
+                                };
+                                db.Documents.Add(doc);
+                            }
+                            else
+                            {
+                                doc.Title = note.Title;
+                                // Purge old chunks with a direct DELETE — no BLOB/text
+                                // materialization, no tracked-collection pitfalls.
+                                await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                                    .ExecuteDeleteAsync(cancellationToken);
+                            }
+
+                            doc.RawContent = content;
+                            doc.ContentHash = hash;
+                            doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
+                            doc.ChunkerConfigHash = configHash;
+                            doc.IndexedAt = DateTimeOffset.UtcNow;
+
+                            // AddRange via DbSet — reassigning doc.Chunks after RemoveRange makes EF Core
+                            // emit an UPDATE for the deleted rows inside the same batch (concurrency error).
+                            newChunks = pieces.Select((piece, i) => new DocumentChunk
+                            {
+                                KnowledgeDocumentId = doc.Id,
+                                ChunkIndex = i,
+                                TextContent = piece.Text,
+                                ChunkKind = kind.ToString().ToLowerInvariant(),
+                                SymbolPath = piece.SymbolPath,
+                                SectionPath = piece.SectionPath,
+                                EnrichedText = EnrichPiece(source.Name, note.Title, piece)
+                            }).ToList();
+                            db.Chunks.AddRange(newChunks);
+                            ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
+
+                            await db.SaveChangesAsync(cancellationToken);
+                            await tx.CommitAsync(cancellationToken);
+                        }
+                        catch
+                        {
+                            await tx.RollbackAsync(CancellationToken.None);
+                            throw;
+                        }
                     }
-                    else
-                    {
-                        doc.Title = note.Title;
-                        // Purge old chunks with a direct DELETE — no BLOB/text
-                        // materialization, no tracked-collection pitfalls.
-                        await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
-                            .ExecuteDeleteAsync(cancellationToken);
-                    }
-
-                    doc.RawContent = content;
-                    doc.ContentHash = hash;
-                    doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
-                    doc.ChunkerConfigHash = configHash;
-                    doc.IndexedAt = DateTimeOffset.UtcNow;
-
-                    // AddRange via DbSet — reassigning doc.Chunks after RemoveRange makes EF Core
-                    // emit an UPDATE for the deleted rows inside the same batch (concurrency error).
-                    var newChunks = pieces.Select((piece, i) => new DocumentChunk
-                    {
-                        KnowledgeDocumentId = doc.Id,
-                        ChunkIndex = i,
-                        TextContent = piece.Text,
-                        ChunkKind = kind.ToString().ToLowerInvariant(),
-                        SymbolPath = piece.SymbolPath,
-                        SectionPath = piece.SectionPath,
-                        EnrichedText = EnrichPiece(source.Name, note.Title, piece)
-                    }).ToList();
-                    db.Chunks.AddRange(newChunks);
-                    ScanChunks(newChunks, doc.Id, sourceId, note.Title, db, warnings);
-
-                    await db.SaveChangesAsync(cancellationToken);
                     chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
                     graphBudget -= await ExtractGraphAsync(
                         source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
@@ -394,51 +409,68 @@ public sealed class IngestionService(
                     continue;
                 }
 
-                if (doc is null)
+                // RF-201 (SPEC-20260926-review-backlog-remediation): delete +
+                // replace inside a transaction — a chunker/scan/save failure
+                // previously left the doc with ZERO chunks (the ExecuteDelete
+                // is immediate; detaching could not restore them).
+                List<DocumentChunk> newChunks;
+                await using (var tx = await db.Database.BeginTransactionAsync(cancellationToken))
                 {
-                    doc = new KnowledgeDocument
+                    try
                     {
-                        KnowledgeSourceId = source.Id,
-                        Title = raw.Title,
-                        UriReference = raw.UriReference
-                    };
-                    db.Documents.Add(doc);
-                }
-                else
-                {
-                    doc.Title = raw.Title;
-                    await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
-                        .ExecuteDeleteAsync(cancellationToken);
-                }
+                        if (doc is null)
+                        {
+                            doc = new KnowledgeDocument
+                            {
+                                KnowledgeSourceId = source.Id,
+                                Title = raw.Title,
+                                UriReference = raw.UriReference
+                            };
+                            db.Documents.Add(doc);
+                        }
+                        else
+                        {
+                            doc.Title = raw.Title;
+                            await db.Chunks.Where(c => c.KnowledgeDocumentId == doc.Id)
+                                .ExecuteDeleteAsync(cancellationToken);
+                        }
 
-                doc.RawContent = text;
-                doc.ContentHash = hash;
-                doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
-                doc.ChunkerConfigHash = configHash;
-                doc.IndexedAt = DateTimeOffset.UtcNow;
+                        doc.RawContent = text;
+                        doc.ContentHash = hash;
+                        doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
+                        doc.ChunkerConfigHash = configHash;
+                        doc.IndexedAt = DateTimeOffset.UtcNow;
 
-                // AddRange via DbSet — see vault path above; nav reassignment after
-                // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
-                var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
-                    raw.UriReference,
-                    text,
-                    maxTokens, overlapTokens,
-                    embeddings, configuration, chunkStrategy, logger, cancellationToken);
-                var newChunks = pieces
-                    .Select((piece, i) => new DocumentChunk
+                        // AddRange via DbSet — see vault path above; nav reassignment after
+                        // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
+                        var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
+                            raw.UriReference,
+                            text,
+                            maxTokens, overlapTokens,
+                            embeddings, configuration, chunkStrategy, logger, cancellationToken);
+                        newChunks = pieces
+                            .Select((piece, i) => new DocumentChunk
+                            {
+                                KnowledgeDocumentId = doc.Id,
+                                ChunkIndex = i,
+                                TextContent = piece.Text,
+                                ChunkKind = kind.ToString().ToLowerInvariant(),
+                                SymbolPath = piece.SymbolPath,
+                                SectionPath = piece.SectionPath,
+                                EnrichedText = EnrichPiece(source.Name, raw.Title, piece)
+                            }).ToList();
+                        db.Chunks.AddRange(newChunks);
+                        ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
+
+                        await db.SaveChangesAsync(cancellationToken);
+                        await tx.CommitAsync(cancellationToken);
+                    }
+                    catch
                     {
-                        KnowledgeDocumentId = doc.Id,
-                        ChunkIndex = i,
-                        TextContent = piece.Text,
-                        ChunkKind = kind.ToString().ToLowerInvariant(),
-                        SymbolPath = piece.SymbolPath,
-                        SectionPath = piece.SectionPath,
-                        EnrichedText = EnrichPiece(source.Name, raw.Title, piece)
-                    }).ToList();
-                db.Chunks.AddRange(newChunks);
-                ScanChunks(newChunks, doc.Id, source.Id, raw.Title, db, warnings);
-
-                await db.SaveChangesAsync(cancellationToken);
+                        await tx.RollbackAsync(CancellationToken.None);
+                        throw;
+                    }
+                }
                 chunksCreated += await EmbedChunksAsync(newChunks, doc, source, vectors, cancellationToken);
                 graphBudget -= await ExtractGraphAsync(
                     source, doc, newChunks, scope, warnings, graphBudget, cancellationToken);
@@ -501,7 +533,10 @@ public sealed class IngestionService(
             return;
         foreach (var entry in db.ChangeTracker.Entries()
             .Where(e => ReferenceEquals(e.Entity, doc)
-                || (e.Entity is DocumentChunk c && c.KnowledgeDocumentId == doc.Id))
+                || (e.Entity is DocumentChunk c && c.KnowledgeDocumentId == doc.Id)
+                // RF-202: SecurityEvents queued by the scanner for this doc
+                // would otherwise persist pointing at a discarded document.
+                || (e.Entity is SecurityEvent se && se.DocumentId == doc.Id))
             .ToList())
         {
             entry.State = EntityState.Detached;
