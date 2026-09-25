@@ -50,3 +50,26 @@ Produces a ~120 MB self-contained binary — no .NET runtime required. The insta
 | pgvector tuning | `VectorStore:Postgres:*` | `StorageType` vector\|halfvec (pgvector ≥0.7 + `AllowStorageMigration`), `IterativeScan` (≥0.8), `Hnsw*`, pool sizes — see README §Configuration |
 | Cache tuning | `Cache:RegionTtlMinutes`, `Cache:L1*` | Per-region TTLs + in-process L1 in front of Redis (invalidation via `kh:invalidate` pub/sub) — see README §Configuration |
 | Runtime log level | `GET/PUT /api/settings/log-level` | `LoggingLevelSwitch` with optional `minutes` (0–120) |
+
+## PostgreSQL + pgvector (host or external)
+
+`docker-compose.yml` reads `.env` (`env_file`, `required: false`) and composes
+`VectorStore__ConnectionString` from discrete vars — set `VECTORSTORE_PROVIDER=postgres` plus:
+
+```dotenv
+POSTGRES_HOST=host.docker.internal   # host Postgres via compose extra_hosts
+POSTGRES_PORT=5432
+POSTGRES_DB=rag_db
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=...
+# Escape hatch — wins over the POSTGRES_* composition when set:
+# VECTORSTORE_CONNECTIONSTRING=Host=...;Database=...;Username=...;Password=...;SSL Mode=Require
+```
+
+Provisioning checklist on the Postgres side:
+
+1. **Extension** — the `vector` extension must exist in the target database. `PostgresVectorStore` runs `CREATE EXTENSION IF NOT EXISTS vector` at init, which works when the app user has `CREATE` privilege on the database; otherwise pre-create it as a superuser (`CREATE EXTENSION vector`). The pgvector package must match the server major (e.g. `postgresql-18-pgvector`, or build from source with `PG_CONFIG=<path>/pg_config`).
+2. **pg_hba.conf** — when Postgres runs on the Docker host, `host.docker.internal` resolves to the host gateway but the **client IP is the container's** — add a host rule covering the compose network (e.g. `host rag_db rag_user 172.22.0.0/16 md5`) and reload.
+3. **Verify** — `docker compose config` should render the interpolated connection string; after `up`, `GET /api/diagnostics/vectorstore` reports `postgres`, the dimension, chunk count and index state (HNSW auto-created past `HnswThreshold`).
+
+> **Redis note.** The same `host.docker.internal` pattern applies to `REDIS_CONNECTIONSTRING` (`Cache:Provider=redis`). An unauthenticated Redis triggers a startup warning — see "Redis security" in the README for hardening.

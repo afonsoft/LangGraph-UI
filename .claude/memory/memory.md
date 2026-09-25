@@ -30,3 +30,9 @@ Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
 - **Bug real achado**: `PostgresVectorStore.SearchAsync` commitava tx com reader aberto → Npgsql 10 `OperationInProgress` em TODA busca. Fix: `await using` no reader antes do Commit. `/health/ready` Healthy pós-redeploy.
 - Resolvido: 2136 embeddings migrados do SQLite (`Chunks`, float32 LE) para `kh_embeddings` via TSV — model `deterministic:hash384`, dims 384, metadata no formato do IngestionService. HNSW auto-criado (2136 > threshold 1000, `vector_cosine_ops` m=16/ef=64). PR #227 squash-merged (`2edd0ae`).
 - Pós-verificado (sessão seguinte): `/health/ready` Healthy, "Embedding store OK (2136 chunks)", 961 testes verdes, counts rag_db == SQLite (2136/2136), 7 índices presentes.
+
+## 2026-09-26 — Docs refresh bilíngue (EN+PT)
+
+- Continuação da sessão adaptable-candytuft: verificado .env (rag_db/rag_user, gitignored), 961 testes verdes, container healthy, rag_db com 2136 chunks == SQLite, pgvector 0.8.6 + 7 índices (HNSW cosine m=16/ef=64).
+- memory.md fechou o loop da sessão pgvector (PR #228).
+- Docs refresh: README EN+PT (conectores cloud, fila de ingestão, endpoints faltantes, "Redis security" — seção que o warning de startup citava e não existia), docs/{en,pt} (API.md +endpoints: embeddings/database/cache-keys/mcp-capabilities/agent-resume/threads/apikey usage+secret; INSTALL.md +checklist pgvector POSTGRES_*), ARCHITECTURE.md pipeline atualizada, CONTRIBUTING.md +paridade bilíngue, CHANGELOG.md reorganizado ([0.0.3]).

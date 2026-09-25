@@ -29,3 +29,11 @@ Thank you for your interest in contributing to KnowledgeHub!
 - Never commit secrets, API keys, or `.env` files.
 - `.github/workflows/` is protected — changes require maintainer authorization.
 - Keep `.specs/` status fields in sync with implementation.
+- Keep user-facing docs bilingual — `README.md`/`docs/en/` mirror `README.pt-br.md`/`docs/pt/`; update both sides in the same PR.
+- When adding or renaming endpoints, update `docs/en/API.md` + `docs/pt/API.md` and the endpoints table in both READMEs.
+
+## Pull Requests
+
+- One concern per PR; keep docs-only and code changes separate.
+- Squash-merge is the default; the PR title becomes the commit message — write it in Conventional Commits form.
+- Link the driving issue/SPEC in the body and include a test plan checklist.

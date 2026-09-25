@@ -7,7 +7,7 @@
 [![Blazor WASM](https://img.shields.io/badge/Blazor-WASM%20PWA-512BD4)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API, native MCP server (Streamable HTTP + legacy SSE), SQLite persistence, pluggable embeddings and vector stores, hybrid retrieval (FTS5 + vector RRF), GraphRAG entity/relation extraction, agentic chat with HITL approvals, prompt-injection defense, partitioned rate limiting, and OpenTelemetry observability — all in a single Kestrel-hosted .NET 10 process.
+All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API, native MCP server (Streamable HTTP + legacy SSE), SQLite persistence, pluggable embeddings and vector stores, hybrid retrieval (FTS5 + vector RRF + corrective loop), GraphRAG entity/relation extraction, agentic chat with HITL approvals, prompt-injection defense, partitioned rate limiting, async ingestion queue, cloud-storage connectors, and OpenTelemetry observability — all in a single Kestrel-hosted .NET 10 process.
 
 ## Endpoints
 
@@ -17,9 +17,10 @@ All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API,
 | `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API — `POST /sources/{id}/sync` is async (`202 + jobId`; `?wait=true` for the legacy sync contract) |
 | `/api/ingestion/jobs`, `/api/ingestion/jobs/{id}`, `/api/ingestion/jobs/{id}/cancel` | Background ingestion jobs — status, per-doc counters, cancellation |
 | `/api/eval/baselines` | Named eval baselines for regression gates (promote a run, auto-compare future runs) |
-| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/graph`, `/api/settings/integrations*` | Persisted chat-provider config, GraphRAG runtime settings (enable, budgets), and masked integration keys (firecrawl, deepwiki, tavily, context7) |
+| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/embeddings`, `/api/settings/graph`, `/api/settings/integrations*`, `/api/settings/database`, `/api/settings/log-level` | Persisted chat-provider + embeddings config, GraphRAG runtime settings (enable, budgets), masked integration keys (firecrawl, deepwiki, tavily, context7), database stats, runtime log level |
 | `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}`, `/api/api-keys/{id}/rate-limit`, `/api/api-keys/{id}/scopes` | Per-API-key overrides: chat endpoint/model/key, integration keys, rate limits, allowed sources/tools |
 | `/api/security/events`, `/api/eval/run`, `/api/eval/runs` | Prompt-injection audit feed and retrieval-quality eval harness (Recall@K/P@K/MRR/faithfulness) |
+| `/api/agent/resume`, `/api/mcp/capabilities`, `/api/diagnostics/vectorstore` | Resume an agent run after HITL approval; advertised MCP session mode; vector-store diagnostics (provider, dims, index state) |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error` events, 15 s heartbeat, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP, hybrid sessions: `initialize`-handshake clients (≤2025-11-25) get full stateful sessions incl. `tools/list_changed` push; `2026-07-28` clients are served statelessly (no session, re-list on demand). `Mcp:SessionMode` knob: `Stateless`/`Stateful`/`StatefulForInitializeClients` (default) |
 | `/mcp/sse` + `/mcp/message` | MCP — legacy HTTP/SSE (Cursor, Claude Desktop) |
@@ -38,8 +39,9 @@ All surfaces except the health probes (`/health/*`) and `POST /api/auth/login` r
 | `POST /api/auth/logout` | clears the session cookie |
 | `POST /api/auth/change-password` | `{ currentPassword, newPassword }` → `204`, clears the flag |
 | `GET /api/apikeys` · `POST /api/apikeys` · `DELETE /api/apikeys/{id}` | manage API keys (cookie session only) |
+| `GET /api/apikeys/{id}/usage` · `GET /api/apikeys/{id}/secret` | per-key usage audit and secret reveal (copy-once UX) |
 
-**API keys (`aft_*`) for non-browser clients.** Create one under `/api-keys` (or `POST /api/apikeys`); the full secret `aft_<32-hex>` is shown **once** — only its SHA-256 hash is stored. Send it as a bearer token:
+**API keys (`aft_*`) for non-browser clients.** Create one under `/api-keys` (or `POST /api/apikeys`); the full secret `aft_<32-hex>` is shown at creation, and keys that carry a DataProtection-encrypted copy can be re-revealed via `GET /api/apikeys/{id}/secret` (`canReveal` in the response) — verification always uses the SHA-256 hash. Send it as a bearer token:
 
 ```bash
 curl https://rag.afonsoft.dev/mcp \
@@ -55,6 +57,23 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
 ## MCP tools
 
 `search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (per-key chat and integration settings), `query_{source_slug}` per active source, GraphRAG traversal (`find_dependencies`, `find_dependents`, `find_path`, `analyze_impact` — when `Graph:Enabled`, default on), plus upstream proxies — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`), Context7 (`resolve-library-id`, `query-docs`) and arbitrary `McpProxy` sources.
+
+## Knowledge sources & ingestion
+
+| Connector | `SourceType` | Notes |
+|---|---|---|
+| Obsidian vault | `ObsidianVault` | Local path or WebDAV; incremental sync |
+| Web page | `WebPage` | Fetch + markdown extraction |
+| Document file | `DocumentFile` | Uploaded files (md/txt/pdf/docx/…) |
+| Notion | `Notion` | REST read-only, encrypted token, incremental via `last_edited_time` |
+| REST API / SQL | `RestApi` / `SqlDatabase` | Query-driven ingestion |
+| AWS S3 | `AwsS3` | Bucket staging, ETag-based incremental sync |
+| Azure Files | `AzureFiles` | Share crawl with staged incremental sync |
+| OCI Object Storage | `OciStorage` | S3-compatible endpoint, same staging model |
+| Google Drive | `GoogleDrive` | Shared folder/file links |
+| MCP proxy | `McpProxy` | Catalog-only — upstream `tools/list` passthrough, not ingestible |
+
+Sync runs on a **persisted async queue**: `POST /sources/{id}/sync` returns `202 + jobId` (per-document counters, `cancel`, `?wait=true` for the legacy synchronous contract); `POST /sources/{id}/reindex` forces re-chunk/re-embed, optionally selective by chunker version. Cloud connectors stage objects locally and diff by ETag; their secrets live in the integration-secret store. Chunking is structure-aware (markdown/code/config) and each source can opt into **semantic chunking** (embedding-breakpoint boundaries) via `{"chunking":"semantic"}` in the source dialog.
 
 ## Configuration
 
@@ -174,7 +193,11 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
 
 Environment variables override `appsettings.json` (double underscore → nested key). See `.env.example` for the full list.
 
+**Postgres via `.env` (compose).** `docker-compose.yml` reads `.env` (`env_file`, `required: false`) and composes `VectorStore__ConnectionString` from discrete `POSTGRES_HOST/PORT/DB/USER/PASSWORD` vars — `VECTORSTORE_CONNECTIONSTRING` overrides the composition when set. `host.docker.internal` reaches Postgres on the Docker host through `extra_hosts`; the host's `pg_hba.conf` must allow the container's subnet for the target database/user, and the `vector` extension must exist in that database (`PostgresVectorStore` runs `CREATE EXTENSION IF NOT EXISTS vector` at init — grant the app user `CREATE` on the database or pre-create the extension as a superuser).
+
 **Logging.** Structured request logging (Serilog): `/health` and static-asset noise logs at Debug, 5xx at Error; every request carries `x-request-id`/`RequestId`. Secrets are scrubbed by an enricher — keys named `*key*`/`*token*`/`*secret*`/`*password*`/`*connectionstring*` and `aft_*`/`ctx7sk-*`/`sk-*`/`Bearer` patterns are written as `***REDACTED***` in every property. With `Telemetry:Otlp:Endpoint` set, logs also ship to the same OTLP backend as traces/metrics. The runtime level can be raised temporarily via `PUT /api/settings/log-level` (`minutes` 0–120). In Docker, the file sink writes to `./logs` (mounted volume — see below).
+
+**Redis security.** An unauthenticated `Cache:Provider=redis` exposes cached search results and embeddings to anyone reaching the port — the server warns at startup. Hardening: set `requirepass`/ACLs on the instance and append `password=...` to `Cache:Redis:ConnectionString`, bind Redis to localhost/private interfaces only, or stay on `Cache:Provider=memory` (default).
 
 ## Repository Structure
 
@@ -265,12 +288,12 @@ dotnet format KnowledgeHub.slnx --verify-no-changes  # formatting gate
 
 | Metric | Value |
 |---|---|
-| **Total tests** | 231 (197 prior + 20 new `ToolCacheServiceTests` + 14 existing cache tests) |
+| **Total tests** | 961 (716 unit + 245 integration) |
 | **Pass rate** | 100% |
 | **Line coverage** | 78% (23 961 / 30 697 coverable lines) |
 | **Branch coverage** | 58.1% (5 192 / 8 934 branches) |
 | **Method coverage** | 79.8% (1 752 / 2 194 methods) |
-| **Coverage date** | 2026-09-24 |
+| **Counts/coverage date** | tests 2026-09-26 · coverage 2026-09-24 |
 
 CI gates: Build (0 warnings), Unit Tests, Integration Tests (SQLite), Blazor WASM Client Validation, Docker Image Build, Code Quality (SonarQube), Security Scan, `dotnet format --verify-no-changes` (0 files changed of 371).
 
@@ -290,9 +313,12 @@ Key architectural decisions:
 - Pluggable embeddings: deterministic, Ollama, OpenAI, or local ONNX Runtime
 - Multiple vector store backends: sqlite-vec (KNN) or PostgreSQL with pgvector (HNSW, batched upserts, provenance metadata)
 - Hybrid retrieval: FTS5 + vector RRF with optional query rewriting and reranking; measured by the built-in eval harness
+- Retrieval depth: MMR diversity + per-document quota + score floor, corrective-RAG (grading → retry → abstention), history-aware rewrite, multi-query expansion + HyDE, contextual chunk enrichment (`SectionPath`), hierarchical context expansion (`contextExpand`), optional knowledge-graph arm (`useGraph`), asymmetric query/document embeddings
+- Async ingestion queue: persisted jobs with per-doc counters, cancellation, selective reindex by chunker version, auto-sync routed through the queue; semantic chunking per source (opt-in)
 - GraphRAG on SQLite adjacency tables: LLM extraction at ingestion (per-source opt-in), provenance-tracked traversal tools
 - Security: prompt-injection guard (flag → exclude → audit), per-key source/tool scoping, partitioned rate limiting with per-key overrides
-- Distributed cache opt-in: in-memory (default) or Redis
+- Distributed cache opt-in: in-memory (default) or Redis — hybrid L1(in-process)→L2(Redis), per-region TTLs, distributed invalidation via `kh:invalidate` pub/sub
+- Structured logging: Serilog request logging (health/static → Debug, 5xx → Error, `x-request-id`), daily rolling file sink + optional OTLP sink, secret redaction (`***REDACTED***`), runtime level via `/api/settings/log-level` with auto-reset
 - OpenTelemetry: traces + metrics with opt-in OTLP/Prometheus exporters
 - Upstream MCP proxies: DeepWiki, Firecrawl, Tavily, Context7, plus arbitrary `McpProxy` sources with encrypted secrets
 - Per-API-key customization: chat settings, integration keys, scopes, and rate limits scoped to each key
@@ -305,7 +331,7 @@ See [docs/architecture/](docs/architecture/README.md) for ADRs, the editable sys
 
 KnowledgeHub solves the problem of fragmented organizational knowledge by providing a unified platform that:
 
-- Ingests knowledge from multiple sources (Obsidian vaults, web pages, documents, Notion, APIs, SQL databases)
+- Ingests knowledge from multiple sources (Obsidian vaults, web pages, documents, Notion, APIs, SQL databases, AWS S3, Azure Files, OCI Object Storage, Google Drive)
 - Enables natural language queries with hybrid retrieval (full-text search + vector similarity with RRF reranking)
 - Provides agentic capabilities with tool-calling, HITL approvals, and conversation threads with summarization
 - Exposes knowledge through both REST API and Model Context Protocol for AI agent integration
@@ -328,10 +354,24 @@ KnowledgeHub solves the problem of fragmented organizational knowledge by provid
 
 ## Links
 
-- [Português](README.pt-br.md) — Portuguese translation
-- [Architecture Documentation](docs/en/ARCHITECTURE.md) — Detailed system design
+### Documentation
+
+- [Português](README.pt-br.md) — Portuguese translation · [docs/pt/](docs/pt/) for the translated guides
+- [Architecture Documentation](docs/en/ARCHITECTURE.md) — Detailed system design · [ADRs](docs/architecture/README.md) — decision records
 - [Contributing Guide](docs/en/CONTRIBUTING.md) — How to contribute
 - [Installation Guide](docs/en/INSTALL.md) — Platform-specific setup
 - [API Documentation](docs/en/API.md) — REST API reference
+- [Changelog](CHANGELOG.md) — Notable changes
 - [GitHub Issues](https://github.com/afonsoft/LangGraph-UI/issues) — Bug reports and feature requests
 - [Releases](https://github.com/afonsoft/LangGraph-UI/releases) — Version history
+
+### References
+
+- [Model Context Protocol](https://modelcontextprotocol.io) — protocol spec implemented by `KnowledgeHub.McpEngine`
+- [pgvector](https://github.com/pgvector/pgvector) — Postgres vector extension (`vector`/`halfvec`, HNSW, iterative filtered scans)
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) — SQLite KNN extension for the embedded vector store
+- [Npgsql](https://www.npgsql.org/) — .NET Postgres driver used by the pgvector store
+- [Microsoft.Extensions.AI](https://learn.microsoft.com/dotnet/ai/) — `IChatClient`/`IEmbeddingGenerator` abstractions for providers
+- [ONNX Runtime](https://onnxruntime.ai/) + [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) — local embedding provider
+- [BootstrapBlazor](https://www.blazor.zone/) — SPA component library
+- [SQLite FTS5](https://sqlite.org/fts5.html) — lexical arm of hybrid retrieval

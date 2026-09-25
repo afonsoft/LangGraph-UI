@@ -15,7 +15,8 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 
 | Rota | Propósito |
 |---|---|
-| `GET/POST /api/apikeys` · `DELETE /api/apikeys/{id}` | gerencia keys (secret exibido uma vez) |
+| `GET/POST /api/apikeys` · `DELETE /api/apikeys/{id}` | gerencia keys (secret exibido na criação) |
+| `GET /api/apikeys/{id}/usage` · `GET /api/apikeys/{id}/secret` | feed de auditoria de uso por key · reveal do secret quando `canReveal` (cópia protegida via DataProtection) |
 | `PUT/DELETE /api/api-keys/{id}/rate-limit` | overrides de rate limit LLM/sync por key (campo `null` = herda global) |
 | `PUT/DELETE /api/api-keys/{id}/scopes` | restringe a key a sources/tools permitidos |
 | `GET/PUT/DELETE /api/api-keys/{id}/settings/chat` | endpoint/modelo/key de chat por key |
@@ -43,10 +44,12 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 
 | Rota | Propósito |
 |---|---|
-| `GET /api/search` | busca híbrida (`mode`, `topK`, filtros `sourceType`/`pathPrefix`/`indexedAfter`/`language`) |
-| `POST /api/ask` · `GET /api/ask/stream` | resposta com citações; stream SSE |
-| `POST /api/agent` · `GET /api/agent/stream` | loop de agente com tools; SSE (`token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error`, heartbeat 15 s) |
-| `GET/POST /api/threads` · `GET /api/threads/{id}/messages` | threads de conversação |
+| `GET/POST /api/search` | busca híbrida (`mode`, `topK`, filtros `sourceType`/`pathPrefix`/`indexedAfter`/`language`, `expand`, `contextExpand`, `useGraph`) |
+| `POST /api/ask` · `POST /api/ask/stream` | resposta com citações; stream SSE |
+| `POST /api/agent` · `POST /api/agent/stream` | loop de agente com tools; SSE (`token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error`, heartbeat 15 s) |
+| `POST /api/agent/resume` | retoma um run de agente pausado após decisão de aprovação (`{approvalId}`) |
+| `GET/POST /api/threads` · `GET/PUT/DELETE /api/threads/{id}` | threads de conversação (listar, criar, obter, renomear, deletar) |
+| `GET/POST /api/threads/{id}/messages` | mensagens da thread — histórico e append |
 
 ## Aprovações e tools
 
@@ -59,10 +62,12 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 
 | Rota | Propósito |
 |---|---|
-| `GET/PUT/DELETE /api/settings/chat` · `POST /api/settings/chat/test` | config de chat persistida + teste de conectividade |
+| `GET/PUT/DELETE /api/settings/chat` · `POST /api/settings/chat/test` · `DELETE /api/settings/chat/apikey` | config de chat persistida + teste de conectividade; `/apikey` limpa só a key armazenada |
+| `GET/PUT/DELETE /api/settings/embeddings` · `DELETE /api/settings/embeddings/apikey` | config de embeddings persistida — GET carimba `stampedModelId`, `providerError`, `storeDimensions`; `/apikey` limpa só a key armazenada |
 | `GET/PUT/DELETE /api/settings/graph` | GraphRAG `enabled`, `maxChunksPerSync`, `maxChunkChars`, `maxResults` — aplica sem restart |
 | `GET/PUT/DELETE /api/settings/integrations/{provider}` | chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7) |
-| `GET /api/settings/cache` · `POST /api/settings/cache/clear` | stats de cache (keys rastreadas do processo + overlay do servidor Redis via SCAN/INFO — `serverReported`/`partial`) + limpeza de todas as regiões |
+| `GET /api/settings/cache` · `POST /api/settings/cache/clear` · `DELETE /api/settings/cache/keys/{*key}` | stats de cache (keys rastreadas do processo + overlay do servidor Redis via SCAN/INFO — `serverReported`/`partial`) + limpeza de todas as regiões + remoção de um padrão de key |
+| `GET /api/settings/database` | estatísticas do banco (contagem por tabela, tamanhos, resumo do vector store) |
 | `GET/PUT /api/settings/log-level` | nível de log em runtime (`LoggingLevelSwitch`); `PUT {level, minutes}` — `minutes` 0–120 agenda reset automático ao nível configurado |
 
 ## Segurança e eval
@@ -89,6 +94,7 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 | Rota | Propósito |
 |---|---|
 | `GET /api/diagnostics/vectorstore` | diagnóstico do vector store — provider, dimensão, contagem de chunks, tipo de storage (`vector`\|`halfvec`), estado do índice |
+| `GET /api/mcp/capabilities` | modo de sessão MCP anunciado (`sessionMode`, `legacySse`) — anônimo |
 | `/mcp` (+ `/mcp/sse`, `/mcp/message`) | transportes MCP — ver README |
 | `/hubs/mcp` | feed de atividade SignalR |
 | `/metrics` | endpoint de scrape Prometheus (`Telemetry:Metrics:Prometheus=true`) |
