@@ -127,15 +127,36 @@ public static class SettingsEndpoints
         group.MapGet("/embeddings", async (
             IEmbeddingSettingsService emb,
             Embeddings.IEmbeddingProviderResolver resolver,
+            VectorStore.IVectorStore store,
             CancellationToken ct) =>
         {
             var dto = await emb.DescribeAsync(ct);
-            return Results.Ok(dto with { StampedModelId = resolver.Current.ModelId });
+            // SPEC-20260926-embeddings-runtime-coherence RF-002: a broken stored
+            // config (e.g. missing ONNX model) must never sink the GET — the
+            // editor needs to render to offer "Restaurar ambiente".
+            string? stampedId = null, providerError = null;
+            try
+            {
+                stampedId = resolver.Current.ModelId;
+            }
+            catch (Exception ex)
+            {
+                var b = ex.GetBaseException();
+                providerError = $"{b.GetType().Name}: {b.Message}";
+                if (providerError.Length > 300) providerError = providerError[..300];
+            }
+            return Results.Ok(dto with
+            {
+                StampedModelId = stampedId,
+                ProviderError = providerError,
+                StoreDimensions = store.Dimensions
+            });
         });
 
         group.MapPut("/embeddings", async (
             SaveEmbeddingSettingsRequest? body,
             IEmbeddingSettingsService emb,
+            VectorStore.IVectorStore store,
             CancellationToken ct) =>
         {
             if (body is null)
@@ -147,12 +168,34 @@ public static class SettingsEndpoints
                 return Results.BadRequest(new { error = "endpoint must be an absolute http(s) URI" });
             if (body.Dimensions is < 64 or > 4096)
                 return Results.BadRequest(new { error = "dimensions must be 64..4096" });
-            if (body.MaxTokens is < 100 or > 4000)
-                return Results.BadRequest(new { error = "maxTokens must be 100..4000" });
+            // SPEC-20260926-embeddings-runtime-coherence RF-006: overlap cap —
+            // >~40% of the chunk degrades piece coherence; max 2000 regardless
+            // of maxTokens, and always < maxTokens.
             if (body.OverlapTokens is < 0 or > 2000)
                 return Results.BadRequest(new { error = "overlapTokens must be 0..2000" });
+            if (body.MaxTokens is < 100 or > 4000)
+                return Results.BadRequest(new { error = "maxTokens must be 100..4000" });
             if (body.MaxTokens is { } mt && body.OverlapTokens is { } ov && ov >= mt)
                 return Results.BadRequest(new { error = "overlapTokens must be smaller than maxTokens" });
+            // SPEC-20260926-embeddings-runtime-coherence RF-001: vector schemas
+            // (sqlite-vec/pgvector) are compiled at startup — dims ≠ store dims
+            // can never be accepted until env + restart + reindex.
+            if (store.Dimensions is { } storeDims && body.Dimensions != storeDims)
+                return Results.BadRequest(new
+                {
+                    error = $"dimensions {body.Dimensions} != vector store {storeDims} — " +
+                            "the index schema is fixed at startup; set Embeddings:Dimensions " +
+                            "in the environment, restart, then run reindex"
+                });
+            // SPEC-20260926-embeddings-runtime-coherence RF-002: fail fast on an
+            // ONNX path that cannot possibly load instead of persisting a
+            // config that breaks the provider at runtime.
+            if (provider == "onnx" && !string.IsNullOrWhiteSpace(body.ModelPath))
+            {
+                var dir = body.ModelPath.Trim();
+                if (!Directory.Exists(dir))
+                    return Results.BadRequest(new { error = $"modelPath '{dir}' does not exist" });
+            }
 
             await emb.SaveAsync(body with { Provider = provider! }, ct);
             return Results.NoContent();
@@ -221,13 +264,20 @@ public static class SettingsEndpoints
 
         // SPEC-20260926-settings-ux-embeddings RF-003: per-key eviction —
         // removes the real entry (L1+L2) and the tracked record.
+        // SPEC-20260926-cache-key-consistency RF-002: failures surface as
+        // errors — never 204 for a key still present in the cache.
         group.MapDelete("/cache/keys/{*key}", async (
             string key,
             Caching.ICacheManagerService cacheMgr,
             CancellationToken ct) =>
-            await cacheMgr.RemoveEntryAsync(key, ct)
-                ? Results.NoContent()
-                : Results.NotFound(new { error = $"key '{key}' not tracked" }));
+        {
+            var result = await cacheMgr.RemoveEntryAsync(key, ct);
+            if (!result.Tracked)
+                return Results.NotFound(new { error = $"key '{key}' not tracked" });
+            if (result.Error is { } err)
+                return Results.Problem(title: "cache key removal failed", detail: err, statusCode: 502);
+            return Results.NoContent();
+        });
 
         // SPEC-20260926-settings-tabs-database-metrics RF-002: storage snapshot
         // for the "Banco de Dados" tab — provider, sizes, PRAGMAs, entity

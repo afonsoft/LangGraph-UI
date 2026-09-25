@@ -22,6 +22,16 @@ public record EmbeddingSettingsDto
     public required string Source { get; init; }
     /// <summary>Model identity stamped on stored vectors (resolver's current provider).</summary>
     public string? StampedModelId { get; init; }
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-002: short digest
+    /// when the live provider failed to build (e.g. missing ONNX model) —
+    /// <see cref="StampedModelId"/> is null in that case.</summary>
+    public string? ProviderError { get; init; }
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-001: dimension the
+    /// live vector store accepts — null when the store is unconstrained.</summary>
+    public int? StoreDimensions { get; init; }
+    /// <summary>True when effective dims differ from <see cref="StoreDimensions"/> —
+    /// new vectors would be rejected until aligned + reindexed.</summary>
+    public bool DimsMismatch => StoreDimensions is { } d && d != Dimensions;
     public DateTimeOffset? UpdatedAt { get; init; }
 }
 

@@ -4,6 +4,8 @@ using KnowledgeHub.Server.Settings;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -35,12 +37,16 @@ public sealed class EmbeddingSettingsServiceTests : IDisposable
         scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>().Database.EnsureCreated();
     }
 
-    private EmbeddingSettingsService Sut(EmbeddingOptions? env = null, Dictionary<string, string?>? config = null) =>
+    private EmbeddingSettingsService Sut(EmbeddingOptions? env = null,
+        Dictionary<string, string?>? config = null,
+        Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null,
+        KnowledgeHub.Server.Caching.ICacheInvalidationBus? bus = null) =>
         new(Options.Create(env ?? new EmbeddingOptions()),
             new ConfigurationBuilder().AddInMemoryCollection(config ?? []).Build(),
             _secrets,
             _services.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<EmbeddingSettingsService>.Instance);
+            NullLogger<EmbeddingSettingsService>.Instance,
+            cache, bus);
 
     private static EmbeddingOptions EnvOllama(string? apiKey = null) => new()
     {
@@ -204,6 +210,58 @@ public sealed class EmbeddingSettingsServiceTests : IDisposable
     {
         _services.Dispose();
         _conn.Dispose();
+    }
+
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-003: signature
+    /// change on Save bumps index:version and publishes on the bus so cached
+    /// search/answer/tool results and replica L1 tokens are dropped.</summary>
+    [Fact]
+    public async Task Save_SignatureChange_BumpsIndexVersion_AndPublishes()
+    {
+        var cache = new MemoryDistributedCache(
+            Options.Create(new MemoryDistributedCacheOptions()));
+        var bus = new FakeBus();
+        var sut = Sut(new EmbeddingOptions { Provider = "deterministic", Dimensions = 384 },
+            cache: cache, bus: bus);
+
+        await cache.SetStringAsync("index:version", "v-old");
+        await sut.SaveAsync(new SaveEmbeddingSettingsRequest
+        {
+            Provider = "deterministic",
+            Dimensions = 256
+        });
+
+        var version = await cache.GetStringAsync("index:version");
+        Assert.NotEqual("v-old", version);
+        Assert.Equal("index-version", Assert.Single(bus.Published));
+    }
+
+    [Fact]
+    public async Task Save_NoSignatureChange_DoesNotPublish()
+    {
+        var bus = new FakeBus();
+        var sut = Sut(new EmbeddingOptions { Provider = "deterministic", Dimensions = 384 },
+            bus: bus);
+
+        // Same values as env → signature identical → no cache churn.
+        await sut.SaveAsync(new SaveEmbeddingSettingsRequest
+        {
+            Provider = "deterministic",
+            Dimensions = 384
+        });
+
+        Assert.Empty(bus.Published);
+    }
+
+    private sealed class FakeBus : KnowledgeHub.Server.Caching.ICacheInvalidationBus
+    {
+        public List<string> Published { get; } = [];
+        public Task PublishAsync(string topic, CancellationToken cancellationToken = default)
+        {
+            Published.Add(topic);
+            return Task.CompletedTask;
+        }
+        public event EventHandler<string>? Received { add { } remove { } }
     }
 
     /// <summary>Store de segredos em memória para isolar o serviço sob teste.</summary>

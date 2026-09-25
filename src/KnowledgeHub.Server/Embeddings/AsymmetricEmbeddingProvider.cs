@@ -8,7 +8,7 @@ namespace KnowledgeHub.Server.Embeddings;
 /// bge → query instruction only). A text that already carries the prefix is
 /// never double-prefixed.
 /// </summary>
-public sealed class AsymmetricEmbeddingProvider : IEmbeddingProvider
+public sealed class AsymmetricEmbeddingProvider : IEmbeddingProvider, IDisposable, IAsyncDisposable
 {
     private readonly IEmbeddingProvider _inner;
     private readonly string _queryPrefix;
@@ -65,5 +65,17 @@ public sealed class AsymmetricEmbeddingProvider : IEmbeddingProvider
         if (m.Contains("bge"))
             return ("Represent this sentence for searching relevant passages: ", "");
         return ("", "");
+    }
+
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-005: forward
+    /// disposal to the wrapped provider (e.g. ONNX InferenceSession) when the
+    /// resolver swaps providers.</summary>
+    public void Dispose() => (_inner as IDisposable)?.Dispose();
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (_inner is IAsyncDisposable ad) await ad.DisposeAsync();
+        else (_inner as IDisposable)?.Dispose();
     }
 }

@@ -63,7 +63,7 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 | `GET/PUT/DELETE /api/settings/graph` | GraphRAG `enabled`, `maxChunksPerSync`, `maxChunkChars`, `maxResults` — aplica sem restart |
 | `GET/PUT/DELETE /api/settings/integrations/{provider}` | chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7) |
 | `GET /api/settings/cache` · `POST /api/settings/cache/clear` | stats de cache (keys rastreadas do processo + overlay do servidor Redis via SCAN/INFO — `serverReported`/`partial`) + limpeza de todas as regiões |
-| `GET/PUT /api/settings/log-level` | nível de log em runtime (`LoggingLevelSwitch`); `PUT {level, autoResetMinutes}` — `autoResetMinutes` 0–120 agenda reset automático ao nível configurado |
+| `GET/PUT /api/settings/log-level` | nível de log em runtime (`LoggingLevelSwitch`); `PUT {level, minutes}` — `minutes` 0–120 agenda reset automático ao nível configurado |
 
 ## Segurança e eval
 

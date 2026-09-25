@@ -280,7 +280,7 @@ flowchart LR
 }
 ```
 
-Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), **runtime log level** (`/api/settings/log-level`, `autoResetMinutes` 0–120), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
+Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), **runtime log level** (`/api/settings/log-level`, `minutes` 0–120), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
 
 Security boundaries: source configs are **redacted** in API responses; vault paths reject `..`; `AllowedHosts` restricted to localhost; secrets live in env vars or the encrypted `IntegrationSecrets` store; embedding model changes are detected via `EmbeddingModel` stamping so stale vectors are never mixed.
 

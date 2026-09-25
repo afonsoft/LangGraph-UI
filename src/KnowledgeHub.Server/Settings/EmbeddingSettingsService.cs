@@ -17,7 +17,9 @@ public sealed class EmbeddingSettingsService(
     IConfiguration configuration,
     IIntegrationSecretStore secrets,
     IServiceScopeFactory scopeFactory,
-    ILogger<EmbeddingSettingsService> logger) : IEmbeddingSettingsService
+    ILogger<EmbeddingSettingsService> logger,
+    Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null,
+    Caching.ICacheInvalidationBus? bus = null) : IEmbeddingSettingsService
 {
     public const int DefaultMaxTokens = 500;
     public const int DefaultOverlapTokens = 50;
@@ -103,7 +105,7 @@ public sealed class EmbeddingSettingsService(
             ? (true, $"••••{info.KeyHint}", "store")
             : !string.IsNullOrWhiteSpace(env.ApiKey)
                 ? (true, $"••••{(env.ApiKey.Length >= 4 ? env.ApiKey[^4..] : env.ApiKey)}", "env")
-                : (false, (string?)null, "none");
+                : (false, default(string), "none");
 
         return new EmbeddingSettingsDto
         {
@@ -125,6 +127,7 @@ public sealed class EmbeddingSettingsService(
     /// <inheritdoc />
     public async Task SaveAsync(SaveEmbeddingSettingsRequest request, CancellationToken cancellationToken = default)
     {
+        var signatureBefore = EmbeddingProviderResolver.Signature(GetEffectiveOptions());
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
         var row = await db.EmbeddingSettings.SingleOrDefaultAsync(cancellationToken);
@@ -153,27 +156,79 @@ public sealed class EmbeddingSettingsService(
         Invalidate();
         logger.LogInformation(
             "embedding settings saved (provider {Provider}, model {Model}, dims {Dimensions}, key {KeyAction})",
-            row.Provider, row.Model, row.Dimensions,
+            LogSafe(row.Provider), LogSafe(row.Model), row.Dimensions,
             string.IsNullOrWhiteSpace(request.ApiKey) ? "kept" : "updated");
+        await InvalidateSearchCachesIfChangedAsync(signatureBefore, cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task RemoveKeyAsync(CancellationToken cancellationToken = default)
     {
+        var signatureBefore = EmbeddingProviderResolver.Signature(GetEffectiveOptions());
         await secrets.RemoveAsync(IntegrationProviders.Embeddings, cancellationToken);
         Invalidate();
         logger.LogInformation("embeddings API key removed from store");
+        await InvalidateSearchCachesIfChangedAsync(signatureBefore, cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
+        var signatureBefore = EmbeddingProviderResolver.Signature(GetEffectiveOptions());
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
         await db.EmbeddingSettings.ExecuteDeleteAsync(cancellationToken);
         await secrets.RemoveAsync(IntegrationProviders.Embeddings, cancellationToken);
         Invalidate();
         logger.LogInformation("embedding settings cleared — falling back to env/config");
+        await InvalidateSearchCachesIfChangedAsync(signatureBefore, cancellationToken);
+    }
+
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-003: when the
+    /// effective signature changed (provider/endpoint/key/dims), bump the
+    /// index-version token so search/answer/tool caches are dropped locally —
+    /// and publish on the bus so other replicas drop their L1 token too.</summary>
+    private async Task InvalidateSearchCachesIfChangedAsync(string signatureBefore, CancellationToken ct)
+    {
+        if (signatureBefore == EmbeddingProviderResolver.Signature(GetEffectiveOptions()))
+            return;
+
+        if (cache is not null)
+        {
+            try
+            {
+                await Caching.SafeCache.SetStringAsync(cache, Caching.CacheKeys.IndexVersion,
+                    Guid.NewGuid().ToString("N"), null, logger, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "failed to bump index version after embedding settings change");
+            }
+        }
+
+        if (bus is not null)
+        {
+            try
+            {
+                await bus.PublishAsync("index-version", ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "failed to publish index-version invalidation after embedding settings change");
+            }
+        }
+
+        logger.LogInformation("embedding signature changed — index-version bumped, search/answer/tool caches invalidated");
+    }
+
+    /// <summary>SPEC-20260926-cache-key-consistency RF-004: strip CR/LF from
+    /// user-controlled values before they reach structured logs (CodeQL
+    /// cs/log-forging); truncate long inputs.</summary>
+    internal static string? LogSafe(string? value)
+    {
+        if (value is null) return null;
+        var clean = value.Replace('\n', ' ').Replace('\r', ' ');
+        return clean.Length > 200 ? clean[..200] : clean;
     }
 
     private async Task<Domain.Entities.EmbeddingSettings?> FindRowAsync(CancellationToken cancellationToken)

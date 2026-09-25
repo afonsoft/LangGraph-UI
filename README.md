@@ -174,7 +174,7 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
 
 Environment variables override `appsettings.json` (double underscore → nested key). See `.env.example` for the full list.
 
-**Logging.** Structured request logging (Serilog): `/health` and static-asset noise logs at Debug, 5xx at Error; every request carries `x-request-id`/`RequestId`. Secrets are scrubbed by an enricher — keys named `*key*`/`*token*`/`*secret*`/`*password*`/`*connectionstring*` and `aft_*`/`ctx7sk-*`/`sk-*`/`Bearer` patterns are written as `***REDACTED***` in every property. With `Telemetry:Otlp:Endpoint` set, logs also ship to the same OTLP backend as traces/metrics. The runtime level can be raised temporarily via `PUT /api/settings/log-level` (`autoResetMinutes` 0–120). In Docker, the file sink writes to `./logs` (mounted volume — see below).
+**Logging.** Structured request logging (Serilog): `/health` and static-asset noise logs at Debug, 5xx at Error; every request carries `x-request-id`/`RequestId`. Secrets are scrubbed by an enricher — keys named `*key*`/`*token*`/`*secret*`/`*password*`/`*connectionstring*` and `aft_*`/`ctx7sk-*`/`sk-*`/`Bearer` patterns are written as `***REDACTED***` in every property. With `Telemetry:Otlp:Endpoint` set, logs also ship to the same OTLP backend as traces/metrics. The runtime level can be raised temporarily via `PUT /api/settings/log-level` (`minutes` 0–120). In Docker, the file sink writes to `./logs` (mounted volume — see below).
 
 ## Repository Structure
 
@@ -247,13 +247,13 @@ Open http://localhost:5000 and sign in with `admin` / `123qwe`.
 ### Run (Docker)
 
 ```bash
-mkdir -p data logs && chown 1654:1654 logs   # container runs as uid 1654 (app) — see note
+mkdir -p data logs && chown -R 1654:1654 data logs   # container runs as uid 1654 (app) — see note
 docker compose up -d
 ```
 
 Access at http://localhost:5000.
 
-> **`./logs` permission caveat.** When the host directory doesn't exist, Docker creates it as `root`, but the container runs as `app` (uid 1654) — the Serilog file sink then fails silently (console output still works). Pre-create with `mkdir -p logs && chown 1654:1654 logs` (or `chown` it once after the first `up`). Logs persist across recreates/upgrades in the `./logs` volume — daily rolling files, 14-day retention, secrets redacted (`***REDACTED***`).
+> **`./logs` permission caveat.** When the host directory doesn't exist, Docker creates it as `root`, but the container runs as `app` (uid 1654) — the Serilog file sink then fails silently (console output still works). Pre-create with `mkdir -p data logs && chown -R 1654:1654 data logs` (or `chown` it once after the first `up`). Logs persist across recreates/upgrades in the `./logs` volume — daily rolling files, 14-day retention, secrets redacted (`***REDACTED***`).
 
 ## Tests & Coverage
 

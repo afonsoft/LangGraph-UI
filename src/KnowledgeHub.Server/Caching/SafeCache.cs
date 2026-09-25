@@ -154,4 +154,14 @@ public static class SafeCache
             await SetAsync(cache, key, serialize(produced2), ttl, logger, ct);
         return produced2;
     }
+
+    /// <summary>SPEC-20260926-cache-key-consistency RF-004: strip CR/LF from
+    /// user-controlled values before they reach structured logs (CodeQL
+    /// cs/log-forging); truncate long inputs.</summary>
+    internal static string? LogSafe(string? value)
+    {
+        if (value is null) return null;
+        var clean = value.Replace('\n', ' ').Replace('\r', ' ');
+        return clean.Length > 200 ? clean[..200] : clean;
+    }
 }

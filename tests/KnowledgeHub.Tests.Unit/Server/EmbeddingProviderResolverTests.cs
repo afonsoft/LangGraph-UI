@@ -91,6 +91,60 @@ public sealed class EmbeddingProviderResolverTests
     }
 
     [Fact]
+    public void Fingerprint_TracksEffectiveOptions()
+    {
+        var settings = new MutableSettings(new EmbeddingOptions { Provider = "deterministic", Dimensions = 384 });
+        var resolver = new EmbeddingProviderResolver(settings, new FakeHttpFactory(),
+            NullLogger<EmbeddingProviderResolver>.Instance);
+
+        var fp1 = resolver.Fingerprint;
+        Assert.Equal(8, fp1.Length);
+
+        settings.Options = new EmbeddingOptions { Provider = "deterministic", Dimensions = 384, ApiKey = "k" };
+        Assert.NotEqual(fp1, resolver.Fingerprint);
+
+        settings.Options = new EmbeddingOptions { Provider = "deterministic", Dimensions = 512 };
+        Assert.NotEqual(fp1, resolver.Fingerprint);
+    }
+
+    [Fact]
+    public async Task Current_Swap_DisposesPreviousProvider()
+    {
+        // SPEC-20260926-embeddings-runtime-coherence RF-005: providers holding
+        // native resources (ONNX InferenceSession) must not leak on swap.
+        var settings = new MutableSettings(new EmbeddingOptions
+        {
+            Provider = "onnx",
+            ModelPath = "nonexistent",
+            Dimensions = 384
+        });
+        var created = new List<DisposableStub>();
+        var resolver = new EmbeddingProviderResolver(settings, new FakeHttpFactory(),
+            NullLogger<EmbeddingProviderResolver>.Instance,
+            providerFactory: o => { var d = new DisposableStub(); created.Add(d); return d; });
+
+        var first = resolver.Current;
+        settings.Options = new EmbeddingOptions { Provider = "deterministic", Dimensions = 384 };
+        var second = resolver.Current;
+
+        Assert.NotSame(first, second);
+        await Task.Delay(100); // disposal runs off-path on Task.Run
+        Assert.Equal(2, created.Count);
+        Assert.True(created[0].Disposed);   // previous released
+        Assert.False(created[1].Disposed);  // current alive
+    }
+
+    private sealed class DisposableStub : IEmbeddingProvider, IDisposable
+    {
+        public bool Disposed { get; private set; }
+        public string ModelId => "stub";
+        public int Dimensions => 4;
+        public void Dispose() => Disposed = true;
+        public Task<float[]> EmbedAsync(string text, CancellationToken ct = default) =>
+            Task.FromResult(new float[4]);
+    }
+
+    [Fact]
     public async Task DelegatingProvider_ForwardsAllCalls()
     {
         var resolver = Sut(new EmbeddingOptions { Provider = "deterministic", Dimensions = 384 });

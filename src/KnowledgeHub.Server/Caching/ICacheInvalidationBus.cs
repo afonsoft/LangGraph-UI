@@ -11,7 +11,9 @@ public interface ICacheInvalidationBus
 {
     /// <summary>Broadcasts an invalidation topic. Topics:
     /// <c>index-version</c> (token bumped — drop it locally so the next read
-    /// re-fetches), <c>cache-clear</c> (admin wiped the cache — drop all L1).</summary>
+    /// re-fetches), <c>cache-clear</c> (admin wiped the cache — drop all L1),
+    /// <c>cache-key:{key}</c> (one entry evicted — drop its L1 copy;
+    /// SPEC-20260926-cache-key-consistency RF-001).</summary>
     Task PublishAsync(string topic, CancellationToken ct = default);
 
     /// <summary>Raised on this instance when ANOTHER replica published. The

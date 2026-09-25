@@ -20,6 +20,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _dimensions;
+    public int? Dimensions => _dimensions;
     private readonly PostgresOptions _options;
     private bool _initialized;
     private volatile bool _hnswIndexCreated;
@@ -494,6 +495,9 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         return new
         {
             provider = "postgres",
+            // SPEC-20260926-review-docs-and-misc RF-003: expose the effective
+            // storage flavour (vector|halfvec) promised by the API docs.
+            storageType = _storageType,
             rows = reader.GetInt64(0),
             size = reader.GetString(1),
             hnswIndex = reader.GetBoolean(2),
