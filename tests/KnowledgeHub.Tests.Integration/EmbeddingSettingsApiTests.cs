@@ -112,7 +112,7 @@ public class EmbeddingSettingsApiTests : IClassFixture<EmbeddingSettingsApiTests
         var http = await AuthedCleanAsync();
 
         (await http.PutAsJsonAsync("/api/settings/embeddings",
-            new { provider = "onnx", dimensions = 384 })).EnsureSuccessStatusCode();
+            new { provider = "deterministic", dimensions = 384 })).EnsureSuccessStatusCode();
         (await http.DeleteAsync("/api/settings/embeddings")).EnsureSuccessStatusCode();
 
         using var doc = JsonDocument.Parse(

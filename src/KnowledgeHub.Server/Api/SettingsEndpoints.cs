@@ -196,6 +196,31 @@ public static class SettingsEndpoints
                 if (!Directory.Exists(dir))
                     return Results.BadRequest(new { error = $"modelPath '{dir}' does not exist" });
             }
+            // RF-001 (SPEC-20260926-embeddings-swap-safety): validate against the
+            // MODEL's actual output width — the store check above only compares
+            // request vs schema; a 512-dim ONNX file accepted under
+            // Dimensions=384 would silently produce garbage vectors.
+            if (provider == "onnx" && body.Dimensions is { } requestedDims)
+            {
+                Embeddings.OnnxEmbeddingProvider? probe = null;
+                try
+                {
+                    probe = Embeddings.OnnxEmbeddingProvider.Load(body.ModelPath);
+                }
+                catch (Embeddings.EmbeddingProviderException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
+                using (probe)
+                {
+                    if (probe.Dimensions != requestedDims)
+                        return Results.BadRequest(new
+                        {
+                            error = $"dimensions {requestedDims} != onnx model output {probe.Dimensions} — " +
+                                    "the model file defines the vector size"
+                        });
+                }
+            }
 
             await emb.SaveAsync(body with { Provider = provider! }, ct);
             return Results.NoContent();

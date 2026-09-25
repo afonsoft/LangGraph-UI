@@ -120,6 +120,7 @@ public sealed class EmbeddingSettingsService(
             ApiKeyHint = hint,
             ApiKeySource = keySource,
             Source = row is not null ? "store" : "env",
+            InstanceScoped = true,
             UpdatedAt = row?.UpdatedAt
         };
     }
@@ -159,6 +160,7 @@ public sealed class EmbeddingSettingsService(
             LogSafe(row.Provider), LogSafe(row.Model), row.Dimensions,
             string.IsNullOrWhiteSpace(request.ApiKey) ? "kept" : "updated");
         await InvalidateSearchCachesIfChangedAsync(signatureBefore, cancellationToken);
+        await PublishSettingsChangedAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -169,6 +171,7 @@ public sealed class EmbeddingSettingsService(
         Invalidate();
         logger.LogInformation("embeddings API key removed from store");
         await InvalidateSearchCachesIfChangedAsync(signatureBefore, cancellationToken);
+        await PublishSettingsChangedAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -182,6 +185,25 @@ public sealed class EmbeddingSettingsService(
         Invalidate();
         logger.LogInformation("embedding settings cleared — falling back to env/config");
         await InvalidateSearchCachesIfChangedAsync(signatureBefore, cancellationToken);
+        await PublishSettingsChangedAsync(cancellationToken);
+    }
+
+    /// <summary>SPEC-20260926-embeddings-swap-safety RF-004: replicas cannot
+    /// converge settings (each keeps its own local store), but they SHOULD at
+    /// least know a change happened — publish so subscribers can invalidate
+    /// their snapshots or surface a staleness hint.</summary>
+    private async Task PublishSettingsChangedAsync(CancellationToken ct)
+    {
+        if (bus is null)
+            return;
+        try
+        {
+            await bus.PublishAsync("settings-changed", ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "failed to publish settings-changed notification");
+        }
     }
 
     /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-003: when the

@@ -32,6 +32,10 @@ public record EmbeddingSettingsDto
     /// <summary>True when effective dims differ from <see cref="StoreDimensions"/> —
     /// new vectors would be rejected until aligned + reindexed.</summary>
     public bool DimsMismatch => StoreDimensions is { } d && d != Dimensions;
+    /// <summary>SPEC-20260926-embeddings-swap-safety RF-004: settings live in
+    /// the instance's local SQLite — replicas do NOT converge automatically;
+    /// honest flag so clients can surface "per-instance" to the operator.</summary>
+    public bool InstanceScoped { get; init; }
     public DateTimeOffset? UpdatedAt { get; init; }
 }
 

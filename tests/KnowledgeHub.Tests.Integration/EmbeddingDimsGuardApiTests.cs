@@ -66,17 +66,40 @@ public class EmbeddingDimsGuardApiTests : IClassFixture<EmbeddingDimsGuardApiTes
     {
         var http = await AuthedCleanAsync();
 
-        // A real directory without model.onnx/vocab.txt passes the PUT guard
-        // but makes the ONNX provider fail at build time.
-        var emptyDir = Directory.CreateTempSubdirectory("kh-onnx-");
+        // SPEC-20260926-embeddings-swap-safety RF-001: the PUT now probes the
+        // model's real output — a dir without artifacts is rejected at save
+        // time (previously accepted, breaking the provider at runtime).
+        var missingDir = Directory.CreateTempSubdirectory("kh-onnx-missing-");
+        try
+        {
+            var rejected = await http.PutAsJsonAsync("/api/settings/embeddings", new
+            {
+                provider = "onnx",
+                modelPath = missingDir.FullName,
+                dimensions = 384
+            });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+        finally
+        {
+            missingDir.Delete(recursive: true);
+        }
+
+        // The GET fail-soft path still matters for env-configured breakage —
+        // exercise it by accepting a valid model path, then deleting it so
+        // the runtime provider fails at build.
+        var modelDir = CopyModelToTemp();
+        if (modelDir is null)
+            return; // models/ is gitignored — no artifacts in this environment
         try
         {
             (await http.PutAsJsonAsync("/api/settings/embeddings", new
             {
                 provider = "onnx",
-                modelPath = emptyDir.FullName,
+                modelPath = modelDir,
                 dimensions = 384
             })).EnsureSuccessStatusCode();
+            Directory.Delete(modelDir, recursive: true);
 
             var response = await http.GetAsync("/api/settings/embeddings");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -91,7 +114,27 @@ public class EmbeddingDimsGuardApiTests : IClassFixture<EmbeddingDimsGuardApiTes
         {
             // Restore env config so other tests see a healthy provider.
             (await http.DeleteAsync("/api/settings/embeddings")).EnsureSuccessStatusCode();
-            emptyDir.Delete(recursive: true);
         }
+    }
+
+    private static string? CopyModelToTemp()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "models", "all-MiniLM-L6-v2");
+            var model = Path.Combine(candidate, "model.onnx");
+            var vocab = Path.Combine(candidate, "vocab.txt");
+            if (File.Exists(model) && File.Exists(vocab))
+            {
+                var target = Path.Combine(Path.GetTempPath(), $"kh-onnx-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(target);
+                File.Copy(model, Path.Combine(target, "model.onnx"));
+                File.Copy(vocab, Path.Combine(target, "vocab.txt"));
+                return target;
+            }
+            dir = dir.Parent;
+        }
+        return null;
     }
 }
