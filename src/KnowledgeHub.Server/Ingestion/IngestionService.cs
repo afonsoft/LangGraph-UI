@@ -27,7 +27,8 @@ public sealed class IngestionService(
     Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
     Security.IContentSanitizer sanitizer,
     Settings.IGraphSettingsService graphSettings,
-    ILogger<IngestionService> logger) : IIngestionService
+    ILogger<IngestionService> logger,
+    Caching.ICacheInvalidationBus? invalidationBus = null) : IIngestionService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SourceLocks = new();
@@ -834,9 +835,15 @@ public sealed class IngestionService(
     /// <summary>Bump the index-version token so cached search results keyed on
     /// it miss after this sync (SPEC-20260916-performance-memory-cache §5).
     /// Best-effort — a down cache must never fail a sync.</summary>
-    private async Task BumpIndexVersionAsync(CancellationToken cancellationToken) =>
+    private async Task BumpIndexVersionAsync(CancellationToken cancellationToken)
+    {
         await Caching.SafeCache.SetStringAsync(cache, Caching.CacheKeys.IndexVersion,
-            Guid.NewGuid().ToString("N"), TimeSpan.FromDays(7), logger, cancellationToken);
+            Guid.NewGuid().ToString("N"), null, logger, cancellationToken);
+        // SPEC-20260925-distributed-invalidation-pubsub RF-002: other replicas
+        // holding the token in L1 must drop it now, not at L1 TTL expiry.
+        if (invalidationBus is not null)
+            await invalidationBus.PublishAsync("index-version", cancellationToken);
+    }
 
     /// <summary>Best-effort: record a sync failure on the source in a fresh scope.</summary>
     private async Task TryRecordSyncFailureAsync(Guid sourceId, string message)

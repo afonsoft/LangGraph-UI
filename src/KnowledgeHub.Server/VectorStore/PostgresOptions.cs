@@ -51,4 +51,15 @@ public sealed class PostgresOptions
     /// <summary>Companion knob for <see cref="IterativeScan"/> —
     /// <c>hnsw.max_scan_tuples</c> (0 = pgvector default 20000).</summary>
     public int IterativeScanMaxTuples { get; set; }
+
+    /// <summary>SPEC-20260925-pgvector-halfvec RF-001: column/ops flavour —
+    /// <c>"vector"</c> (default) or <c>"halfvec"</c> (float16, ~2x smaller,
+    /// pgvector ≥0.7, dims ≤2000). Opt-in — switching on an existing table
+    /// requires <see cref="AllowStorageMigration"/>.</summary>
+    public string StorageType { get; set; } = "vector";
+
+    /// <summary>SPEC-20260925-pgvector-halfvec RF-003: consent gate for the
+    /// table-rewriting <c>ALTER COLUMN … TYPE halfvec</c>. Without it a
+    /// mismatched column is a startup warning, never a silent rewrite.</summary>
+    public bool AllowStorageMigration { get; set; }
 }

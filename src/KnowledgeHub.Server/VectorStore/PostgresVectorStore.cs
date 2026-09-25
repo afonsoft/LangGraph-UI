@@ -24,10 +24,14 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
     private bool _initialized;
     private volatile bool _hnswIndexCreated;
     private readonly SemaphoreSlim _initGate = new(1, 1);
+    /// <summary>Effective storage flavour — <c>"halfvec"</c> only after the
+    /// version check passes (SPEC-20260925-pgvector-halfvec RF-002).</summary>
+    private string _storageType = "vector";
 
     public PostgresVectorStore(string connectionString, int dimensions = 384, PostgresOptions? options = null)
     {
         _options = options ?? new PostgresOptions();
+        _storageType = options is null ? "vector" : _options.StorageType;
         var csb = new NpgsqlConnectionStringBuilder(connectionString)
         {
             MinPoolSize = _options.MinPoolSize,
@@ -62,7 +66,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         cmd.Parameters.AddWithValue(documentId);
         cmd.Parameters.AddWithValue(sourceId);
         cmd.Parameters.AddWithValue(model);
-        cmd.Parameters.AddWithValue(new Vector(vector));
+        cmd.Parameters.Add(VectorParameter(vector));
         cmd.Parameters.AddWithValue(NpgsqlDbType.Jsonb, SerializeMetadata(metadata));
         await cmd.ExecuteNonQueryAsync(cancellationToken);
 
@@ -100,7 +104,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                     cmd.Parameters.AddWithValue(item.DocumentId);
                     cmd.Parameters.AddWithValue(item.SourceId);
                     cmd.Parameters.AddWithValue(model);
-                    cmd.Parameters.AddWithValue(new Vector(item.Vector));
+                    cmd.Parameters.Add(VectorParameter(item.Vector));
                     cmd.Parameters.AddWithValue(NpgsqlDbType.Jsonb, SerializeMetadata(item.Metadata));
                 }
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -233,7 +237,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 ORDER BY embedding <=> $1
                 LIMIT $3
                 """;
-            cmd.Parameters.AddWithValue(new Vector(queryVector));
+            cmd.Parameters.Add(VectorParameter(queryVector));
             cmd.Parameters.AddWithValue(model);
             cmd.Parameters.AddWithValue(topK);
             if (sourceIds is not null)
@@ -254,6 +258,12 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         }
     }
 
+    /// <summary>RF-004 (halfvec): ops class matching the effective column
+    /// type — <c>halfvec_cosine_ops</c> on halfvec, <c>vector_cosine_ops</c>
+    /// otherwise.</summary>
+    private string OpsClass =>
+        _storageType == "halfvec" ? "halfvec_cosine_ops" : "vector_cosine_ops";
+
     /// <summary>
     /// RF-001: HNSW DDL — interpolated ints only (identifiers can't be parameters).
     /// Runs as a standalone command; CONCURRENTLY is intentionally not used because
@@ -261,7 +271,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
     /// </summary>
     internal string BuildHnswIndexSql() => $"""
         CREATE INDEX IF NOT EXISTS {HnswIndexName}
-        ON kh_embeddings USING hnsw (embedding vector_cosine_ops)
+        ON kh_embeddings USING hnsw (embedding {OpsClass})
         WITH (m = {_options.HnswM}, ef_construction = {_options.HnswEfConstruction})
         """;
 
@@ -294,6 +304,12 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             if (_initialized)
                 return;
             await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+            // SPEC-20260925-pgvector-halfvec RF-002: resolve the effective
+            // storage type BEFORE the DDL — halfvec needs pgvector ≥0.7 and
+            // dims ≤2000; otherwise fall back to vector with a warning.
+            await ResolveStorageTypeAsync(conn, cancellationToken);
+
             await using var cmd = conn.CreateCommand();
             // RF-003: metadata jsonb — additive on existing DBs via ALTER … IF NOT EXISTS.
             cmd.CommandText = $$"""
@@ -303,7 +319,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                     document_id uuid NOT NULL,
                     source_id   uuid NOT NULL,
                     model       text NOT NULL,
-                    embedding   vector({{_dimensions}}) NOT NULL
+                    embedding   {{_storageType}}({{_dimensions}}) NOT NULL
                 );
                 ALTER TABLE kh_embeddings ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
                 CREATE INDEX IF NOT EXISTS kh_embeddings_model_idx ON kh_embeddings (model);
@@ -313,6 +329,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 CREATE INDEX IF NOT EXISTS kh_embeddings_metadata_gin_idx ON kh_embeddings USING gin (metadata);
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
+            await MaybeMigrateStorageAsync(conn, cancellationToken);
             await MaybeCreateHnswIndexAsync(conn, cancellationToken);
             _initialized = true;
         }
@@ -321,6 +338,91 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             _initGate.Release();
         }
     }
+
+    /// <summary>RF-002 (halfvec): reads pgvector's version and the existing
+    /// column type; resolves the effective flavour and fails fast on the
+    /// 2000-dim halfvec cap.</summary>
+    private async Task ResolveStorageTypeAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        var requested = _options.StorageType.ToLowerInvariant();
+        if (requested is not ("vector" or "halfvec"))
+            throw new InvalidOperationException(
+                $"VectorStore:Postgres:StorageType must be 'vector' or 'halfvec' (got '{_options.StorageType}')");
+
+        if (requested == "halfvec" && _dimensions > 2000)
+            throw new InvalidOperationException(
+                $"halfvec supports up to 2000 dims for indexed columns — configured {_dimensions}. " +
+                "Use StorageType=vector.");
+
+        if (requested == "vector")
+        {
+            _storageType = "vector";
+            return;
+        }
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT extversion FROM pg_extension WHERE extname='vector'";
+        var extVersion = await cmd.ExecuteScalarAsync(ct) as string;
+        if (extVersion is null || !VersionSupported(extVersion, "0.7"))
+        {
+            _storageType = "vector"; // degrade silently — writes keep working
+            return;
+        }
+        _storageType = "halfvec";
+    }
+
+    /// <summary>"0.8.1" vs "0.7" — permissive numeric compare.</summary>
+    internal static bool VersionSupported(string extVersion, string min)
+    {
+        var a = extVersion.Split('.').Select(s => int.TryParse(s, out var n) ? n : 0).ToList();
+        var b = min.Split('.').Select(int.Parse).ToList();
+        for (var i = 0; i < b.Count; i++)
+            if ((i < a.Count ? a[i] : 0) != b[i])
+                return (i < a.Count ? a[i] : 0) > b[i];
+        return true;
+    }
+
+    /// <summary>RF-003: column type mismatch on an existing table —
+    /// <c>ALTER … TYPE halfvec</c> rewrites the whole table, so it only runs
+    /// behind <see cref="PostgresOptions.AllowStorageMigration"/>.</summary>
+    private async Task MaybeMigrateStorageAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT udt_name FROM information_schema.columns
+            WHERE table_name='kh_embeddings' AND column_name='embedding'
+            """;
+        var actual = await cmd.ExecuteScalarAsync(ct) as string;
+        if (actual is null || actual == _storageType)
+            return;
+
+        if (!_options.AllowStorageMigration)
+            return; // mismatch tolerated: queries work across vector/halfvec
+
+        await using var alter = conn.CreateCommand();
+        alter.CommandTimeout = 600; // table rewrite — give it room
+        alter.CommandText =
+            $"ALTER TABLE kh_embeddings ALTER COLUMN embedding TYPE {_storageType} USING embedding::{_storageType}";
+        await alter.ExecuteNonQueryAsync(ct);
+
+        // Column-type change invalidates the HNSW ops class — drop so the
+        // threshold logic recreates it with the right ops.
+        await using var drop = conn.CreateCommand();
+        drop.CommandText = $"DROP INDEX IF EXISTS {HnswIndexName}";
+        await drop.ExecuteNonQueryAsync(ct);
+        _hnswIndexCreated = false;
+    }
+
+    /// <summary>Parameter for the embedding column — HalfVector when the
+    /// storage type resolved to halfvec (SPEC-20260925-pgvector-halfvec RF-001).</summary>
+    private NpgsqlParameter VectorParameter(float[] v) =>
+        _storageType == "halfvec"
+            ? new NpgsqlParameter
+            {
+                Value = new HalfVector(new ReadOnlyMemory<Half>(v.Select(f => (Half)f).ToArray())),
+                DataTypeName = "halfvec"
+            }
+            : new NpgsqlParameter { Value = new Vector(v) };
 
     /// <summary>
     /// RF-001: creates the HNSW index only when the row count crosses the

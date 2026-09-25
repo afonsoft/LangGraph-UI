@@ -136,3 +136,29 @@ public sealed class PostgresVectorStoreTests
         Assert.NotNull(store);
     }
 }
+// SPEC-20260925-pgvector-halfvec + iterative-filtered-scan — DDL/version seams.
+public sealed class PostgresHalfvecTests
+{
+    [Fact]
+    public void BuildHnswIndexSql_Halfvec_UsesHalfvecOps()
+    {
+        var store = new PostgresVectorStore("Host=x", 384,
+            new PostgresOptions { StorageType = "halfvec" });
+        Assert.Contains("halfvec_cosine_ops", store.BuildHnswIndexSql());
+    }
+
+    [Fact]
+    public void BuildHnswIndexSql_Default_UsesVectorOps()
+    {
+        var store = new PostgresVectorStore("Host=x", 384);
+        Assert.Contains("vector_cosine_ops", store.BuildHnswIndexSql());
+    }
+
+    [Theory]
+    [InlineData("0.7", "0.7", true)]
+    [InlineData("0.8.1", "0.7", true)]
+    [InlineData("0.6", "0.7", false)]
+    [InlineData("0.7.0", "0.7", true)]
+    public void VersionSupported_ComparesNumeric(string have, string min, bool expected) =>
+        Assert.Equal(expected, PostgresVectorStore.VersionSupported(have, min));
+}
