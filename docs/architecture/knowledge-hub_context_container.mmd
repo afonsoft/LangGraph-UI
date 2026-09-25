@@ -15,13 +15,16 @@ flowchart TB
         AUTH["🔐 Auth<br/>cookie + aft_* API keys"]
         RL["🚦 Rate limiter<br/>key → user → IP"]
         CAT["🧰 DynamicToolCatalog<br/>IToolProviders (live)"]
+        QUEUE["📥 IngestionQueue +<br/>IngestionWorker<br/>persisted jobs · cancel · reindex"]
         ING["⚙️ IngestionService<br/>connectors · chunkers · watcher"]
         SEC["🛡️ ContentSanitizer<br/>injection scan → SuspicionFlags"]
         GRAPH["🕸️ EntityExtractor +<br/>IKnowledgeGraphStore"]
-        SRCH["🔍 SearchService<br/>hybrid FTS5+vector RRF<br/>rewrite · rerank · filters"]
+        SRCH["🔍 SearchService<br/>FTS5+vector RRF · MMR · corrective<br/>expand · contextExpand · useGraph"]
         ANS["💬 AnswerService / AgentService<br/>bounded SSE · HITL"]
         EMB["🧮 IEmbeddingProvider<br/>deterministic · ollama · openai · onnx"]
         VEC["💾 IVectorStore<br/>sqlite · sqlite-vec · pgvector"]
+        CACHE["🗃️ HybridCache L1→L2<br/>region TTLs · kh:invalidate"]
+        LOG["🧾 Serilog<br/>request log · file sink<br/>redaction · LogLevelSwitch"]
         TEL["📈 OpenTelemetry<br/>metrics + traces"]
         FEED["📊 IMcpActivityFeed<br/>ring buffer 500"]
     end
@@ -35,6 +38,7 @@ flowchart TB
 
     UP["☁️ Upstream MCP<br/>DeepWiki · Firecrawl · Tavily · Context7"]
     LLM["☁️ AI endpoints<br/>Ollama · OpenAI-compat"]
+    CLOUD["☁️ Cloud storage<br/>AWS S3 · Azure Files · OCI · Google Drive"]
 
     UI -->|HTTPS+WS| SPA
     UI -->|REST| API
@@ -55,29 +59,37 @@ flowchart TB
     CAT --> GRAPH
     API --> SRCH
     API --> ANS
-    API --> ING
+    API --> QUEUE
+    QUEUE --> ING
     ING --> SEC
     ING --> EMB
     ING --> GRAPH
     ING --> VAULT
+    ING --> CLOUD
     ING --> VEC
+    ING --> SQL
     SRCH --> VEC
+    SRCH -.-> CACHE
+    EMB -.-> CACHE
     ANS --> SRCH
     ANS --> LLM
     EMB --> LLM
     VEC --> SQL
     GRAPH --> SQL
+    QUEUE --> SQL
     VEC --> PG
-    VEC -.-> REDIS
+    CACHE -.-> REDIS
     CAT -.->|upstream passthrough| UP
     API --> TEL
     MCP --> TEL
+    API -.-> LOG
+    MCP -.-> LOG
 
     classDef client fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     classDef core fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:darkgreen
     classDef store fill:#f5f5f5,stroke:#666666,stroke-width:2px,color:black
     classDef ext fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#7f4d00
     class UI,CUR,AG client
-    class SPA,API,MCP,HUB,AUTH,RL,CAT,ING,SEC,GRAPH,SRCH,ANS,EMB,VEC,TEL,FEED core
+    class SPA,API,MCP,HUB,AUTH,RL,CAT,QUEUE,ING,SEC,GRAPH,SRCH,ANS,EMB,VEC,CACHE,LOG,TEL,FEED core
     class SQL,PG,VAULT,REDIS store
-    class UP,LLM ext
+    class UP,LLM,CLOUD ext

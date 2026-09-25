@@ -36,3 +36,10 @@ Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
 - Continuação da sessão adaptable-candytuft: verificado .env (rag_db/rag_user, gitignored), 961 testes verdes, container healthy, rag_db com 2136 chunks == SQLite, pgvector 0.8.6 + 7 índices (HNSW cosine m=16/ef=64).
 - memory.md fechou o loop da sessão pgvector (PR #228).
 - Docs refresh: README EN+PT (conectores cloud, fila de ingestão, endpoints faltantes, "Redis security" — seção que o warning de startup citava e não existia), docs/{en,pt} (API.md +endpoints: embeddings/database/cache-keys/mcp-capabilities/agent-resume/threads/apikey usage+secret; INSTALL.md +checklist pgvector POSTGRES_*), ARCHITECTURE.md pipeline atualizada, CONTRIBUTING.md +paridade bilíngue, CHANGELOG.md reorganizado ([0.0.3]).
+
+## 2026-09-26 — Architecture docs refresh (skill /architecture)
+
+- system-architecture.md: +IngestionQueue/Worker, HybridCache L1→L2, Serilog, cloud connectors no diagrama/tabela; deployment +./logs +serviços host (pgvector/Redis via POSTGRES_*/host.docker.internal); config +seção Ingestion.
+- .mmd espelhados (context_container + deployment); .drawio regenerado via script (estava stale — faltavam MCP/Search/Graph/Emb).
+- ADRs novos: AD-0011 async ingestion queue, AD-0012 hybrid cache L1/L2+pub/sub, AD-0013 env-composed postgres vector store.
+- runtime-architecture.json: +queue/cache/cloud/redis components; archify validate+deliver 9/9 (layout ajustado p/ não cruzar edge→ingest).

@@ -3,12 +3,21 @@ flowchart LR
     subgraph Host["🖥️ Single host (container or bare binary)"]
         EXE["🚀 KnowledgeHub<br/>single-file binary or<br/>knowledgehub:latest image"]
         DB[("💾 ./data volume<br/>knowledgehub.db + uploads")]
+        LOGV[("🧾 ./logs volume<br/>Serilog file sink")]
         EXT["📂 %TMP%/.net extraction<br/>native libs (e_sqlite3, onnx)"]
-        CFG["⚙️ appsettings.json + env vars<br/>(__ nesting) + .env<br/>runtime settings in SQLite"]
+        CFG["⚙️ appsettings.json + env vars<br/>(__ nesting) + .env (env_file)<br/>runtime settings in SQLite"]
         EXE --> DB
+        EXE --> LOGV
         EXE -.->|self-extract| EXT
         CFG -.->|config| EXE
     end
+
+    subgraph HostSvc["🖥️ Host / external services (opt-in)"]
+        PG2[("🐘 PostgreSQL + pgvector<br/>POSTGRES_* in .env<br/>host.docker.internal")]
+        RDS[("🟥 Redis<br/>REDIS_CONNECTIONSTRING")]
+    end
+    EXE -.->|"VectorStore__*"| PG2
+    EXE -.->|"Cache__*"| RDS
 
     DEV["👨‍💻 docker compose build<br/>or dotnet publish -r linux-x64|win-x64|osx-arm64"] -->|produces| EXE
 
@@ -28,5 +37,5 @@ flowchart LR
     classDef data fill:#f5f5f5,stroke:#666666,stroke-width:2px,color:black
     classDef net fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:darkblue
     class EXE bin
-    class DB,EXT,CFG data
+    class DB,LOGV,EXT,CFG,PG2,RDS data
     class R1,R2,R3,R4,R5,R6,R7,R8 net
