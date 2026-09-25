@@ -12,3 +12,11 @@
 - Cluster mais severo: integridade de ingestão (wipe de docs no reindex por texto vazio; falha transitória → delete; fila-cheia deadlock) e CacheTtlPolicy morta (nunca resolvida no DI).
 - Housekeeping: 4 branches locais deletadas (Antigravity×2, flagged-chunk-badge, quality-test — conteúdo em main); redeploy pós-#205 (healthz+ready 200).
 - Aguardando: aprovação do agrupamento em SPECs; enforce_admins; shutdown test.
+
+## 2026-09-26 — Epic E22 completo (6 SPECs → 6 PRs)
+
+PRs #215-#220 abertos (issues #209-#214 → in_pullrequest). Checks verdes/rodando.
+Sessão executou as 6 SPECs aprovadas em branches independentes off main@9b52213.
+Decisões/notas de implementação no log datado (20260926-memory.md).
+
+Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
