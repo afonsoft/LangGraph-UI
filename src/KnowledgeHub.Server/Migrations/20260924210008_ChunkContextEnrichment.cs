@@ -21,30 +21,6 @@ namespace KnowledgeHub.Server.Migrations
                 table: "Chunks",
                 type: "TEXT",
                 nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "LlmRateLimitPermits",
-                table: "ApiKeys",
-                type: "INTEGER",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "LlmRateLimitWindowSeconds",
-                table: "ApiKeys",
-                type: "INTEGER",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "SyncRateLimitPermits",
-                table: "ApiKeys",
-                type: "INTEGER",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "SyncRateLimitWindowSeconds",
-                table: "ApiKeys",
-                type: "INTEGER",
-                nullable: true);
         }
 
         /// <inheritdoc />
@@ -57,22 +33,6 @@ namespace KnowledgeHub.Server.Migrations
             migrationBuilder.DropColumn(
                 name: "SectionPath",
                 table: "Chunks");
-
-            migrationBuilder.DropColumn(
-                name: "LlmRateLimitPermits",
-                table: "ApiKeys");
-
-            migrationBuilder.DropColumn(
-                name: "LlmRateLimitWindowSeconds",
-                table: "ApiKeys");
-
-            migrationBuilder.DropColumn(
-                name: "SyncRateLimitPermits",
-                table: "ApiKeys");
-
-            migrationBuilder.DropColumn(
-                name: "SyncRateLimitWindowSeconds",
-                table: "ApiKeys");
         }
     }
 }
