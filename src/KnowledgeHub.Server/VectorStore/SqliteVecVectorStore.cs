@@ -126,8 +126,40 @@ public sealed class SqliteVecVectorStore : IVectorStore
         if (topK <= 0 || sourceIds is { Count: 0 })
             return [];
         CheckDimensions(queryVector);
-        var conn = await VecConnectionAsync(cancellationToken);
 
+        // SPEC-20260926-search-correctness-and-stream RF-001: query expansion
+        // issues N concurrent calls; the scoped DbContext shares ONE
+        // SqliteConnection that cannot serve concurrent readers — dedicated
+        // clone for file DBs, per-connection gate for :memory:.
+        var efConnection = _db.Database.GetDbConnection();
+        if (Data.SqliteConnectionLease.Dedicated(efConnection) is { } dedicated)
+        {
+            await using (dedicated)
+            {
+                await dedicated.OpenAsync(cancellationToken);
+                dedicated.LoadVector();
+                await EnsureInitializedOnAsync(dedicated, cancellationToken);
+                return await QueryAsync(dedicated, queryVector, model, topK, sourceIds, cancellationToken);
+            }
+        }
+
+        var gate = Data.SqliteConnectionLease.GateFor(efConnection);
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var conn = await VecConnectionAsync(cancellationToken);
+            return await QueryAsync(conn, queryVector, model, topK, sourceIds, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<VectorHit>> QueryAsync(
+        SqliteConnection conn, float[] queryVector, string model, int topK,
+        IReadOnlyCollection<Guid>? sourceIds, CancellationToken cancellationToken)
+    {
         // vec0 metadata columns only support '=' in a KNN WHERE — one KNN per
         // source then merge. Global top-K of the filtered set equals the merge
         // of per-source top-Ks, matching the in-process provider exactly.
@@ -187,19 +219,26 @@ public sealed class SqliteVecVectorStore : IVectorStore
         var conn = (SqliteConnection)_db.Database.GetDbConnection();
         if (conn.State != ConnectionState.Open)
             await conn.OpenAsync(cancellationToken);
+        await EnsureInitializedOnAsync(conn, cancellationToken);
+        return conn;
+    }
+
+    /// <summary>vec0 extension load + schema + backfill on an OPEN connection —
+    /// once per service lifetime, whichever connection arrives first.</summary>
+    private async Task EnsureInitializedOnAsync(SqliteConnection conn, CancellationToken cancellationToken)
+    {
         if (_initialized)
-            return conn;
+            return;
 
         await _initGate.WaitAsync(cancellationToken);
         try
         {
             if (_initialized)
-                return conn;
+                return;
             conn.LoadVector();
             await EnsureSchemaAsync(conn, cancellationToken);
             await BackfillFromDocumentChunksAsync(conn, cancellationToken);
             _initialized = true;
-            return conn;
         }
         finally
         {

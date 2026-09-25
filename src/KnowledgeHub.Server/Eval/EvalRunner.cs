@@ -39,6 +39,8 @@ public sealed class EvalRunner(
         var defaultK = topK is > 0 ? topK.Value : DefaultTopK;
         var faith = faithfulness?.ToLowerInvariant() ?? "none";
 
+        var datasetHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(datasetJson)));
+
         // SPEC-20260924-eval-regression-gate RF-001: named baseline resolves to
         // its run id — and pins the dataset fingerprint.
         if (baselineName is { } bn)
@@ -46,6 +48,14 @@ public sealed class EvalRunner(
             var baseline = await db.EvalBaselines.AsNoTracking()
                 .FirstOrDefaultAsync(b => b.Name == bn, ct)
                 ?? throw new KeyNotFoundException($"baseline '{bn}' not found");
+            // SPEC-20260926-search-correctness-and-stream RF-004: a baseline is
+            // only comparable when it ran on the SAME dataset — the pinned
+            // fingerprint must match the current one.
+            if (!string.Equals(baseline.DatasetHash, datasetHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"baseline '{bn}' was pinned to a different dataset " +
+                    $"(baseline {baseline.DatasetHash[..Math.Min(12, baseline.DatasetHash.Length)]}… " +
+                    $"vs current {datasetHash[..12]}…) — re-pin the baseline or run without it");
             compareTo = baseline.EvalRunId;
         }
 
@@ -95,7 +105,7 @@ public sealed class EvalRunner(
             RunId = Guid.NewGuid(),
             StartedAt = startedAt,
             DurationMs = sw.ElapsedMilliseconds,
-            DatasetHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(datasetJson))),
+            DatasetHash = datasetHash,
             Cases = cases.Count,
             Metrics = metrics,
             Results = results,
