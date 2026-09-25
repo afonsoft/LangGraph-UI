@@ -7,7 +7,11 @@
 
 <h3 class="mb-3">Settings</h3>
 
-<h5 class="mb-2 text-muted">Chat (LLM)</h5>
+@* SPEC-20260926-settings-tabs-database-metrics RF-001: seções em abas —
+   Chat (LLM) / GraphRAG / Integrações / Cache / Banco de Dados. *@
+<Tab>
+    <TabItem Text="Chat (LLM)">
+
 <p class="text-muted">
     Provider OpenAI-compatible usado na síntese de respostas e no loop do agente.
     O endpoint vai sem <code>/v1</code> — o cliente adiciona
@@ -126,8 +130,9 @@ else
         </div>
     </div>
 }
+    </TabItem>
+    <TabItem Text="GraphRAG">
 
-<h5 class="mb-2 text-muted">Knowledge Graph (GraphRAG)</h5>
 <p class="text-muted">
     Extrai entidades e relações dos chunks indexados e expõe as tools
     <code>find_dependencies</code>, <code>find_dependents</code>, <code>find_path</code>
@@ -206,8 +211,9 @@ else
         </div>
     </div>
 }
+    </TabItem>
+    <TabItem Text="Integrações">
 
-<h5 class="mb-2 text-muted">Integrações</h5>
 <p class="text-muted">
     API keys de serviços upstream consumidos pelo MCP interno. As chaves são
     criptografadas em repouso e nunca retornam à interface — só os 4 últimos
@@ -292,9 +298,10 @@ else
         }
     </div>
 }
+    </TabItem>
+    <TabItem Text="Cache">
 
 @* SPEC-20260924-redis-cache-and-tool-caching RF-004: cache inspection + clear. *@
-<h5 class="mb-2 text-muted mt-4">Cache</h5>
 <p class="text-muted">
     Cache distribuído de busca, embeddings e respostas de tools.
     Em modo <code>memory</code> os contadores vivem no processo; em <code>redis</code>
@@ -320,6 +327,13 @@ else
                         else
                         {
                             <Badge Color="Color.Danger">desconectado</Badge>
+                        }
+                        @* SPEC-20260926-redis-stats-admin-and-connflag RF-003:
+                           stats degradation is a separate badge — connectivity
+                           follows IsConnected (PING) only. *@
+                        @if (!string.IsNullOrEmpty(_cache.StatsError))
+                        {
+                            <Badge Color="Color.Warning" title="@_cache.StatsError">stats parciais</Badge>
                         }
                     </div>
                 </HeaderTemplate>
@@ -428,6 +442,94 @@ else
         </div>
     </div>
 }
+    </TabItem>
+    <TabItem Text="Banco de Dados">
+
+@* SPEC-20260926-settings-tabs-database-metrics RF-003: storage snapshot —
+   provider, file sizes, PRAGMAs, per-entity counts, migrations, vector store. *@
+<p class="text-muted">
+    Estado do armazenamento — provider EF, tamanho do arquivo/WAL, contagens por
+    entidade e diagnóstico do vector store.
+</p>
+
+@if (_dbStats is null)
+{
+    <div class="text-muted mb-4 kh-action-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando métricas do banco…</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-6">
+            <Card>
+                <HeaderTemplate>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Provider: <code>@_dbStats.Provider</code></span>
+                        <Button Size="Size.Small" Color="Color.Secondary" Icon="fa-solid fa-rotate"
+                                Text="Atualizar" IsAsync="true" OnClick="ReloadDatabaseAsync" />
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    <div class="row small">
+                        <div class="col-6 col-md-4"><strong>Banco</strong><br />@FormatBytes(_dbStats.FileSizeBytes ?? 0)</div>
+                        <div class="col-6 col-md-4"><strong>WAL</strong><br />@FormatBytes(_dbStats.WalSizeBytes ?? 0)</div>
+                        <div class="col-6 col-md-4"><strong>Páginas livres</strong><br />@FreelistPct(_dbStats)</div>
+                        <div class="col-6 col-md-4"><strong>Páginas</strong><br />@(_dbStats.PageCount?.ToString("N0") ?? "—")</div>
+                        <div class="col-6 col-md-4"><strong>Page size</strong><br />@FormatBytes(_dbStats.PageSizeBytes ?? 0)</div>
+                        <div class="col-6 col-md-4"><strong>Cache (páginas)</strong><br />@(_dbStats.CacheSizePages?.ToString("N0") ?? "—")</div>
+                    </div>
+                    <div class="small text-muted mt-2 font-monospace text-break">@(_dbStats.DataSource ?? "—")</div>
+                    <div class="small text-muted mt-1">
+                        Migrations: @_dbStats.MigrationsApplied aplicadas
+                        @if (_dbStats.LastMigration is { } mig)
+                        {
+                            <span>— última: <code>@mig</code></span>
+                        }
+                    </div>
+                </BodyTemplate>
+            </Card>
+        </div>
+        <div class="col-12 col-md-6">
+            <Card>
+                <HeaderTemplate><span>Vector store</span></HeaderTemplate>
+                <BodyTemplate>
+                    @if (_dbStats.VectorStore is System.Text.Json.JsonElement vs && vs.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        <div class="row small">
+                            <div class="col-6 col-md-4"><strong>Provider</strong><br />@JsonStr(vs, "provider")</div>
+                            <div class="col-6 col-md-4"><strong>Chunks</strong><br />@JsonStr(vs, "rows")</div>
+                            <div class="col-6 col-md-4"><strong>Dimensões</strong><br />@JsonStr(vs, "dimensions")</div>
+                            <div class="col-6 col-md-4"><strong>Índice HNSW</strong><br />@JsonStr(vs, "hnswIndex")</div>
+                            <div class="col-6 col-md-4"><strong>Storage</strong><br />@JsonStr(vs, "storageType")</div>
+                            <div class="col-6 col-md-4"><strong>pgvector</strong><br />@JsonStr(vs, "pgvectorVersion")</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="text-muted small">Diagnóstico do vector store indisponível.</span>
+                    }
+                </BodyTemplate>
+            </Card>
+        </div>
+        <div class="col-12">
+            <Card>
+                <HeaderTemplate><span>Entidades (@_dbStats.Tables.Count)</span></HeaderTemplate>
+                <BodyTemplate>
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>Tabela</th><th class="text-end">Linhas</th></tr></thead>
+                        <tbody>
+                            @foreach (var t in _dbStats.Tables.OrderByDescending(x => x.RowCount))
+                            {
+                                <tr><td class="font-monospace">@t.Name</td><td class="text-end">@t.RowCount.ToString("N0")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </BodyTemplate>
+            </Card>
+        </div>
+    </div>
+}
+    </TabItem>
+</Tab>
 
 @code {
     private IReadOnlyList<IntegrationSettingsDto>? _integrations;
@@ -437,6 +539,7 @@ else
     private GraphSettingsDto? _graph;
     private readonly GraphFormState _graphForm = new();
     private CacheStatsDto? _cache;
+    private DatabaseStatsDto? _dbStats;
     private LogLevelState? _logLevel;
     private string _logLevelChoice = "Debug";
     private int _logLevelMinutes = 15;
@@ -474,7 +577,31 @@ else
         await ReloadGraphAsync();
         await ReloadCacheAsync();
         await ReloadLogLevelAsync();
+        await ReloadDatabaseAsync();
     }
+
+    /// <summary>SPEC-20260926-settings-tabs-database-metrics RF-003.</summary>
+    private async Task ReloadDatabaseAsync()
+    {
+        try
+        {
+            _dbStats = await Api.GetDatabaseStatsAsync();
+        }
+        catch (Exception ex)
+        {
+            await Toast.Error("Erro", $"Falha ao carregar métricas do banco: {ex.Message}");
+        }
+    }
+
+    private static string FreelistPct(DatabaseStatsDto d) =>
+        d.PageCount is > 0 && d.FreelistCount is { } free
+            ? $"{free:N0} ({free * 100.0 / d.PageCount.Value:F1}%)"
+            : "—";
+
+    private static string JsonStr(System.Text.Json.JsonElement el, string name) =>
+        el.TryGetProperty(name, out var p) && p.ValueKind != System.Text.Json.JsonValueKind.Null
+            ? p.ToString()
+            : "—";
 
     /// <summary>SPEC-20260924-redis-cache-and-tool-caching RF-004.</summary>
     private async Task ReloadCacheAsync()

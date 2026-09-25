@@ -71,7 +71,8 @@ public sealed class AsymmetricEmbeddingTests
             Model = "nomic-embed-text",
             Asymmetric = new EmbeddingOptions.AsymmetricOptions
             {
-                Enabled = true, QueryPrefix = "Q> "
+                Enabled = true,
+                QueryPrefix = "Q> "
             }
         });
 

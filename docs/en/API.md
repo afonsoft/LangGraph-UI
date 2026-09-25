@@ -62,6 +62,8 @@ All `/api/*` endpoints require authentication (cookie session or `Authorization:
 | `GET/PUT/DELETE /api/settings/chat` · `POST /api/settings/chat/test` | persisted chat config + connectivity test |
 | `GET/PUT/DELETE /api/settings/graph` | GraphRAG `enabled`, `maxChunksPerSync`, `maxChunkChars`, `maxResults` — applies without restart |
 | `GET/PUT/DELETE /api/settings/integrations/{provider}` | masked integration keys (firecrawl, deepwiki, tavily, context7) |
+| `GET /api/settings/cache` · `POST /api/settings/cache/clear` | cache stats (per-process tracked keys + Redis server SCAN/INFO overlay — `serverReported`/`partial`) + clear all regions |
+| `GET/PUT /api/settings/log-level` | runtime log level (`LoggingLevelSwitch`); `PUT {level, autoResetMinutes}` — `autoResetMinutes` 0–120 schedules automatic reset to the configured level |
 
 ## Security & eval
 
@@ -86,6 +88,7 @@ All `/api/*` endpoints require authentication (cookie session or `Authorization:
 
 | Route | Purpose |
 |---|---|
+| `GET /api/diagnostics/vectorstore` | vector store diagnostics — provider, dimension, chunk count, storage type (`vector`\|`halfvec`), index state |
 | `/mcp` (+ `/mcp/sse`, `/mcp/message`) | MCP transports — see README |
 | `/hubs/mcp` | SignalR activity feed |
 | `/metrics` | Prometheus scrape endpoint (`Telemetry:Metrics:Prometheus=true`) |

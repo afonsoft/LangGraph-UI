@@ -271,8 +271,11 @@ public sealed class IngestionService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Sync failed for source {SourceId}", sourceId);
-            await TryRecordSyncFailureAsync(sourceId, ex.Message);
-            return Fail(sourceId, "sync failed — see server logs", stopwatch.Elapsed.TotalMilliseconds);
+            // SPEC-20260926-sync-error-diagnostics RF-001: persist the real
+            // cause (innermost exception), not the EF wrapper text.
+            var digest = ExceptionDigest.Describe(ex);
+            await TryRecordSyncFailureAsync(sourceId, digest);
+            return Fail(sourceId, $"sync failed: {digest}", stopwatch.Elapsed.TotalMilliseconds);
         }
         finally
         {

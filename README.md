@@ -71,11 +71,28 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
   },
   "VectorStore": {
     "Provider": "sqlite",                      // sqlite | sqlite-vec | postgres (pgvector)
-    "ConnectionString": ""
+    "ConnectionString": "",
+    "Postgres": {                              // VectorStore:Postgres — pgvector tuning
+      "HnswThreshold": 1000,                   // rows before the HNSW index is created
+      "HnswM": 16, "HnswEfConstruction": 64, "HnswEfSearch": 40,
+      "IterativeScan": false,                  // pgvector ≥0.8 — filtered scans keep topK
+      "StorageType": "vector",                 // vector | halfvec (pgvector ≥0.7, ≤2000 dims)
+      "AllowStorageMigration": false,          // consent gate for ALTER COLUMN … TYPE halfvec
+      "MinPoolSize": 5, "MaxPoolSize": 50
+    }
   },
   "Cache": {
     "Provider": "memory",                      // memory | redis
     "Redis": { "ConnectionString": "" },       // host.docker.internal:6379 when using Redis
+    "ToolCacheEnabled": true,                  // cache MCP tool results (mcp:tool region)
+    "ToolCacheTtlMinutes": 60,
+    "L1Enabled": true,                         // in-process L1 in front of redis L2
+    "L1MaxTtlMinutes": 5,                      // L1 staleness bound
+    "DefaultTtlMinutes": 10,                   // fallback for unknown regions
+    "RegionTtlMinutes": {                      // per-key-region TTLs (longest-prefix match)
+      "emb": 1440, "search": 5, "ans": 10, "mcp:tool": 60,
+      "rewrite": 1440, "expand": 60, "index": 10080, "secret": 60
+    },
     "AnswerCache": { "Enabled": false, "TtlSeconds": 600 }
   },
   "Search": {
@@ -138,11 +155,26 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
   },
   "Auth": {
     "AdminInitialPassword": "123qwe"           // seed password for admin user
+  },
+  "Serilog": {
+    "MinimumLevel": {                          // runtime-adjustable via /api/settings/log-level
+      "Default": "Information",
+      "Override": { "Microsoft": "Warning", "System": "Warning" }
+    },
+    "WriteTo": [
+      { "Name": "Console" },
+      { "Name": "File", "Args": {            // daily rolling file, 14-day retention
+        "path": "logs/knowledgehub-.log",
+        "rollingInterval": "Day",
+        "retainedFileCountLimit": 14 } }
+    ]
   }
 }
 ```
 
 Environment variables override `appsettings.json` (double underscore → nested key). See `.env.example` for the full list.
+
+**Logging.** Structured request logging (Serilog): `/health` and static-asset noise logs at Debug, 5xx at Error; every request carries `x-request-id`/`RequestId`. Secrets are scrubbed by an enricher — keys named `*key*`/`*token*`/`*secret*`/`*password*`/`*connectionstring*` and `aft_*`/`ctx7sk-*`/`sk-*`/`Bearer` patterns are written as `***REDACTED***` in every property. With `Telemetry:Otlp:Endpoint` set, logs also ship to the same OTLP backend as traces/metrics. The runtime level can be raised temporarily via `PUT /api/settings/log-level` (`autoResetMinutes` 0–120). In Docker, the file sink writes to `./logs` (mounted volume — see below).
 
 ## Repository Structure
 
@@ -215,10 +247,13 @@ Open http://localhost:5000 and sign in with `admin` / `123qwe`.
 ### Run (Docker)
 
 ```bash
+mkdir -p data logs && chown 1654:1654 logs   # container runs as uid 1654 (app) — see note
 docker compose up -d
 ```
 
 Access at http://localhost:5000.
+
+> **`./logs` permission caveat.** When the host directory doesn't exist, Docker creates it as `root`, but the container runs as `app` (uid 1654) — the Serilog file sink then fails silently (console output still works). Pre-create with `mkdir -p logs && chown 1654:1654 logs` (or `chown` it once after the first `up`). Logs persist across recreates/upgrades in the `./logs` volume — daily rolling files, 14-day retention, secrets redacted (`***REDACTED***`).
 
 ## Tests & Coverage
 

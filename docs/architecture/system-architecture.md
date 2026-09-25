@@ -243,13 +243,23 @@ flowchart LR
   "Embeddings":  { "Provider": "deterministic|ollama|openai|onnx", "Endpoint": "...",
                    "ApiKey": "", "Model": "nomic-embed-text", "Dimensions": 384,
                    "ModelPath": "models/all-MiniLM-L6-v2" },
-  "VectorStore": { "Provider": "sqlite|sqlite-vec|postgres", "ConnectionString": "" },
+  "VectorStore": { "Provider": "sqlite|sqlite-vec|postgres", "ConnectionString": "",
+                   "Postgres": { "HnswThreshold": 1000, "HnswM": 16,
+                                 "HnswEfConstruction": 64, "HnswEfSearch": 40,
+                                 "IterativeScan": false, "StorageType": "vector|halfvec",
+                                 "AllowStorageMigration": false,
+                                 "MinPoolSize": 5, "MaxPoolSize": 50 } },
   "Chat":        { "Provider": "none|ollama|openai", "Endpoint": "...",
                    "Model": "llama3.2", "ApiKey": "", "TimeoutSeconds": 120 },
   "Search":      { "Lexical": { "Enabled": true },
                    "QueryRewrite": { "Enabled": false, "LexicalToo": false },
                    "Rerank": { "Enabled": false, "MaxCandidates": 50 } },
   "Cache":       { "Provider": "memory|redis", "Redis": { "ConnectionString": "" },
+                   "ToolCacheEnabled": true, "ToolCacheTtlMinutes": 60,
+                   "L1Enabled": true, "L1MaxTtlMinutes": 5, "DefaultTtlMinutes": 10,
+                   "RegionTtlMinutes": { "emb": 1440, "search": 5, "ans": 10,
+                                         "mcp:tool": 60, "rewrite": 1440,
+                                         "expand": 60, "index": 10080, "secret": 60 },
                    "AnswerCache": { "Enabled": false, "TtlSeconds": 600 } },
   "RateLimiting":{ "Enabled": true, "LlmPermitLimit": 20, "LlmWindowSeconds": 60,
                    "AnonymousLlmPermitLimit": 5, "SyncPermitLimit": 10,
@@ -262,11 +272,15 @@ flowchart LR
   "Mcp":         { "SessionMode": "StatefulForInitializeClients",
                    "MaxConcurrentCallsPerSession": 8, "ActivityFeedCapacity": 500 },
   "Auth":        { "AdminInitialPassword": "123qwe", "SessionHours": 12 },
-  "Host":        { "ShutdownTimeoutSeconds": 30 }
+  "Host":        { "ShutdownTimeoutSeconds": 30 },
+  "Serilog":     { "MinimumLevel": { "Default": "Information",
+                                     "Override": { "Microsoft": "Warning",
+                                                   "System": "Warning" } },
+                   "WriteTo": [ "Console", "File (logs/, daily rolling, 14d)" ] }
 }
 ```
 
-Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
+Runtime-editable settings (stored in SQLite, override env, no restart): **Chat** (`/api/settings/chat`), **Graph** (`/api/settings/graph`), **integration secrets** (`/api/settings/integrations/*`), **runtime log level** (`/api/settings/log-level`, `autoResetMinutes` 0–120), and **per-API-key** chat/integration/rate-limit/scopes overrides (`/api/api-keys/{id}/*`).
 
 Security boundaries: source configs are **redacted** in API responses; vault paths reject `..`; `AllowedHosts` restricted to localhost; secrets live in env vars or the encrypted `IntegrationSecrets` store; embedding model changes are detected via `EmbeddingModel` stamping so stale vectors are never mixed.
 

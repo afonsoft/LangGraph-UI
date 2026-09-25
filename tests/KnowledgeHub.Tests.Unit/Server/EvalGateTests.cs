@@ -10,11 +10,16 @@ public sealed class EvalGateTests
 {
     private static readonly EvalMetricsSummary Metrics = new()
     {
-        RecallAtK = 0.82, PrecisionAtK = 0.4, Mrr = 0.7
+        RecallAtK = 0.82,
+        PrecisionAtK = 0.4,
+        Mrr = 0.7
     };
     private static readonly EvalLatencySummary Latency = new()
     {
-        P50 = 120, P95 = 900, P99 = 1400, Mean = 300
+        P50 = 120,
+        P95 = 900,
+        P99 = 1400,
+        Mean = 300
     };
 
     [Fact]

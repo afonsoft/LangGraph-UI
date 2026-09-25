@@ -164,6 +164,16 @@ public static class SettingsEndpoints
             CancellationToken ct) =>
             Results.Ok(await cacheMgr.ClearAllAsync(ct)));
 
+        // SPEC-20260926-settings-tabs-database-metrics RF-002: storage snapshot
+        // for the "Banco de Dados" tab — provider, sizes, PRAGMAs, entity
+        // counts, migrations + vector store diagnostics (fail-soft per section).
+        group.MapGet("/database", async (
+            Data.KnowledgeHubDbContext db,
+            IConfiguration cfg,
+            VectorStore.IVectorStore vectors,
+            CancellationToken ct) =>
+            Results.Ok(await DatabaseStatsBuilder.BuildAsync(db, cfg, vectors, ct)));
+
         // SPEC-20260925-runtime-log-level RF-002/RF-003: runtime log level with
         // auto-reset — a Debug session expires instead of filling the disk.
         group.MapGet("/log-level", (Telemetry.LogLevelControl control) =>
