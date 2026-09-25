@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `Serilog.Core.LoggingLevelSwitch` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Approved` |
 | Origem | análise de logging 2026-09-25 |
 
 ## 1. User Story

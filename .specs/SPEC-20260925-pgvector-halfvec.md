@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `pgvector`, `Npgsql`, `Pgvector` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Approved` |
 | Origem | análise de vector store 2026-09-25 |
 
 ## 1. User Story
