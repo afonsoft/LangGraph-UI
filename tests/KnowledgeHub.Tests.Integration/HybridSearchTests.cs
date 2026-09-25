@@ -52,7 +52,7 @@ public class HybridSearchTests : IClassFixture<HybridSearchTests.Fixture>, IDisp
         });
         response.EnsureSuccessStatusCode();
         var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        var sync = await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        var sync = await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
         sync.EnsureSuccessStatusCode();
         return source;
     }
@@ -151,7 +151,7 @@ public class HybridSearchTests : IClassFixture<HybridSearchTests.Fixture>, IDisp
         Assert.NotEmpty(before!.Results);
 
         File.Delete(file);
-        var resync = await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        var resync = await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
         resync.EnsureSuccessStatusCode();
 
         var after = await _client.GetFromJsonAsync<SearchResponse>(

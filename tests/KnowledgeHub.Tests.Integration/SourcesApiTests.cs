@@ -203,7 +203,7 @@ public class SourcesApiTests : IClassFixture<SourcesApiTests.Fixture>
         });
         var created = await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>();
 
-        var sync = await _client.PostAsync($"/api/sources/{created!.Id}/sync", null);
+        var sync = await _client.PostAsync($"/api/sources/{created!.Id}/sync?wait=true", null);
         Assert.Equal(HttpStatusCode.Accepted, sync.StatusCode);
         var result = await sync.Content.ReadFromJsonAsync<SyncResultDto>();
         Assert.Equal("skipped", result!.Status);

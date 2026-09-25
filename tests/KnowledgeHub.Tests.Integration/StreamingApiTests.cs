@@ -108,7 +108,7 @@ public class StreamingApiTests : IClassFixture<StreamingApiTests.Fixture>
         });
         create.EnsureSuccessStatusCode();
         var source = await create.Content.ReadFromJsonAsync<KnowledgeHub.Shared.Contracts.KnowledgeSourceDto>();
-        await _client.PostAsync($"/api/sources/{source!.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{source!.Id}/sync?wait=true", null);
 
         var body = await PostSseAsync("/api/ask/stream", new { question = "what about streaming?" });
         var events = ParseSse(body);

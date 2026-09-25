@@ -54,7 +54,7 @@ public class EvalEndpointsTests : IClassFixture<EvalEndpointsTests.Fixture>
         });
         response.EnsureSuccessStatusCode();
         var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        (await _client.PostAsync($"/api/sources/{source.Id}/sync", null)).EnsureSuccessStatusCode();
+        (await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null)).EnsureSuccessStatusCode();
     }
 
     [Fact]

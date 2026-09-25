@@ -55,7 +55,7 @@ public class SourceAuthorizationTests : IClassFixture<SourceAuthorizationTests.F
         });
         response.EnsureSuccessStatusCode();
         var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        (await _admin.PostAsync($"/api/sources/{source.Id}/sync", null)).EnsureSuccessStatusCode();
+        (await _admin.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null)).EnsureSuccessStatusCode();
         return (source.Id, token);
     }
 

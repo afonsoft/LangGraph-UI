@@ -65,7 +65,7 @@ public class CodeChunkingTests : IClassFixture<CodeChunkingTests.Fixture>
         });
         src.EnsureSuccessStatusCode();
         var source = (await src.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await _client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();

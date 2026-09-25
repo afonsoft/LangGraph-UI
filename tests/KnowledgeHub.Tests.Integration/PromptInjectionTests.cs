@@ -108,7 +108,7 @@ public class PromptInjectionTests : IClassFixture<PromptInjectionTests.Fixture>,
     {
         var token = $"INJ{Guid.NewGuid():N}";
         var sourceId = await SeedInjectionSource(token);
-        var sync = await _client.PostAsync($"/api/sources/{sourceId}/sync", null);
+        var sync = await _client.PostAsync($"/api/sources/{sourceId}/sync?wait=true", null);
         sync.EnsureSuccessStatusCode();
         var result = (await sync.Content.ReadFromJsonAsync<SyncResultDto>())!;
 
@@ -151,7 +151,7 @@ public class PromptInjectionTests : IClassFixture<PromptInjectionTests.Fixture>,
             isActive = true
         });
         var source = (await src.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         var hits = await client.GetFromJsonAsync<SearchResponse>(
             $"/api/search?query={token}&mode=lexical");

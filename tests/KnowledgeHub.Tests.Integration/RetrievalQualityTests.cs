@@ -97,7 +97,7 @@ public class RetrievalQualityTests : IClassFixture<RetrievalQualityTests.Fixture
             isActive = true
         });
         var src1 = (await s1.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await _client.PostAsync($"/api/sources/{src1.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{src1.Id}/sync?wait=true", null);
 
         // Obsidian vault source with the same token.
         var vault = Path.Combine(_dir, "vault");
@@ -111,7 +111,7 @@ public class RetrievalQualityTests : IClassFixture<RetrievalQualityTests.Fixture
             isActive = true
         });
         var src2 = (await s2.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await _client.PostAsync($"/api/sources/{src2.Id}/sync", null);
+        await _client.PostAsync($"/api/sources/{src2.Id}/sync?wait=true", null);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class RetrievalQualityTests : IClassFixture<RetrievalQualityTests.Fixture
             isActive = true
         });
         var source = (await src.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await client.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await client.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         var hits = await client.GetFromJsonAsync<SearchResponse>(
             $"/api/search?query={token}&mode=lexical&topK=4");

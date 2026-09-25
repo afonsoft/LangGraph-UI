@@ -54,7 +54,7 @@ public class ConnectorSyncTests : IClassFixture<ConnectorSyncTests.Fixture>, IDi
     }
 
     private async Task<SyncResultDto> Sync(Guid id) =>
-        (await (await _client.PostAsync($"/api/sources/{id}/sync", null))
+        (await (await _client.PostAsync($"/api/sources/{id}/sync?wait=true", null))
             .Content.ReadFromJsonAsync<SyncResultDto>())!;
 
     [Fact]

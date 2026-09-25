@@ -127,7 +127,7 @@ public class NotionSyncTests : IClassFixture<NotionSyncTests.Fixture>
     }
 
     private async Task<SyncResultDto> Sync(Guid id) =>
-        (await (await _client.PostAsync($"/api/sources/{id}/sync", null))
+        (await (await _client.PostAsync($"/api/sources/{id}/sync?wait=true", null))
             .Content.ReadFromJsonAsync<SyncResultDto>())!;
 
     private async Task<List<KnowledgeDocumentDto>> Docs(Guid id) =>

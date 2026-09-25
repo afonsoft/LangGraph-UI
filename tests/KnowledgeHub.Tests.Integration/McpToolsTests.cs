@@ -85,7 +85,7 @@ public class McpToolsTests : IClassFixture<McpToolsTests.Fixture>
             configuration = new { path = _factory.Vault }
         });
         var source = (await create.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
-        await http.PostAsync($"/api/sources/{source.Id}/sync", null);
+        await http.PostAsync($"/api/sources/{source.Id}/sync?wait=true", null);
 
         var result = await mcp.SendAsync("tools/call", new
         {
