@@ -169,6 +169,68 @@
                                   ShowLabel="true" IsNullable="true" />
         </div>
     }
+    @* SPEC-20260924-cloud-storage-connectors RF-007: per-provider fields. *@
+    @if (Model.Type is SourceType.AwsS3 or SourceType.OciStorage)
+    {
+        @if (Model.Type is SourceType.OciStorage)
+        {
+            <div class="col-12 col-md-4">
+                <BootstrapInput @bind-Value="Model.Namespace" DisplayText="Namespace *" ShowLabel="true" />
+            </div>
+        }
+        <div class="col-12 col-md-4">
+            <BootstrapInput @bind-Value="Model.BucketName" DisplayText="Bucket *" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-4">
+            <BootstrapInput @bind-Value="Model.Region" DisplayText="Região * (ex.: us-east-1, sa-saopaulo-1)" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.Prefix" DisplayText="Prefixo / pasta" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.AccessKeyId" DisplayText="Access Key ID *" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <label class="form-label">
+                Secret Access Key @(Model.HasStoredKey ? "(armazenada — em branco mantém a atual)" : "*")
+            </label>
+            <input type="password" class="form-control font-monospace" @bind="Model.SecretAccessKey"
+                   autocomplete="new-password" placeholder="@(Model.HasStoredKey ? "••••••••" : "")" />
+        </div>
+    }
+    @if (Model.Type is SourceType.AzureFiles)
+    {
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.ShareName" DisplayText="Share name *" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.DirectoryPath" DisplayText="Diretório raiz" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.AccountName" DisplayText="Account name (se não usar connection string)" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.Prefix" DisplayText="Prefixo (opcional)" ShowLabel="true" />
+        </div>
+        <div class="col-12">
+            <label class="form-label">
+                Connection string ou Account Key @(Model.HasStoredKey ? "(armazenada — em branco mantém a atual)" : "*")
+            </label>
+            <input type="password" class="form-control font-monospace" @bind="Model.SecretAccessKey"
+                   autocomplete="new-password" placeholder="@(Model.HasStoredKey ? "••••••••" : "")" />
+            <div class="form-text">Cole a connection string completa, ou só a account key com o account name acima.</div>
+        </div>
+    }
+    @if (Model.Type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+    {
+        <div class="col-12 col-md-6">
+            <BootstrapInput @bind-Value="Model.Glob" DisplayText="Filtro glob (ex.: **/*.{pdf,docx,md,txt})" ShowLabel="true" />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInputNumber @bind-Value="Model.MaxFileSizeMB" DisplayText="Tamanho máx. arquivo (MB, padrão 20)"
+                                  ShowLabel="true" IsNullable="true" />
+        </div>
+    }
 
     <div class="col-6 col-md-3">
         <Switch @bind-Value="Model.IsActive" DisplayText="Ativa" ShowLabel="true" />
@@ -258,6 +320,23 @@
             SourceType.Notion
                 when string.IsNullOrEmpty(Model.NotionToken) && !Model.HasStoredKey
                 => "Integration token é obrigatório",
+            SourceType.AwsS3 or SourceType.OciStorage
+                when string.IsNullOrWhiteSpace(Model.BucketName)
+                  || string.IsNullOrWhiteSpace(Model.Region)
+                  || string.IsNullOrWhiteSpace(Model.AccessKeyId)
+                => "Bucket, região e access key são obrigatórios",
+            SourceType.OciStorage
+                when string.IsNullOrWhiteSpace(Model.Namespace)
+                => "Namespace é obrigatório para OCI",
+            SourceType.AwsS3 or SourceType.OciStorage
+                when string.IsNullOrEmpty(Model.SecretAccessKey) && !Model.HasStoredKey
+                => "Secret access key é obrigatória",
+            SourceType.AzureFiles
+                when string.IsNullOrWhiteSpace(Model.ShareName)
+                => "Share name é obrigatório",
+            SourceType.AzureFiles
+                when string.IsNullOrEmpty(Model.SecretAccessKey) && !Model.HasStoredKey
+                => "Connection string ou account key é obrigatória",
             _ => null
         };
     }
@@ -266,7 +345,9 @@
     private static readonly string[] ManagedKeys =
         ["path", "url", "endpoint", "headers", "connectionString", "query", "readOnly",
          "transport", "namePrefix", "apiKey", "hasKey",
-         "token", "rootPageIds", "rootDatabaseIds", "maxPages"];
+         "token", "rootPageIds", "rootDatabaseIds", "maxPages",
+         "bucketName", "region", "namespace", "shareName", "directoryPath", "prefix",
+         "glob", "maxFileSizeMB", "accessKeyId", "secretAccessKey", "accountName", "accountKey"];
 
     private static readonly List<SelectedItem> TransportItems =
         [new("auto", "auto"), new("http", "http"), new("sse", "sse")];
@@ -327,6 +408,41 @@
                 if (Model.MaxPages is not null)
                     config["maxPages"] = Model.MaxPages;
                 break;
+            case SourceType.AwsS3:
+            case SourceType.OciStorage:
+                if (Model.Type is SourceType.OciStorage)
+                    config["namespace"] = Model.Namespace;
+                config["bucketName"] = Model.BucketName;
+                config["region"] = Model.Region;
+                config["accessKeyId"] = Model.AccessKeyId;
+                if (!string.IsNullOrWhiteSpace(Model.Prefix))
+                    config["prefix"] = Model.Prefix;
+                // Empty keeps the stored secret; non-empty replaces it (server
+                // moves the value to the encrypted store — never persisted).
+                if (!string.IsNullOrEmpty(Model.SecretAccessKey))
+                    config["secretAccessKey"] = Model.SecretAccessKey;
+                break;
+            case SourceType.AzureFiles:
+                config["shareName"] = Model.ShareName;
+                if (!string.IsNullOrWhiteSpace(Model.DirectoryPath))
+                    config["directoryPath"] = Model.DirectoryPath;
+                if (!string.IsNullOrWhiteSpace(Model.AccountName))
+                    config["accountName"] = Model.AccountName;
+                if (!string.IsNullOrWhiteSpace(Model.Prefix))
+                    config["prefix"] = Model.Prefix;
+                // One credential field: a pasted connection string contains '='
+                // pairs; a bare account key does not.
+                if (!string.IsNullOrEmpty(Model.SecretAccessKey))
+                    config[Model.SecretAccessKey.Contains('=') ? "connectionString" : "accountKey"] = Model.SecretAccessKey;
+                break;
+        }
+
+        if (Model.Type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+        {
+            if (!string.IsNullOrWhiteSpace(Model.Glob))
+                config["glob"] = Model.Glob;
+            if (Model.MaxFileSizeMB is not null)
+                config["maxFileSizeMB"] = Model.MaxFileSizeMB;
         }
 
         if (Model.Type is SourceType.ObsidianVault && Model.ReadOnly)
@@ -364,6 +480,17 @@
         public string? RootPageIds { get; set; }
         public string? RootDatabaseIds { get; set; }
         public int? MaxPages { get; set; }
+        public string? BucketName { get; set; }
+        public string? Region { get; set; }
+        public string? Namespace { get; set; }
+        public string? ShareName { get; set; }
+        public string? DirectoryPath { get; set; }
+        public string? Prefix { get; set; }
+        public string? Glob { get; set; }
+        public int? MaxFileSizeMB { get; set; }
+        public string? AccessKeyId { get; set; }
+        public string? SecretAccessKey { get; set; }
+        public string? AccountName { get; set; }
 
         /// <summary>True when the source already has an API key in the
         /// encrypted store (McpProxy) — the value itself is never returned.</summary>
@@ -394,6 +521,17 @@
             RootDatabaseIds = ReadStringList(dto.Configuration, "rootDatabaseIds"),
             MaxPages = dto.Configuration?["maxPages"] is JsonValue mp
                 && mp.TryGetValue<int>(out var mpn) ? mpn : null,
+            BucketName = dto.Configuration?["bucketName"]?.GetValue<string>(),
+            Region = dto.Configuration?["region"]?.GetValue<string>(),
+            Namespace = dto.Configuration?["namespace"]?.GetValue<string>(),
+            ShareName = dto.Configuration?["shareName"]?.GetValue<string>(),
+            DirectoryPath = dto.Configuration?["directoryPath"]?.GetValue<string>(),
+            Prefix = dto.Configuration?["prefix"]?.GetValue<string>(),
+            Glob = dto.Configuration?["glob"]?.GetValue<string>(),
+            MaxFileSizeMB = dto.Configuration?["maxFileSizeMB"] is JsonValue mf
+                && mf.TryGetValue<int>(out var mfn) ? mfn : null,
+            AccessKeyId = dto.Configuration?["accessKeyId"]?.GetValue<string>(),
+            AccountName = dto.Configuration?["accountName"]?.GetValue<string>(),
             OriginalConfiguration = dto.Configuration?.DeepClone() as JsonObject
         };
 

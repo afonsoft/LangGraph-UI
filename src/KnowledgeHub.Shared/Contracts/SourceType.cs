@@ -16,5 +16,11 @@ public enum SourceType
     McpProxy = 6,
     /// <summary>Notion workspace via REST API internal integration
     /// (SPEC-20260919-notion-connector) — read-only ingestion.</summary>
-    Notion = 7
+    Notion = 7,
+    /// <summary>AWS S3 bucket via AWS SDK (SPEC-20260924-cloud-storage-connectors).</summary>
+    AwsS3 = 8,
+    /// <summary>Azure Files share via Azure.Storage.Files.Shares.</summary>
+    AzureFiles = 9,
+    /// <summary>OCI Object Storage via the S3-compatible endpoint.</summary>
+    OciStorage = 10
 }

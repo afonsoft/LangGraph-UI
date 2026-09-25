@@ -8,9 +8,9 @@
 | Type | `Feature` |
 | Stack | `.NET 10 (ASP.NET Core + EF Core SQLite + Blazor WASM + Cloud Storage Clients)` |
 | Repository | `LangGraph-UI` |
-| Branch | `feature/Antigravity-20260924-cloud-storage-connectors` |
+| Branch | `feature/Devin-20260925-cloud-storage-connectors` |
 | Ticket | [#178](https://github.com/afonsoft/LangGraph-UI/issues/178) |
-| Status | `In implementation` |
+| Status | `Done` |
 
 ## 1. User Story
 
@@ -307,7 +307,7 @@ tests/KnowledgeHub.Tests.Integration/CloudStorageIngestionTests.cs           (cr
 
 ## 8. Organization Guardrails
 
-- **Branches:** nunca comitar em `main`, `master` ou `develop`. Usar `feature/Antigravity-20260924-cloud-storage-connectors`.
+- **Branches:** nunca comitar em `main`, `master` ou `develop`. Usar `feature/Devin-20260925-cloud-storage-connectors`.
 - **Workflows:** não modificar `.github/workflows/`.
 - **Segurança:** nunca gravar segredos de nuvem (secret access keys, connection strings) em texto puro no banco de dados ou logs; utilizar sempre `IIntegrationSecretStore`.
 - **Performance:** garantir sync incremental baseado em ETag/LastModified para não baixar massivamente arquivos inalterados a cada execução.

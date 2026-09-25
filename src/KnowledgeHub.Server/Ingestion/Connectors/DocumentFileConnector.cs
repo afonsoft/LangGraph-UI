@@ -152,7 +152,7 @@ public sealed partial class DocumentFileConnector(ILogger<DocumentFileConnector>
         }
     }
 
-    /// <summary>Minimal glob: `**/*`, `*.ext`, `**/*.ext`, exact names.</summary>
+    /// <summary>Minimal glob: `**/*`, `*.ext`, `**/*.ext`, `{a,b}` groups, exact names.</summary>
     public static class GlobMatcher
     {
         public static Func<string, bool> Compile(string glob)
@@ -162,6 +162,9 @@ public sealed partial class DocumentFileConnector(ILogger<DocumentFileConnector>
                 .Replace("\\*\\*", ".*")        // **   → anything
                 .Replace("\\*", "[^/]*")        // *    → segment
                 .Replace("\\?", ".");
+            // {a,b} → (a|b) — Regex.Escape escapes the braces, commas pass through.
+            pattern = Regex.Replace(pattern, @"\\\{([^}]*)\\\}",
+                m => "(" + m.Groups[1].Value.Replace(",", "|") + ")");
             var regex = new Regex($"^{pattern}$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             return path => regex.IsMatch(path.Replace('\\', '/'));
         }
