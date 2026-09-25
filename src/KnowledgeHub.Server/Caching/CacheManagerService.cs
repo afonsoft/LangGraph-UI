@@ -109,17 +109,38 @@ public sealed class CacheManagerService : ICacheManagerService
 
     private async Task EnrichFromRedisAsync(CacheStatsDto stats, CancellationToken ct)
     {
+        // SPEC-20260926-redis-stats-admin-and-connflag RF-002: connectivity is
+        // judged by PING alone — SCAN/INFO failures degrade the stats section
+        // (StatsError), never flip the badge to disconnected.
         try
         {
             var ping = _redis!.GetDatabase().PingAsync();
             var completed = await Task.WhenAny(ping, Task.Delay(RedisPingTimeout, ct));
             stats.IsConnected = completed == ping && !ping.IsFaulted;
+            if (ping.IsFaulted)
+                _logger.LogWarning(ping.Exception?.GetBaseException(), "redis ping failed");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            stats.IsConnected = false;
+            _logger.LogWarning(ex, "redis ping failed");
+            return;
+        }
 
+        if (!stats.IsConnected)
+            return;
+
+        try
+        {
             var server = _redis.GetEndPoints()
                 .Select(ep => _redis.GetServer(ep))
                 .FirstOrDefault(s => s.IsConnected);
             if (server is null)
+            {
+                stats.StatsError = "no connected server endpoint";
                 return;
+            }
 
             // Bounded SCAN (never KEYS *) — cap both page size and total count.
             var count = 0L;
@@ -140,9 +161,16 @@ public sealed class CacheManagerService : ICacheManagerService
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            stats.IsConnected = false;
-            _logger.LogDebug(ex, "redis stats enrichment failed — returning process-local stats");
+            stats.StatsError = TrimError(ex);
+            _logger.LogWarning(ex, "redis stats enrichment failed — connectivity ok, stats degraded");
         }
+    }
+
+    private static string TrimError(Exception ex)
+    {
+        var b = ex.GetBaseException();
+        var m = $"{b.GetType().Name}: {b.Message}".Replace('\n', ' ').Replace('\r', ' ');
+        return m.Length > 200 ? m[..200] : m;
     }
 
     private static long? ParseInfoLong(

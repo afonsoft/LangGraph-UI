@@ -22,6 +22,11 @@ public sealed class CacheStatsDto
     public long? ServerKeys { get; set; }
     public long? ServerUsedMemoryBytes { get; set; }
     public int? ServerConnectedClients { get; set; }
+
+    /// <summary>SPEC-20260926-redis-stats-admin-and-connflag RF-002: reason the
+    /// server-side enrichment (SCAN/INFO) failed — connectivity verdict stays in
+    /// <see cref="IsConnected"/> (PING only); this surfaces the stats error.</summary>
+    public string? StatsError { get; set; }
 }
 
 public sealed class CacheKeyItemDto

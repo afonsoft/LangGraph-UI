@@ -108,6 +108,12 @@ public sealed class SettingsApiClient(HttpClient http)
     public Task<CacheStatsDto?> GetCacheStatsAsync(CancellationToken ct = default) =>
         http.GetFromJsonAsync<CacheStatsDto>("api/settings/cache", ct);
 
+    // SPEC-20260926-settings-tabs-database-metrics RF-003.
+
+    /// <summary>Métricas do banco: provider, tamanhos, contagens por entidade, vector store.</summary>
+    public Task<DatabaseStatsDto?> GetDatabaseStatsAsync(CancellationToken ct = default) =>
+        http.GetFromJsonAsync<DatabaseStatsDto>("api/settings/database", ct);
+
     // SPEC-20260925-runtime-log-level RF-003/RF-004: runtime log level.
 
     /// <summary>Nível de log atual + auto-reset.</summary>

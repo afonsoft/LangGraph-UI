@@ -141,11 +141,18 @@ public sealed class IngestionWorker(
         {
             job.Status = "cancelled";
         }
+        // SPEC-20260926-sync-error-diagnostics RF-002: a host shutdown cancels
+        // jobCt too — record it distinctly instead of "The operation was canceled."
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            job.Status = "failed";
+            job.Error = "interrupted by shutdown/restart";
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Ingestion job {JobId} failed", jobId);
             job.Status = "failed";
-            job.Error = ex.Message;
+            job.Error = ExceptionDigest.Describe(ex);
         }
         finally
         {

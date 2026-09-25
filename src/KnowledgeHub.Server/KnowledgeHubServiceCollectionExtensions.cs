@@ -322,6 +322,10 @@ public static class KnowledgeHubServiceCollectionExtensions
                 var parsed = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
                 parsed.AbortOnConnectFail = false;
                 parsed.ConnectTimeout = 3000;
+                // SPEC-20260926-redis-stats-admin-and-connflag RF-001: INFO/SCAN
+                // server stats in CacheManagerService are admin commands —
+                // without this they throw "unless admin mode is enabled".
+                parsed.AllowAdmin = true;
                 return StackExchange.Redis.ConnectionMultiplexer.Connect(parsed);
             });
 
@@ -348,6 +352,7 @@ public static class KnowledgeHubServiceCollectionExtensions
                     var parsed = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
                     parsed.AbortOnConnectFail = false;
                     parsed.ConnectTimeout = 3000;
+                    parsed.AllowAdmin = true;
                     redisOpts.ConfigurationOptions = parsed;
                 }
                 catch
