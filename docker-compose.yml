@@ -5,6 +5,13 @@ services:
     build: .
     image: knowledgehub:latest
     container_name: knowledgehub
+    # Vars in .env reach the container directly (ASP.NET Core reads
+    # `Section__Key` env names case-insensitively) — same pattern as
+    # proxyLLM-AI. `required: false` keeps clean checkouts deployable
+    # without a .env; compose still interpolates ${VARS} below from it.
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "${KNOWLEDGEHUB_PORT:-5000}:8080"
     volumes:
@@ -32,7 +39,12 @@ services:
       Embeddings__ApiKey: ${EMBEDDINGS_APIKEY:-}
       Embeddings__Model: ${EMBEDDINGS_MODEL:-nomic-embed-text}
       VectorStore__Provider: ${VECTORSTORE_PROVIDER:-sqlite}
-      VectorStore__ConnectionString: ${VECTORSTORE_CONNECTIONSTRING:-}
+      # proxyLLM-AI pattern: the connection string is composed from discrete
+      # POSTGRES_* vars in .env (host Postgres is reached via the
+      # host.docker.internal extra_hosts mapping below — make sure the
+      # container's subnet is allowed in the host's pg_hba.conf).
+      # VECTORSTORE_CONNECTIONSTRING, when set, wins over the composition.
+      VectorStore__ConnectionString: ${VECTORSTORE_CONNECTIONSTRING:-Host=${POSTGRES_HOST:-host.docker.internal};Port=${POSTGRES_PORT:-5432};Database=${POSTGRES_DB:-rag_db};Username=${POSTGRES_USER:-rag_user};Password=${POSTGRES_PASSWORD:-}}
       DeepWiki__Enabled: ${DEEPWIKI_ENABLED:-true}
       DeepWiki__Endpoint: ${DEEPWIKI_ENDPOINT:-https://mcp.deepwiki.com/mcp}
       DeepWiki__PrivateEndpoint: ${DEEPWIKI_PRIVATE_ENDPOINT:-https://mcp.devin.ai/mcp}

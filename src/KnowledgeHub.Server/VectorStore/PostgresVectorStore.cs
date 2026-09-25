@@ -257,12 +257,14 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 cmd.Parameters.AddWithValue(sourceIds.ToArray());
 
             var hits = new List<VectorHit>();
-            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
+            await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
             {
-                hits.Add(new VectorHit(
-                    reader.GetGuid(0),
-                    reader.GetDouble(1)));
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    hits.Add(new VectorHit(
+                        reader.GetGuid(0),
+                        reader.GetDouble(1)));
+                }
             }
 
             // RF-501 (SPEC-20260926-review-backlog-remediation): relaxed_order

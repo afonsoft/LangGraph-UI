@@ -31,6 +31,10 @@ if [[ -f .env ]]; then
   done < .env
 fi
 
+# Same contract as docker-compose.yml: VECTORSTORE_CONNECTIONSTRING wins;
+# otherwise it is composed from the discrete POSTGRES_* vars (proxyLLM pattern).
+VECTORSTORE_CONNECTIONSTRING="${VECTORSTORE_CONNECTIONSTRING:-Host=${POSTGRES_HOST:-host.docker.internal};Port=${POSTGRES_PORT:-5432};Database=${POSTGRES_DB:-rag_db};Username=${POSTGRES_USER:-rag_user};Password=${POSTGRES_PASSWORD:-}}"
+
 MODE=""
 PORT="${KNOWLEDGEHUB_PORT:-5000}"
 PREFIX="/opt/knowledgehub"
