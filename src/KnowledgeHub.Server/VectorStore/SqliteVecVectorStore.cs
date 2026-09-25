@@ -137,7 +137,6 @@ public sealed class SqliteVecVectorStore : IVectorStore
             await using (dedicated)
             {
                 await dedicated.OpenAsync(cancellationToken);
-                dedicated.LoadVector();
                 await EnsureInitializedOnAsync(dedicated, cancellationToken);
                 return await QueryAsync(dedicated, queryVector, model, topK, sourceIds, cancellationToken);
             }
@@ -214,6 +213,21 @@ public sealed class SqliteVecVectorStore : IVectorStore
                 "re-create the index or fix Embeddings:Dimensions");
     }
 
+    /// <summary>Connections that already carry the vec0 module — weak so
+    /// dedicated per-search connections do not leak the table.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SqliteConnection, object> VecLoaded = new();
+
+    private static void EnsureVectorLoaded(SqliteConnection conn)
+    {
+        lock (conn)
+        {
+            if (VecLoaded.TryGetValue(conn, out _))
+                return;
+            conn.LoadVector();
+            VecLoaded.Add(conn, new object());
+        }
+    }
+
     private async Task<SqliteConnection> VecConnectionAsync(CancellationToken cancellationToken)
     {
         var conn = (SqliteConnection)_db.Database.GetDbConnection();
@@ -227,6 +241,11 @@ public sealed class SqliteVecVectorStore : IVectorStore
     /// once per service lifetime, whichever connection arrives first.</summary>
     private async Task EnsureInitializedOnAsync(SqliteConnection conn, CancellationToken cancellationToken)
     {
+        // RF-402 (SPEC-20260926-review-backlog-remediation): vec0 is a
+        // PER-CONNECTION extension — a write on a different connection after a
+        // dedicated-conn search hit "no such module". Load on every new
+        // connection; _initialized only gates the schema/backfill.
+        EnsureVectorLoaded(conn);
         if (_initialized)
             return;
 
@@ -235,7 +254,6 @@ public sealed class SqliteVecVectorStore : IVectorStore
         {
             if (_initialized)
                 return;
-            conn.LoadVector();
             await EnsureSchemaAsync(conn, cancellationToken);
             await BackfillFromDocumentChunksAsync(conn, cancellationToken);
             _initialized = true;

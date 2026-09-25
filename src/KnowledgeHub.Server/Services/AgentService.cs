@@ -187,8 +187,17 @@ public sealed class AgentService(
         if (approval.StateJson is null)
             throw new ConflictException($"approval '{approvalId}' has no resumable state");
 
-        approval.ResumedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        // RF-102 (SPEC-20260926-review-backlog-remediation): claim atomically —
+        // a check-then-save raced two concurrent resumes into executing the
+        // same tool twice.
+        var claimed = await db.Approvals
+            .Where(a => a.Id == approvalId && a.ResumedAt == null)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(a => a.ResumedAt, DateTimeOffset.UtcNow),
+                cancellationToken);
+        if (claimed == 0)
+            throw new ConflictException($"approval '{approvalId}' already resumed");
+        approval.ResumedAt = DateTimeOffset.UtcNow; // keep the tracked entity in sync
 
         var state = JsonSerializer.Deserialize<SuspendState>(approval.StateJson, JsonSerializerOptions.Web)
             ?? throw new InvalidOperationException("corrupt approval state");
@@ -243,7 +252,59 @@ public sealed class AgentService(
         loop.Messages.Add(new ChatMessage(ChatRole.Tool,
             [new FunctionResultContent(pending.CallId, result)]));
 
-        return await RunLoopAsync(client, loop, cancellationToken);
+        // RF-104: the gated call's siblings from the same model turn were
+        // suspended un-executed — answer them now so the resumed model sees
+        // every call it made.
+        foreach (var sib in state.RemainingCalls ?? (IEnumerable<StoredCall>)[])
+        {
+            var sibFn = loop.Functions.FirstOrDefault(f => f.Name == sib.Name);
+            object? sibResult;
+            var sibErr = false;
+            var sibSw = Stopwatch.StartNew();
+            try
+            {
+                sibResult = sibFn is null
+                    ? $"ERROR: unknown tool '{sib.Name}'"
+                    : await sibFn.InvokeAsync(
+                        new AIFunctionArguments(sib.Args.Deserialize<Dictionary<string, object?>>()),
+                        cancellationToken);
+                sibErr = sibResult?.ToString()?.StartsWith("ERROR:") == true;
+            }
+            catch (Exception ex)
+            {
+                sibErr = true;
+                sibResult = $"ERROR: {ex.Message}";
+            }
+            loop.ToolCalls++;
+            loop.Steps.Add(new AgentStep
+            {
+                Iteration = state.Iterations,
+                Tool = sib.Name,
+                ArgsSummary = Summarize(sib.Args.Deserialize<Dictionary<string, object?>>()),
+                IsError = sibErr,
+                ElapsedMs = sibSw.Elapsed.TotalMilliseconds
+            });
+            if (sibResult is string sibText && !sibErr)
+                sibResult = Security.PromptBoundary.WrapToolResult(sib.Name, sibText);
+            loop.Messages.Add(new ChatMessage(ChatRole.Tool,
+                [new FunctionResultContent(sib.CallId, sibResult)]));
+        }
+
+        var resumed = await RunLoopAsync(client, loop, cancellationToken);
+
+        // RF-103: the resume path bypassed CompleteAsync — attach the thread
+        // and persist the turn (the suspended turn never reached the thread).
+        if (state.Request.ThreadId is { } resumeThreadId
+            && resumed.AwaitingApprovalId is null)
+        {
+            var thread = await db.Threads.FirstOrDefaultAsync(t => t.Id == resumeThreadId, cancellationToken);
+            if (thread is not null)
+            {
+                await PersistTurnAsync(thread, state.Request, resumed, cancellationToken);
+                resumed = resumed with { ThreadId = thread.Id };
+            }
+        }
+        return resumed;
     }
 
     // ---- conversation threads (SPEC-20260914-conversation-threads) -----------
@@ -474,14 +535,15 @@ public sealed class AgentService(
                     break;
                 }
 
-                foreach (var call in calls)
+                for (var i = 0; i < calls.Count; i++)
                 {
+                    var call = calls[i];
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // HITL gate: mutating tool → suspend into a pending approval.
                     if (loop.ToolsByName.TryGetValue(call.Name, out var gated) && RequiresApproval(gated))
                     {
-                        var approval = await SuspendAsync(loop, call, cancellationToken);
+                        var approval = await SuspendAsync(loop, call, calls.Skip(i + 1).ToList(), cancellationToken);
                         logger.LogInformation("agent_chat awaiting approval {ApprovalId} for {Tool}", approval.Id, call.Name);
                         return new AgentResponse
                         {
@@ -622,10 +684,17 @@ public sealed class AgentService(
 
     /// <summary>Persists the suspended loop state + masked args; emits the feed event.</summary>
     private async Task<ToolApproval> SuspendAsync(
-        LoopState loop, FunctionCallContent call, CancellationToken ct)
+        LoopState loop, FunctionCallContent call,
+        IReadOnlyList<FunctionCallContent> remainingCalls, CancellationToken ct)
     {
         var argsElement = JsonSerializer.SerializeToElement(
             call.Arguments ?? new Dictionary<string, object?>(), JsonSerializerOptions.Web);
+        // RF-104: sibling calls from the same model turn ride along in the
+        // suspend state — the resume path executes them after the gated call.
+        var remaining = remainingCalls.Select(c => new StoredCall(
+            c.CallId, c.Name,
+            JsonSerializer.SerializeToElement(
+                c.Arguments ?? new Dictionary<string, object?>(), JsonSerializerOptions.Web))).ToList();
         var approval = new ToolApproval
         {
             ToolName = call.Name,
@@ -638,7 +707,8 @@ public sealed class AgentService(
                 loop.Iterations,
                 loop.ToolCalls,
                 loop.Request,
-                new StoredCall(call.CallId, call.Name, argsElement)), JsonSerializerOptions.Web)
+                new StoredCall(call.CallId, call.Name, argsElement),
+                remaining), JsonSerializerOptions.Web)
         };
         db.Approvals.Add(approval);
         await db.SaveChangesAsync(ct);
@@ -718,7 +788,10 @@ public sealed class AgentService(
         int Iterations,
         int ToolCalls,
         AgentRequest Request,
-        StoredCall PendingCall);
+        StoredCall PendingCall,
+        // RF-104: gated-call siblings suspended with it — null for states
+        // persisted before this field existed (treated as empty).
+        List<StoredCall>? RemainingCalls = null);
 
     private sealed record StoredMessage(
         string Role, string? Text, StoredCall[] Calls, StoredResult[] Results);

@@ -66,6 +66,9 @@ public static class StreamingEndpoints
                     effectiveQuery = outcome.EffectiveQuery,
                     corrected = !string.Equals(outcome.EffectiveQuery, request.Question, StringComparison.Ordinal),
                     retried = outcome.Retried,
+                    // RF-706: retry COUNT, not just a flag — clients and eval
+                    // need to tell 1 from 2 corrective attempts.
+                    retries = outcome.Retries,
                     grade = retrieval.GradingEnabled
                         ? outcome.Grading.Grade.ToString().ToLowerInvariant()
                         : (string?)null
@@ -73,8 +76,11 @@ public static class StreamingEndpoints
 
                 if (outcome.Grading.Grade == Search.RetrievalGrade.Insufficient)
                 {
-                    yield return new SseEvent("abstain",
-                        retrieval.BuildAbstention(request.Question, outcome));
+                    var abstain = retrieval.BuildAbstention(request.Question, outcome);
+                    yield return new SseEvent("abstain", abstain);
+                    // RF-705: the Playground only renders the terminal `done`
+                    // event — abstaining without it produced a blank answer.
+                    yield return new SseEvent("done", abstain);
                     yield break;
                 }
 

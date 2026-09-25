@@ -48,7 +48,10 @@ public sealed class RedisInvalidationBus : ICacheInvalidationBus
         // RF-003 (SPEC-20260926-cache-coherence-and-ttl): subscribe must not
         // crash startup when Redis is briefly unavailable — retry on reconnect.
         TrySubscribe();
-        _redis.ConnectionFailed += (_, _) => Interlocked.Exchange(ref _subscribed, 0);
+        // RF-302 (SPEC-20260926-review-backlog-remediation): the multiplexer
+        // RESTORES subscriptions itself after a reconnect — re-subscribing on
+        // every ConnectionRestored stacked duplicate handlers and each
+        // cache-clear ran N times. Retry only when no subscribe ever landed.
         _redis.ConnectionRestored += (_, _) => TrySubscribe();
     }
 

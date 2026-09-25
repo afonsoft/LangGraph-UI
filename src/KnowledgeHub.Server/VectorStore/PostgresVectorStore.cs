@@ -259,7 +259,16 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             var hits = new List<VectorHit>();
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                hits.Add(new VectorHit(reader.GetGuid(0), reader.GetDouble(1)));
+            {
+                hits.Add(new VectorHit(
+                    reader.GetGuid(0),
+                    reader.GetDouble(1)));
+            }
+
+            // RF-501 (SPEC-20260926-review-backlog-remediation): relaxed_order
+            // may emit hits out of distance order — the IVectorStore contract
+            // is score-sorted output; re-sort before returning.
+            hits.Sort(static (a, b) => b.Score.CompareTo(a.Score));
 
             await tx.CommitAsync(cancellationToken);
             return hits;
@@ -425,18 +434,34 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         // holds a vector ops class — ALTER TYPE would fail trying to rebuild
         // it for halfvec, so drop BEFORE the column-type change and let the
         // threshold logic recreate it with the right ops.
+        // RF-502 (SPEC-20260926-review-backlog-remediation): DROP+ALTER in one
+        // transaction — a failed ALTER previously left the table WITHOUT the
+        // index (the drop had already committed) for every other instance.
         _hnswIndexCreated = false;
-        await using (var drop = conn.CreateCommand())
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        try
         {
-            drop.CommandText = $"DROP INDEX IF EXISTS {HnswIndexName}";
-            await drop.ExecuteNonQueryAsync(ct);
-        }
+            await using (var drop = conn.CreateCommand())
+            {
+                drop.Transaction = (NpgsqlTransaction)tx;
+                drop.CommandText = $"DROP INDEX IF EXISTS {HnswIndexName}";
+                await drop.ExecuteNonQueryAsync(ct);
+            }
 
-        await using var alter = conn.CreateCommand();
-        alter.CommandTimeout = 600; // table rewrite — give it room
-        alter.CommandText =
-            $"ALTER TABLE kh_embeddings ALTER COLUMN embedding TYPE {_storageType} USING embedding::{_storageType}";
-        await alter.ExecuteNonQueryAsync(ct);
+            await using var alter = conn.CreateCommand();
+            alter.Transaction = (NpgsqlTransaction)tx;
+            alter.CommandTimeout = 600; // table rewrite — give it room
+            alter.CommandText =
+                $"ALTER TABLE kh_embeddings ALTER COLUMN embedding TYPE {_storageType} USING embedding::{_storageType}";
+            await alter.ExecuteNonQueryAsync(ct);
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     /// <summary>Parameter for the embedding column — HalfVector when the

@@ -211,6 +211,13 @@ public static class SettingsEndpoints
                 {
                     return Results.BadRequest(new { error = ex.Message });
                 }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // RF-603: a corrupt model.onnx throws native ONNX/tokenizer
+                    // exceptions, not EmbeddingProviderException — still a 400,
+                    // never a 500 on a settings save.
+                    return Results.BadRequest(new { error = $"onnx model failed to load: {ex.GetBaseException().Message}" });
+                }
                 using (probe)
                 {
                     if (probe.Dimensions != requestedDims)

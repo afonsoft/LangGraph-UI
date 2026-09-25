@@ -194,7 +194,9 @@ public sealed class CacheCoherenceTests
         // early and the vector arm is never exercised.
         db.Sources.Add(new KnowledgeSource
         {
-            Name = "s", SourceType = SourceType.ObsidianVault, IsActive = true
+            Name = "s",
+            SourceType = SourceType.ObsidianVault,
+            IsActive = true
         });
         await db.SaveChangesAsync();
 

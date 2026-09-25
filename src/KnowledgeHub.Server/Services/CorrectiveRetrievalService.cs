@@ -22,7 +22,12 @@ public sealed class CorrectiveRetrievalService(
         IReadOnlyList<SearchResultItem> Results,
         RetrievalGrading Grading,
         bool Retried,
-        string EffectiveQuery);
+        string EffectiveQuery)
+    {
+        /// <summary>RF-706: corrective attempts actually performed — the stream
+        /// meta event distinguishes 1-vs-2 retries.</summary>
+        public int Retries { get; init; }
+    }
 
     public bool GradingEnabled =>
         !string.Equals(
@@ -68,7 +73,8 @@ public sealed class CorrectiveRetrievalService(
         }
 
         ActivityTag(grading, retries > 0);
-        return new RetrievalOutcome(results, grading, retries > 0, effectiveQuery);
+        return new RetrievalOutcome(results, grading, retries > 0, effectiveQuery)
+        { Retries = retries };
     }
 
     /// <summary>Honest-abstention response — never invokes the synthesis LLM.</summary>

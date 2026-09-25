@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using KnowledgeHub.Server.Configuration;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.Extensions.Caching.Distributed;
@@ -66,6 +67,7 @@ public sealed class CacheManagerService : ICacheManagerService
     /// bounded page size and total keys so stats never stall the endpoint.</summary>
     private const int ScanMaxKeys = 500;
     private const int ScanPageSize = 200;
+    private static readonly TimeSpan ScanDeadline = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan RedisPingTimeout = TimeSpan.FromSeconds(2);
 
     public async Task<CacheStatsDto> GetStatsAsync(CancellationToken ct = default)
@@ -147,10 +149,14 @@ public sealed class CacheManagerService : ICacheManagerService
             // cancellation — a stalled SCAN must not pin the settings endpoint.
             var count = 0L;
             var truncated = false;
+            // RF-304 (SPEC-20260926-review-backlog-remediation): ct is only
+            // checked per delivered key — a stalled page ignores cancellation.
+            // A wall-clock deadline bounds the wait independent of page yield.
+            var deadline = Stopwatch.StartNew();
             foreach (var _ in server.Keys(pattern: "*", pageSize: ScanPageSize))
             {
                 ct.ThrowIfCancellationRequested();
-                if (++count >= ScanMaxKeys) { truncated = true; break; }
+                if (++count >= ScanMaxKeys || deadline.Elapsed >= ScanDeadline) { truncated = true; break; }
             }
             stats.ServerKeys = count;
             stats.Partial = truncated;
@@ -277,15 +283,18 @@ public sealed class CacheManagerService : ICacheManagerService
     /// <inheritdoc />
     public async Task ClearLocalTrackedAsync(CancellationToken ct = default)
     {
-        foreach (var key in _trackedKeys.Keys)
+        // RF-303 (SPEC-20260926-review-backlog-remediation): snapshot the keyset
+        // at event time — keys written DURING this clear must survive (they
+        // post-date the clear); a blanket Clear() also dropped their tracking.
+        foreach (var key in _trackedKeys.Keys.ToArray())
         {
             try { await _cache.RemoveAsync(key, ct); }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "remote-clear: failed to remove {Key} from cache", SafeCache.LogSafe(key));
             }
+            _trackedKeys.TryRemove(key, out _);
         }
-        _trackedKeys.Clear();
     }
 
     private void PruneExpired()

@@ -40,17 +40,20 @@ public sealed class EmbeddingProviderResolver(
     IEmbeddingSettingsService settings,
     IHttpClientFactory httpFactory,
     ILogger<EmbeddingProviderResolver> logger,
-    Func<EmbeddingOptions, IEmbeddingProvider>? providerFactory = null) : IEmbeddingProviderResolver
+    Func<EmbeddingOptions, IEmbeddingProvider>? providerFactory = null,
+    IConfiguration? configuration = null) : IEmbeddingProviderResolver
 {
     private readonly object _gate = new();
     private string? _signature;
     private IEmbeddingProvider? _provider;
     private LeaseCounter _counter = new();
 
-    /// <summary>RF-003: cap on how long a swap waits for in-flight leases —
-    /// an ONNX embed is sub-second; 30 s is generous headroom, after which we
-    /// dispose anyway rather than leak the session forever.</summary>
-    private static readonly TimeSpan DisposeGrace = TimeSpan.FromSeconds(30);
+    /// <summary>RF-602: grace period before a drain is reported as slow —
+    /// configurable via <c>Embeddings:SwapDrainSeconds</c>. The provider is
+    /// NEVER disposed while a lease is held — the timeout only warns
+    /// (RF-601: a 30s cap used to kill ONNX sessions mid-batch).</summary>
+    private readonly TimeSpan _swapDrainWarn =
+        TimeSpan.FromSeconds(Math.Max(1, configuration?.GetValue("Embeddings:SwapDrainSeconds", 30) ?? 30));
 
     private sealed class LeaseCounter
     {
@@ -124,8 +127,15 @@ public sealed class EmbeddingProviderResolver(
                     // crashes the caller. Best-effort, off the swap path.
                     _ = Task.Run(async () =>
                     {
-                        await Task.WhenAny(previousCounter.CloseAndDrainAsync(),
-                            Task.Delay(DisposeGrace));
+                        var drain = previousCounter.CloseAndDrainAsync();
+                        // RF-601: the grace period only warns — disposing a
+                        // provider with outstanding leases kills in-flight
+                        // ONNX inference mid-batch. Wait it out.
+                        if (await Task.WhenAny(drain, Task.Delay(_swapDrainWarn)) != drain)
+                            logger.LogWarning(
+                                "embedding provider drain exceeded {Seconds}s — waiting for in-flight inference to finish",
+                                _swapDrainWarn.TotalSeconds);
+                        await drain;
                         DisposeQuietly(previous);
                     });
                 }

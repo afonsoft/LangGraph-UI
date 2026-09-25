@@ -16,6 +16,17 @@ if [[ -f .env ]]; then
   while IFS='=' read -r key val; do
     [[ "$key" =~ ^[[:space:]]*# || -z "${key// /}" ]] && continue
     key="${key//[[:space:]]/}"
+    # RF-701 (SPEC-20260926-review-backlog-remediation): sanitize the value —
+    # CR (Windows files), trailing comments, and surrounding quotes are legal
+    # in .env files docker compose reads but break `docker run` args here.
+    val="${val%$'\r'}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+    if [[ "${#val}" -ge 2 && ( "${val:0:1}" == '"' && "${val: -1}" == '"' || "${val:0:1}" == "'" && "${val: -1}" == "'" ) ]]; then
+      val="${val:1:${#val}-2}"
+    else
+      val="${val%% #*}"
+    fi
     [[ -z "${!key:-}" ]] && export "$key=$val"
   done < .env
 fi
@@ -121,8 +132,15 @@ check_data_dir() {
   owner="$(stat -c '%u' "$DATA_DIR" 2>/dev/null || stat -f '%u' "$DATA_DIR")"
   perms="$(stat -c '%a' "$DATA_DIR" 2>/dev/null || stat -f '%Lp' "$DATA_DIR")"
   if [[ "$owner" != "1654" && $((8#$perms & 2)) -eq 0 ]]; then
-    warn "$DATA_DIR is owned by uid $owner (mode $perms); container runs as uid 1654."
-    warn "Fix with: sudo chown -R 1654:1654 $DATA_DIR   (or: chmod 777 $DATA_DIR)"
+    # RF-702: auto-fix when we can — a fresh install used to fail at container
+    # start because the operator-owned dir is not writable by uid 1654.
+    if chown -R 1654:1654 "$DATA_DIR" 2>/dev/null \
+       || sudo -n chown -R 1654:1654 "$DATA_DIR" 2>/dev/null; then
+      info "$DATA_DIR ownership fixed to uid 1654 (container app user)."
+    else
+      warn "$DATA_DIR is owned by uid $owner (mode $perms); container runs as uid 1654."
+      warn "Fix with: sudo chown -R 1654:1654 $DATA_DIR   (or: chmod 777 $DATA_DIR)"
+    fi
   fi
 }
 

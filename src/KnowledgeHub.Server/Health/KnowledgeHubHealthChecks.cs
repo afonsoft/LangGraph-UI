@@ -23,20 +23,48 @@ public sealed class DatabaseHealthCheck(KnowledgeHubDbContext db) : IHealthCheck
     }
 }
 
-/// <summary>Embedding provider resolvable and reporting a model/dimensions.</summary>
+/// <summary>Embedding provider resolvable, reporting a model/dimensions AND
+/// reachable — a down endpoint degrades readiness instead of serving traffic
+/// that cannot search/ingest (RF-607).</summary>
 public sealed class EmbeddingHealthCheck(IEmbeddingProvider provider) : IHealthCheck
 {
-    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    // Probe result cached — health endpoints are scraped frequently; the
+    // embed call itself is the reachability signal, not a per-request cost.
+    private static readonly TimeSpan ProbeTtl = TimeSpan.FromSeconds(30);
+    private DateTimeOffset _probeAt = DateTimeOffset.MinValue;
+    private bool _probeOk = true;
+    private string _probeDetail = "";
+
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         try
         {
-            return provider.Dimensions > 0 && !string.IsNullOrWhiteSpace(provider.ModelId)
-                ? Task.FromResult(HealthCheckResult.Healthy($"provider={provider.ModelId} dims={provider.Dimensions}"))
-                : Task.FromResult(HealthCheckResult.Degraded("embedding provider misconfigured"));
+            if (provider.Dimensions <= 0 || string.IsNullOrWhiteSpace(provider.ModelId))
+                return HealthCheckResult.Degraded("embedding provider misconfigured");
+
+            if (DateTimeOffset.UtcNow - _probeAt > ProbeTtl)
+            {
+                try
+                {
+                    var probe = await provider.EmbedAsync("health probe", cancellationToken);
+                    _probeOk = probe is { Length: > 0 };
+                    _probeDetail = _probeOk ? "" : "empty embedding returned";
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _probeOk = false;
+                    _probeDetail = ex.GetBaseException().Message;
+                }
+                _probeAt = DateTimeOffset.UtcNow;
+            }
+
+            return _probeOk
+                ? HealthCheckResult.Healthy($"provider={provider.ModelId} dims={provider.Dimensions}")
+                : HealthCheckResult.Unhealthy($"embedding provider unreachable: {_probeDetail}");
         }
         catch (Exception ex)
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("embedding provider check failed", ex));
+            return Task.FromResult(HealthCheckResult.Unhealthy("embedding provider check failed", ex)).Result;
         }
     }
 }

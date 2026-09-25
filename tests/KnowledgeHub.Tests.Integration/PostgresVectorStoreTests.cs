@@ -111,5 +111,14 @@ public sealed class PostgresVectorStoreTests
         check.CommandText =
             "SELECT udt_name FROM information_schema.columns WHERE table_name='kh_embeddings' AND column_name='embedding'";
         Assert.Equal("halfvec", await check.ExecuteScalarAsync() as string);
+
+        // RF-503: the HNSW index must come back with the halfvec ops class —
+        // verifying the column alone would pass while the index is missing.
+        await using var idx = conn.CreateCommand();
+        idx.CommandText =
+            "SELECT indexdef FROM pg_indexes WHERE indexname='kh_embeddings_embedding_hnsw_idx'";
+        var def = await idx.ExecuteScalarAsync() as string;
+        Assert.NotNull(def);
+        Assert.Contains("halfvec_cosine_ops", def);
     }
 }

@@ -41,7 +41,12 @@ public sealed class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposable
         // model must surface its real size so the settings gate can reject
         // mismatched configurations instead of silently slicing vectors.
         var outputDims = session.OutputMetadata[_outputName].Dimensions;
-        _dimensions = outputDims.Length > 0 ? outputDims[^1] : EmbeddingDimensions;
+        // RF-604: a dynamic last dim (-1) cannot describe the produced vector
+        // width — refuse the model rather than slice into a garbage length.
+        if (outputDims.Length == 0 || outputDims[^1] <= 0)
+            throw new EmbeddingProviderException(
+                $"onnx model output '{_outputName}' has a dynamic width — only fixed-width embedding models are supported");
+        _dimensions = outputDims[^1];
     }
 
     public string ModelId => "onnx:all-MiniLM-L6-v2";
