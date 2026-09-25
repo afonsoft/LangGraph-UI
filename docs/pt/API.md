@@ -62,6 +62,8 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 | `GET/PUT/DELETE /api/settings/chat` · `POST /api/settings/chat/test` | config de chat persistida + teste de conectividade |
 | `GET/PUT/DELETE /api/settings/graph` | GraphRAG `enabled`, `maxChunksPerSync`, `maxChunkChars`, `maxResults` — aplica sem restart |
 | `GET/PUT/DELETE /api/settings/integrations/{provider}` | chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7) |
+| `GET /api/settings/cache` · `POST /api/settings/cache/clear` | stats de cache (keys rastreadas do processo + overlay do servidor Redis via SCAN/INFO — `serverReported`/`partial`) + limpeza de todas as regiões |
+| `GET/PUT /api/settings/log-level` | nível de log em runtime (`LoggingLevelSwitch`); `PUT {level, autoResetMinutes}` — `autoResetMinutes` 0–120 agenda reset automático ao nível configurado |
 
 ## Segurança e eval
 
@@ -86,6 +88,7 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 
 | Rota | Propósito |
 |---|---|
+| `GET /api/diagnostics/vectorstore` | diagnóstico do vector store — provider, dimensão, contagem de chunks, tipo de storage (`vector`\|`halfvec`), estado do índice |
 | `/mcp` (+ `/mcp/sse`, `/mcp/message`) | transportes MCP — ver README |
 | `/hubs/mcp` | feed de atividade SignalR |
 | `/metrics` | endpoint de scrape Prometheus (`Telemetry:Metrics:Prometheus=true`) |

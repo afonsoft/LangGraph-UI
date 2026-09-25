@@ -11,6 +11,9 @@ services:
       - ./data:/data
       # SPEC-20260925-log-sinks-and-redaction RF-001: Serilog file sink writes
       # /app/logs — persist it on the host so logs survive recreate/upgrade.
+      # NOTE: if ./logs doesn't exist Docker creates it as root, but the
+      # container runs as app (uid 1654) and the file sink can't write.
+      # Pre-create it: `mkdir -p logs && chown 1654:1654 logs`.
       - ./logs:/app/logs
       # Host-specific mounts (local Obsidian vaults, WebDAV) go in
       # docker-compose.override.yml — see docker-compose.override.yml.example.
