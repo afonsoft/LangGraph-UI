@@ -7,17 +7,20 @@
 [![Blazor WASM](https://img.shields.io/badge/Blazor-WASM%20PWA-512BD4)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![Licença: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Plataforma de conhecimento standalone tudo-em-um: UI administrativa Blazor WebAssembly, API REST, servidor MCP nativo (Streamable HTTP + SSE legado), persistência SQLite, embeddings e vector stores plugáveis, retrieval híbrido (FTS5 + RRF vetorial), extração de entidades/relações GraphRAG, chat agêntico com aprovações HITL, defesa contra prompt-injection, rate limiting particionado e observabilidade OpenTelemetry — tudo em um único processo Kestrel hospedado .NET 10.
+Plataforma de conhecimento standalone tudo-em-um: UI administrativa Blazor WebAssembly, API REST, servidor MCP nativo (Streamable HTTP + SSE legado), persistência SQLite, embeddings e vector stores plugáveis, retrieval híbrido (FTS5 + RRF vetorial + loop corretivo), extração de entidades/relações GraphRAG, chat agêntico com aprovações HITL, defesa contra prompt-injection, rate limiting particionado, fila de ingestão assíncrona, conectores de cloud storage e observabilidade OpenTelemetry — tudo em um único processo Kestrel hospedado .NET 10.
 
 ## Endpoints
 
 | Rota | Propósito |
 |---|---|
 | `/` | UI administrativa Blazor WASM (`/sources`, `/mcp-monitor`, `/playground`, `/chat`, `/approvals`, `/settings`, `/api-keys`) — PWA instalável, sidebar colapsável com icon-rail, layout responsivo para mobile |
-| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | API REST |
-| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/graph`, `/api/settings/integrations*` | Config de chat persistida, settings de runtime do GraphRAG (ativar, budgets) e chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7) |
+| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | API REST — `POST /sources/{id}/sync` é assíncrono (`202 + jobId`; `?wait=true` para o contrato síncrono legado) |
+| `/api/ingestion/jobs`, `/api/ingestion/jobs/{id}`, `/api/ingestion/jobs/{id}/cancel` | Jobs de ingestão em background — status, contadores por documento, cancelamento |
+| `/api/eval/baselines` | Baselines nomeadas de eval para gates de regressão (promover um run, comparar runs futuros automaticamente) |
+| `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/embeddings`, `/api/settings/graph`, `/api/settings/integrations*`, `/api/settings/database`, `/api/settings/log-level` | Config persistida de chat + embeddings, settings de runtime do GraphRAG (ativar, budgets), chaves de integração mascaradas (firecrawl, deepwiki, tavily, context7), estatísticas do banco, nível de log em runtime |
 | `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}`, `/api/api-keys/{id}/rate-limit`, `/api/api-keys/{id}/scopes` | Sobrescrições por chave de API: chat, integrações, rate limits, sources/tools permitidos |
 | `/api/security/events`, `/api/eval/run`, `/api/eval/runs` | Auditoria de prompt-injection e harness de eval de retrieval (Recall@K/P@K/MRR/faithfulness) |
+| `/api/agent/resume`, `/api/mcp/capabilities`, `/api/diagnostics/vectorstore` | Retoma um run do agente após aprovação HITL; modo de sessão MCP anunciado; diagnósticos do vector store (provider, dims, estado do índice) |
 | `/api/ask/stream`, `/api/agent/stream` | REST SSE — eventos `token`/`tool_start`/`tool_end`/`awaiting_approval`/`done`/`error`, heartbeat 15s, `X-Accel-Buffering: no` |
 | `/mcp` | MCP — Streamable HTTP, sessões híbridas: clients com handshake `initialize` (≤2025-11-25) obtêm sessões stateful completas incluindo push `tools/list_changed`; clients `2026-07-28` são atendidos statelessly (sem sessão, re-list sob demanda). Configuração `Mcp:SessionMode`: `Stateless`/`Stateful`/`StatefulForInitializeClients` (padrão) |
 | `/mcp/sse` + `/mcp/message` | MCP — HTTP/SSE legado (Cursor, Claude Desktop) |
@@ -36,8 +39,9 @@ Todas as superfícies exceto as sondas de health (`/health/*`) e `POST /api/auth
 | `POST /api/auth/logout` | limpa o cookie de sessão |
 | `POST /api/auth/change-password` | `{ currentPassword, newPassword }` → `204`, limpa a flag |
 | `GET /api/apikeys` · `POST /api/apikeys` · `DELETE /api/apikeys/{id}` | gerenciar chaves de API (sessão por cookie apenas) |
+| `GET /api/apikeys/{id}/usage` · `GET /api/apikeys/{id}/secret` | auditoria de uso por chave e reveal do secret (UX de cópia) |
 
-**Chaves de API (`aft_*`) para clientes não-navegador.** Crie uma em `/api-keys` (ou `POST /api/apikeys`); o segredo completo `aft_<32-hex>` é mostrado **uma vez** — apenas seu hash SHA-256 é armazenado. Envie como bearer token:
+**Chaves de API (`aft_*`) para clientes não-navegador.** Crie uma em `/api-keys` (ou `POST /api/apikeys`); o segredo completo `aft_<32-hex>` é mostrado na criação, e chaves com cópia criptografada via DataProtection podem ser reveladas depois via `GET /api/apikeys/{id}/secret` (`canReveal` na resposta) — a verificação sempre usa o hash SHA-256. Envie como bearer token:
 
 ```bash
 curl https://rag.afonsoft.dev/mcp \
@@ -53,6 +57,23 @@ Aceito em `/mcp`, `/mcp/sse`, `/api/*` e `/hubs/mcp` (clients SignalR que não p
 ## Ferramentas MCP
 
 `search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (configurações de chat e integração por chave), `query_{source_slug}` por fonte ativa, travessia GraphRAG (`find_dependencies`, `find_dependents`, `find_path`, `analyze_impact` — quando `Graph:Enabled`, default ligado), mais proxies upstream — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`), Context7 (`resolve-library-id`, `query-docs`) e sources arbitrários `McpProxy`.
+
+## Fontes de conhecimento & ingestão
+
+| Conector | `SourceType` | Notas |
+|---|---|---|
+| Vault Obsidian | `ObsidianVault` | Caminho local ou WebDAV; sync incremental |
+| Página web | `WebPage` | Fetch + extração para markdown |
+| Arquivo de documento | `DocumentFile` | Arquivos enviados (md/txt/pdf/docx/…) |
+| Notion | `Notion` | REST read-only, token criptografado, incremental via `last_edited_time` |
+| REST API / SQL | `RestApi` / `SqlDatabase` | Ingestão orientada a query |
+| AWS S3 | `AwsS3` | Staging de bucket, sync incremental por ETag |
+| Azure Files | `AzureFiles` | Crawl de share com staging incremental |
+| OCI Object Storage | `OciStorage` | Endpoint S3-compatível, mesmo modelo de staging |
+| Google Drive | `GoogleDrive` | Links compartilhados de pasta/arquivo |
+| Proxy MCP | `McpProxy` | Somente catálogo — passthrough de `tools/list` upstream, não ingerível |
+
+O sync roda numa **fila assíncrona persistida**: `POST /sources/{id}/sync` retorna `202 + jobId` (contadores por documento, `cancel`, `?wait=true` para o contrato síncrono legado); `POST /sources/{id}/reindex` força re-chunk/re-embed, opcionalmente seletivo por versão do chunker. Conectores de cloud fazem staging local dos objetos e fazem diff por ETag; seus secrets ficam no integration-secret store. O chunking é structure-aware (markdown/código/config) e cada fonte pode optar por **chunking semântico** (fronteiras por breakpoints de embeddings) via `{"chunking":"semantic"}` no dialog da fonte.
 
 ## Configuração
 
@@ -172,7 +193,11 @@ Aceito em `/mcp`, `/mcp/sse`, `/api/*` e `/hubs/mcp` (clients SignalR que não p
 
 Variáveis de ambiente sobrescrevem `appsettings.json` (duplo underscore → chave aninhada). Veja `.env.example` para a lista completa.
 
+**Postgres via `.env` (compose).** O `docker-compose.yml` lê o `.env` (`env_file`, `required: false`) e compõe `VectorStore__ConnectionString` a partir das vars discretas `POSTGRES_HOST/PORT/DB/USER/PASSWORD` — `VECTORSTORE_CONNECTIONSTRING` sobrescreve a composição quando definida. `host.docker.internal` alcança o Postgres do host Docker via `extra_hosts`; o `pg_hba.conf` do host precisa autorizar a subnet do container para o banco/usuário alvo, e a extensão `vector` precisa existir no banco (`PostgresVectorStore` roda `CREATE EXTENSION IF NOT EXISTS vector` no init — conceda `CREATE` no banco ao usuário da app ou pré-crie a extensão como superuser).
+
 **Logging.** Request logging estruturado (Serilog): ruído de `/health` e assets estáticos em Debug, 5xx em Error; toda request carrega `x-request-id`/`RequestId`. Secrets são mascarados por um enricher — keys `*key*`/`*token*`/`*secret*`/`*password*`/`*connectionstring*` e padrões `aft_*`/`ctx7sk-*`/`sk-*`/`Bearer` saem como `***REDACTED***` em toda propriedade. Com `Telemetry:Otlp:Endpoint` configurado, os logs também seguem para o mesmo backend OTLP de traces/metrics. O nível pode subir temporariamente via `PUT /api/settings/log-level` (`minutes` 0–120). No Docker, o file sink escreve em `./logs` (volume montado — ver abaixo).
+
+**Segurança do Redis.** Um `Cache:Provider=redis` sem autenticação expõe resultados de busca e embeddings cacheados a qualquer um que alcance a porta — o servidor avisa no startup. Hardening: configure `requirepass`/ACLs na instância e adicione `password=...` em `Cache:Redis:ConnectionString`, faça bind do Redis apenas em localhost/interfaces privadas, ou permaneça em `Cache:Provider=memory` (padrão).
 
 ## Estrutura do Repositório
 
@@ -256,11 +281,21 @@ Acesse em http://localhost:5000.
 ## Testes & Cobertura
 
 ```bash
-dotnet test                                       # testes unitários + integração
+dotnet test                                          # testes unitários + integração
+dotnet test --collect:"XPlat Code Coverage"          # com cobertura Coverlet
 dotnet format KnowledgeHub.slnx --verify-no-changes  # gate de formatação
 ```
 
-Gates do CI: Build, Testes Unitários, Testes de Integração (SQLite), Validação Cliente Blazor WASM, Build Imagem Docker, Qualidade de Código (SonarQube), Security Scan.
+| Métrica | Valor |
+|---|---|
+| **Total de testes** | 961 (716 unitários + 245 integração) |
+| **Taxa de aprovação** | 100% |
+| **Cobertura de linhas** | 78% (23 961 / 30 697 linhas cobráveis) |
+| **Cobertura de branches** | 58,1% (5 192 / 8 934 branches) |
+| **Cobertura de métodos** | 79,8% (1 752 / 2 194 métodos) |
+| **Data (contagem/cobertura)** | testes 2026-09-26 · cobertura 2026-09-24 |
+
+Gates do CI: Build (0 warnings), Testes Unitários, Testes de Integração (SQLite), Validação Cliente Blazor WASM, Build Imagem Docker, Qualidade de Código (SonarQube), Security Scan, `dotnet format --verify-no-changes` (0 arquivos alterados de 371).
 
 ## Arquitetura
 
@@ -278,9 +313,12 @@ Decisões arquiteturais chave:
 - Embeddings plugáveis: determinístico, Ollama, OpenAI, ou ONNX Runtime local
 - Múltiplos backends de vector store: sqlite-vec (KNN) ou PostgreSQL com pgvector (HNSW, upserts em lote, metadados de provenance)
 - Retrieval híbrido: FTS5 + RRF vetorial com reescrita e reranking opcionais; medido pelo harness de eval embutido
+- Profundidade de retrieval: diversidade MMR + quota por documento + score floor, corrective-RAG (grading → retry → abstenção), reescrita history-aware, expansão multi-query + HyDE, enriquecimento contextual de chunks (`SectionPath`), expansão hierárquica de contexto (`contextExpand`), braço de knowledge-graph opcional (`useGraph`), embeddings assimétricos query/documento
+- Fila de ingestão assíncrona: jobs persistidos com contadores por doc, cancelamento, reindex seletivo por versão do chunker, auto-sync roteado pela fila; chunking semântico por fonte (opt-in)
 - GraphRAG em tabelas de adjacência SQLite: extração LLM na ingestão (opt-in por source), tools de travessia com provenance
 - Segurança: guarda de prompt-injection (flag → excluir → auditar), escopo de sources/tools por chave, rate limiting particionado com overrides por chave
-- Cache distribuído opt-in: in-memory (padrão) ou Redis
+- Cache distribuído opt-in: in-memory (padrão) ou Redis — híbrido L1(in-process)→L2(Redis), TTLs por região, invalidação distribuída via pub/sub `kh:invalidate`
+- Logging estruturado: request logging Serilog (health/static → Debug, 5xx → Error, `x-request-id`), file sink rolling diário + sink OTLP opcional, redaction de secrets (`***REDACTED***`), nível em runtime via `/api/settings/log-level` com auto-reset
 - OpenTelemetry: traces + métricas com exporters OTLP/Prometheus opt-in
 - Proxies MCP upstream: DeepWiki, Firecrawl, Tavily, Context7, mais sources `McpProxy` arbitrários com secrets criptografados
 - Customização por chave de API: chat, integrações, escopos e rate limits por chave
@@ -293,7 +331,7 @@ Veja [docs/architecture/](docs/architecture/README.md) para ADRs, o diagrama edi
 
 KnowledgeHub resolve o problema de conhecimento organizacional fragmentado fornecendo uma plataforma unificada que:
 
-- Ingera conhecimento de múltiplas fontes (vaults Obsidian, páginas web, documentos, Notion, APIs, bancos de dados SQL)
+- Ingera conhecimento de múltiplas fontes (vaults Obsidian, páginas web, documentos, Notion, APIs, bancos de dados SQL, AWS S3, Azure Files, OCI Object Storage, Google Drive)
 - Permite consultas em linguagem natural com retrieval híbrido (busca full-text + similaridade vetorial com reranking RRF)
 - Fornece capacidades agênticas com tool-calling, aprovações HITL e threads de conversação com sumarização
 - Expõe conhecimento tanto via API REST quanto via Model Context Protocol para integração com agentes de IA
@@ -316,10 +354,24 @@ KnowledgeHub resolve o problema de conhecimento organizacional fragmentado forne
 
 ## Links
 
-- [English](README.md) — versão em inglês
-- [Documentação de Arquitetura](docs/pt/ARCHITECTURE.md) — Design detalhado do sistema
+### Documentação
+
+- [English](README.md) — versão em inglês · [docs/en/](docs/en/) para os guias em inglês
+- [Documentação de Arquitetura](docs/pt/ARCHITECTURE.md) — Design detalhado do sistema · [ADRs](docs/architecture/README.md) — registros de decisão
 - [Guia de Contribuição](docs/pt/CONTRIBUTING.md) — Como contribuir
 - [Guia de Instalação](docs/pt/INSTALL.md) — Setup específico por plataforma
 - [Documentação da API](docs/pt/API.md) — Referência da API REST
+- [Changelog](CHANGELOG.md) — Mudanças notáveis
 - [Issues no GitHub](https://github.com/afonsoft/LangGraph-UI/issues) — Relatórios de bugs e solicitações de features
 - [Releases](https://github.com/afonsoft/LangGraph-UI/releases) — Histórico de versões
+
+### Referências
+
+- [Model Context Protocol](https://modelcontextprotocol.io) — especificação do protocolo implementado pelo `KnowledgeHub.McpEngine`
+- [pgvector](https://github.com/pgvector/pgvector) — extensão vetorial do Postgres (`vector`/`halfvec`, HNSW, scans filtrados iterativos)
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) — extensão KNN do SQLite para o vector store embarcado
+- [Npgsql](https://www.npgsql.org/) — driver .NET do Postgres usado pelo store pgvector
+- [Microsoft.Extensions.AI](https://learn.microsoft.com/dotnet/ai/) — abstrações `IChatClient`/`IEmbeddingGenerator` para os providers
+- [ONNX Runtime](https://onnxruntime.ai/) + [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) — provider de embeddings local
+- [BootstrapBlazor](https://www.blazor.zone/) — biblioteca de componentes da SPA
+- [SQLite FTS5](https://sqlite.org/fts5.html) — braço lexical do retrieval híbrido

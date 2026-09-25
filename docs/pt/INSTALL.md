@@ -50,3 +50,26 @@ Produz um binário autocontido de ~120 MB — sem runtime .NET. O instalador cri
 | Tuning pgvector | `VectorStore:Postgres:*` | `StorageType` vector\|halfvec (pgvector ≥0.7 + `AllowStorageMigration`), `IterativeScan` (≥0.8), `Hnsw*`, pool — ver README §Configuração |
 | Tuning de cache | `Cache:RegionTtlMinutes`, `Cache:L1*` | TTLs por região + L1 em processo à frente do Redis (invalidação via pub/sub `kh:invalidate`) — ver README §Configuração |
 | Nível de log em runtime | `GET/PUT /api/settings/log-level` | `LoggingLevelSwitch` com `minutes` opcional (0–120) |
+
+## PostgreSQL + pgvector (host ou externo)
+
+O `docker-compose.yml` lê o `.env` (`env_file`, `required: false`) e compõe
+`VectorStore__ConnectionString` a partir de vars discretas — defina `VECTORSTORE_PROVIDER=postgres` mais:
+
+```dotenv
+POSTGRES_HOST=host.docker.internal   # Postgres do host via extra_hosts do compose
+POSTGRES_PORT=5432
+POSTGRES_DB=rag_db
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=...
+# Válvula de escape — prevalece sobre a composição POSTGRES_* quando definida:
+# VECTORSTORE_CONNECTIONSTRING=Host=...;Database=...;Username=...;Password=...;SSL Mode=Require
+```
+
+Checklist de provisionamento no lado Postgres:
+
+1. **Extensão** — a extensão `vector` precisa existir no banco alvo. `PostgresVectorStore` roda `CREATE EXTENSION IF NOT EXISTS vector` no init, o que funciona quando o usuário da app tem privilégio `CREATE` no banco; caso contrário pré-crie como superuser (`CREATE EXTENSION vector`). O pacote pgvector deve casar com a major do servidor (ex.: `postgresql-18-pgvector`, ou build via source com `PG_CONFIG=<path>/pg_config`).
+2. **pg_hba.conf** — quando o Postgres roda no host Docker, `host.docker.internal` resolve para o gateway do host mas o **IP do cliente é o do container** — adicione uma regra host cobrindo a rede do compose (ex.: `host rag_db rag_user 172.22.0.0/16 md5`) e faça reload.
+3. **Verificação** — `docker compose config` deve renderizar a connection string interpolada; após o `up`, `GET /api/diagnostics/vectorstore` reporta `postgres`, a dimensão, a contagem de chunks e o estado do índice (HNSW criado automaticamente acima de `HnswThreshold`).
+
+> **Nota sobre Redis.** O mesmo padrão `host.docker.internal` se aplica a `REDIS_CONNECTIONSTRING` (`Cache:Provider=redis`). Um Redis sem autenticação dispara um warning no startup — veja "Segurança do Redis" no README para hardening.
