@@ -92,6 +92,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         await EnsureInitializedAsync(cancellationToken);
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+        var committed = false;
         try
         {
             foreach (var batch in items.Chunk(_options.BatchMax))
@@ -111,6 +112,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
             await tx.CommitAsync(cancellationToken);
+            committed = true;
 
             // SPEC-20260925-pgvector-source-cascade RF-003: refresh planner stats
             // after large bulk writes — the biggest table churn.
@@ -123,7 +125,12 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         }
         catch
         {
-            await tx.RollbackAsync(cancellationToken);
+            // RF-009 (SPEC-20260926-ingestion-connector-integrity): post-commit
+            // ANALYZE/HNSW failures must not roll back — the transaction is
+            // already committed, rollback would throw and mark a persisted
+            // batch as failed.
+            if (!committed)
+                await tx.RollbackAsync(cancellationToken);
             throw;
         }
     }

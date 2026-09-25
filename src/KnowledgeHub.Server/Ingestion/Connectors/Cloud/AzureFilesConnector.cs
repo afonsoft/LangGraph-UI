@@ -51,12 +51,24 @@ internal sealed class AzureFilesConnector(
             ?? throw new InvalidOperationException(
                 "AzureFiles source has no stored credentials — re-save with a connection string or account key");
 
+        // RF-004: a base64 account key padded with '=' may have been stored in
+        // the connectionString slot by an older client — normalize on read so
+        // it routes to the right ctor regardless of who wrote it.
+        var connectionString = secret.ConnectionString;
+        var accountKey = secret.AccountKey;
+        if (connectionString is not null
+            && !AzureCredentialClassifier.LooksLikeConnectionString(connectionString))
+        {
+            accountKey ??= connectionString;
+            connectionString = null;
+        }
+
         return AzureShareGateway.Create(
             shareName,
             config.String("directoryPath"),
-            secret.ConnectionString,
+            connectionString,
             secret.AccountName ?? config.String("accountName"),
-            secret.AccountKey);
+            accountKey);
     }
 
     protected override string UriFor(ConnectorConfig config, string key) =>

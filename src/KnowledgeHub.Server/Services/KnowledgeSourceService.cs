@@ -17,7 +17,9 @@ public sealed class KnowledgeSourceService(
     IIntegrationSecretStore secrets,
     Ingestion.Staging.IStagingStorageService? staging = null,
     VectorStore.IVectorStore? vectors = null,
-    ILogger<KnowledgeSourceService>? log = null) : IKnowledgeSourceService
+    ILogger<KnowledgeSourceService>? log = null,
+    Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null,
+    Caching.ICacheInvalidationBus? invalidationBus = null) : IKnowledgeSourceService
 {
     /// <summary>Config keys that must never be echoed back to API consumers.</summary>
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -116,11 +118,17 @@ public sealed class KnowledgeSourceService(
         var source = await db.Sources.FindAsync([id], ct);
         if (source is null)
             return ServiceResult<bool>.Fail(404, "Source not found");
+
+        // RF-008 (SPEC-20260926-ingestion-connector-integrity): commit the
+        // deletion FIRST — the source row is the source of truth. Every step
+        // after this is best-effort cleanup: a failure must never resurrect a
+        // deleted source nor leave a live source without vectors.
         db.Sources.Remove(source); // cascade removes documents + chunks
+        await db.SaveChangesAsync(ct);
 
         // SPEC-20260925-pgvector-source-cascade RF-002: external vector tables
         // (pgvector kh_embeddings / sqlite-vec vec_chunks) are outside the EF
-        // cascade — purge explicitly. Fail-soft: the source must still delete.
+        // cascade — purge explicitly. Fail-soft: rows may orphan, never block.
         if (vectors is not null)
         {
             try { await vectors.DeleteBySourceAsync(id, ct); }
@@ -129,26 +137,43 @@ public sealed class KnowledgeSourceService(
                 log?.LogWarning(ex, "vector purge for deleted source {SourceId} failed — rows may be orphaned", id);
             }
         }
-        if (source.SourceType == SourceType.McpProxy)
-            await secrets.RemoveAsync(McpProxySession.SecretKey(source.Id), ct);
-        if (source.SourceType == SourceType.Notion)
-            await secrets.RemoveAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct);
-        // SPEC-20260924-cloud-storage-connectors RF-006: purge cloud secrets + staging.
-        if (source.SourceType is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+        try
         {
-            foreach (var key in CloudSecretKeys(source.SourceType, source.Id))
-                await secrets.RemoveAsync(key, ct);
-            if (staging is not null)
-                await staging.CleanupStagingAsync(source.Id, ct);
+            if (source.SourceType == SourceType.McpProxy)
+                await secrets.RemoveAsync(McpProxySession.SecretKey(source.Id), ct);
+            if (source.SourceType == SourceType.Notion)
+                await secrets.RemoveAsync(Ingestion.Connectors.NotionConnector.SecretKey(source.Id), ct);
+            // SPEC-20260924-cloud-storage-connectors RF-006: purge cloud secrets + staging.
+            if (source.SourceType is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+            {
+                foreach (var key in CloudSecretKeys(source.SourceType, source.Id))
+                    await secrets.RemoveAsync(key, ct);
+                if (staging is not null)
+                    await staging.CleanupStagingAsync(source.Id, ct);
+            }
+            // SPEC-20260924-gdrive-shared-link-connector RF-006/RF-008.
+            if (source.SourceType == SourceType.GoogleDrive)
+            {
+                await secrets.RemoveAsync(Ingestion.Connectors.GoogleDriveSharedConnector.SecretKey(source.Id), ct);
+                if (staging is not null)
+                    await staging.CleanupStagingAsync(source.Id, ct);
+            }
         }
-        // SPEC-20260924-gdrive-shared-link-connector RF-006/RF-008.
-        if (source.SourceType == SourceType.GoogleDrive)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await secrets.RemoveAsync(Ingestion.Connectors.GoogleDriveSharedConnector.SecretKey(source.Id), ct);
-            if (staging is not null)
-                await staging.CleanupStagingAsync(source.Id, ct);
+            log?.LogWarning(ex, "post-delete cleanup for source {SourceId} failed — source is deleted, leftovers may remain", id);
         }
-        await db.SaveChangesAsync(ct);
+
+        // RF-008: a deleted source must disappear from cached search results —
+        // bump the index-version token the same way a sync does.
+        if (cache is not null)
+        {
+            await Caching.SafeCache.SetStringAsync(cache, Caching.CacheKeys.IndexVersion,
+                Guid.NewGuid().ToString("N"), null,
+                log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<KnowledgeSourceService>.Instance, ct);
+            if (invalidationBus is not null)
+                await invalidationBus.PublishAsync("index-version", ct);
+        }
         await NotifyCatalogChanged(ct);
         return ServiceResult<bool>.Ok(true);
     }

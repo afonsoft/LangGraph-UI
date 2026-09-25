@@ -9,8 +9,16 @@ namespace KnowledgeHub.Server.Ingestion.Connectors;
 /// (SPEC-20260919-notion-connector RF-007).</summary>
 public sealed record RawDocument(string UriReference, string Title, string TextContent, string? Fingerprint = null);
 
-/// <summary>Connector output: fetched documents plus per-item warnings (skipped files/pages).</summary>
-public sealed record FetchResult(IReadOnlyList<RawDocument> Documents, IReadOnlyList<string> Warnings);
+/// <summary>Connector output: fetched documents plus per-item warnings (skipped files/pages).
+/// SPEC-20260926-ingestion-connector-integrity RF-002: <see cref="FailedUris"/> lists
+/// URIs that exist upstream but failed to download/extract — reconciliation must
+/// keep (not delete) those documents. <see cref="Truncated"/> marks a listing cut
+/// by a provider-side cap — the unseen-deletion pass must be skipped entirely.</summary>
+public sealed record FetchResult(
+    IReadOnlyList<RawDocument> Documents,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyCollection<string>? FailedUris = null,
+    bool Truncated = false);
 
 /// <summary>
 /// Pulls raw documents out of a source configuration. IngestionService routes
@@ -40,4 +48,16 @@ public interface IIncrementalSourceConnector : ISourceConnector
         KnowledgeSource source,
         IReadOnlyDictionary<string, string> existingFingerprints,
         CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// SPEC-20260926-ingestion-connector-integrity RF-001: optional connector seam for
+/// on-demand content fetch — used when a document must be reprocessed but only an
+/// empty-text stub arrived (unchanged fingerprint) and no stored
+/// <see cref="KnowledgeDocument.RawContent"/> remains. Returns null when the item
+/// is gone or unfetchable (the caller then records a warning and keeps the doc).
+/// </summary>
+public interface IItemFetchConnector : ISourceConnector
+{
+    Task<RawDocument?> FetchItemAsync(KnowledgeSource source, string uriReference, CancellationToken cancellationToken);
 }

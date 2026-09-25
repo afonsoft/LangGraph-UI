@@ -12,7 +12,7 @@ namespace KnowledgeHub.Server.Ingestion.Connectors.Cloud;
 /// fingerprint so unchanged objects skip re-download and re-chunk.
 /// </summary>
 internal abstract class CloudConnectorBase(IStagingStorageService staging, ILogger logger)
-    : IIncrementalSourceConnector
+    : IIncrementalSourceConnector, IItemFetchConnector
 {
     public abstract SourceType Type { get; }
 
@@ -47,6 +47,9 @@ internal abstract class CloudConnectorBase(IStagingStorageService staging, ILogg
 
         var documents = new List<RawDocument>();
         var warnings = new List<string>();
+        // RF-002: items that exist upstream but fail to download/extract — the
+        // sync pipeline keeps (does NOT delete) their indexed documents.
+        var failedUris = new List<string>();
         var stagingDir = staging.GetStagingDirectory(source.Id);
 
         await foreach (var obj in gateway.ListAsync(prefix, cancellationToken))
@@ -70,10 +73,12 @@ internal abstract class CloudConnectorBase(IStagingStorageService staging, ILogg
                 }
 
                 // Incremental: same upstream marker → keep stored doc, no download.
-                if (existingFingerprints.TryGetValue(uri, out var stored)
-                    && string.Equals(stored, obj.Fingerprint, StringComparison.Ordinal))
+                // RF-005: an EMPTY fingerprint proves nothing — always download.
+                if (obj.Fingerprint is { Length: > 0 } fingerprint
+                    && existingFingerprints.TryGetValue(uri, out var stored)
+                    && string.Equals(stored, fingerprint, StringComparison.Ordinal))
                 {
-                    documents.Add(new RawDocument(uri, Path.GetFileNameWithoutExtension(obj.Key), "", obj.Fingerprint));
+                    documents.Add(new RawDocument(uri, Path.GetFileNameWithoutExtension(obj.Key), "", fingerprint));
                     continue;
                 }
 
@@ -91,6 +96,7 @@ internal abstract class CloudConnectorBase(IStagingStorageService staging, ILogg
                     if (string.IsNullOrWhiteSpace(text))
                     {
                         warnings.Add($"{obj.Key}: no extractable text");
+                        failedUris.Add(uri); // exists upstream, extraction failed — keep indexed doc
                         continue;
                     }
                     documents.Add(new RawDocument(uri, Path.GetFileNameWithoutExtension(obj.Key), text, obj.Fingerprint));
@@ -98,18 +104,67 @@ internal abstract class CloudConnectorBase(IStagingStorageService staging, ILogg
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     TryDeletePartial(localPath);
+                    failedUris.Add(uri); // transient failure ≠ remote delete (RF-002)
                     logger.LogWarning(ex, "Failed to download/extract {Key} — skipped", obj.Key);
                     warnings.Add($"{obj.Key}: {ex.Message}");
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                failedUris.Add(uri);
                 logger.LogWarning(ex, "Failed to process {Key} — skipped", obj.Key);
                 warnings.Add($"{obj.Key}: {ex.Message}");
             }
         }
 
-        return new FetchResult(documents, warnings);
+        return new FetchResult(documents, warnings,
+            failedUris.Count > 0 ? failedUris : null, gateway.Truncated);
+    }
+
+    /// <summary>RF-001: on-demand single-item fetch — locates the object by URI,
+    /// downloads through the same staging/extract path, returns null on miss.</summary>
+    public async Task<RawDocument?> FetchItemAsync(
+        KnowledgeSource source, string uriReference, CancellationToken cancellationToken)
+    {
+        var config = ConnectorConfig.Parse(source.ConfigurationJson);
+        var maxBytes = config.Int("maxFileSizeMB", 20, 1, 512) * 1024L * 1024;
+
+        await using var gateway = GatewayOverride is not null
+            ? await GatewayOverride(source, config, cancellationToken)
+            : await CreateGatewayAsync(source, config, cancellationToken);
+
+        RemoteObject? found = null;
+        await foreach (var obj in gateway.ListAsync(null, cancellationToken))
+        {
+            if (UriFor(config, obj.Key) == uriReference) { found = obj; break; }
+        }
+        if (found is null || found.Size <= 0 || found.Size > maxBytes)
+            return null;
+        var ext = Path.GetExtension(found.Key);
+        if (!DocumentFileConnector.SupportedExtensions.Contains(ext))
+            return null;
+
+        var stagingDir = staging.GetStagingDirectory(source.Id);
+        var localPath = Path.Combine(stagingDir, Sanitize(found.Key));
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
+            await using (var remote = await gateway.OpenReadAsync(found.Key, cancellationToken))
+            await using (var local = File.Create(localPath))
+            {
+                await remote.CopyToAsync(local, cancellationToken);
+            }
+            var text = await DocumentFileConnector.ExtractTextAsync(localPath, ext, cancellationToken);
+            return string.IsNullOrWhiteSpace(text)
+                ? null
+                : new RawDocument(uriReference, Path.GetFileNameWithoutExtension(found.Key), text, found.Fingerprint);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            TryDeletePartial(localPath);
+            logger.LogWarning(ex, "On-demand fetch failed for {Key}", found.Key);
+            return null;
+        }
     }
 
     /// <summary>Maps a remote key to a safe local relative path (no traversal).</summary>

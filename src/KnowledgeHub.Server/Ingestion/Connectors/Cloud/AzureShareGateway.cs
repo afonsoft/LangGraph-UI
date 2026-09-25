@@ -9,10 +9,27 @@ namespace KnowledgeHub.Server.Ingestion.Connectors.Cloud;
 /// Azure.Storage.Files.Shares (<see cref="AzureFilesConnector"/>).</summary>
 internal sealed class AzureShareGateway(ShareClient share, string rootDirectory) : IRemoteObjectGateway
 {
+    /// <summary>SPEC-20260926-ingestion-connector-integrity RF-003: resolves the
+    /// scan root exactly once — <paramref name="rootDirectory"/> is the base and
+    /// <paramref name="prefix"/> filters inside it, so a prefix that already
+    /// contains the root never produces <c>dir/dir</c>.</summary>
+    internal static string ResolveRoot(string? prefix, string rootDirectory)
+    {
+        var p = prefix?.Trim('/');
+        if (string.IsNullOrWhiteSpace(p))
+            return rootDirectory;
+        if (rootDirectory.Length == 0)
+            return p;
+        return p.Equals(rootDirectory, StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith(rootDirectory + "/", StringComparison.OrdinalIgnoreCase)
+                ? p
+                : $"{rootDirectory}/{p}";
+    }
+
     public async IAsyncEnumerable<RemoteObject> ListAsync(
         string? prefix, [EnumeratorCancellation] CancellationToken ct)
     {
-        var root = string.IsNullOrWhiteSpace(prefix) ? rootDirectory : $"{rootDirectory}/{prefix}".Trim('/');
+        var root = ResolveRoot(prefix, rootDirectory);
         var pending = new Stack<string>();
         pending.Push(root);
 

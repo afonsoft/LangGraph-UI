@@ -26,22 +26,36 @@ internal sealed class GoogleDriveGateway(
 
     private readonly Dictionary<string, GoogleDriveApiClient.DriveFileMeta> _byKey = new();
 
+    /// <summary>True when the listing hit the <c>maxFiles</c> cap with more items
+    /// upstream — downstream reconciliation must not treat unlisted docs as
+    /// deleted (SPEC-20260926-ingestion-connector-integrity RF-002).</summary>
+    public bool Truncated { get; private set; }
+
     public async IAsyncEnumerable<RemoteObject> ListAsync(
         string? prefix, [EnumeratorCancellation] CancellationToken ct)
     {
         var seen = 0;
+        IEnumerable<RemoteObject> Emit(GoogleDriveApiClient.DriveFileMeta meta, string dir)
+        {
+            // Truncated only when a (maxFiles+1)-th object actually exists.
+            foreach (var o in Yield(meta, dir))
+            {
+                if (seen >= maxFiles) { Truncated = true; yield break; }
+                seen++;
+                yield return o;
+            }
+        }
 
         if (!rootIsFolder)
         {
             var meta = apiKey is not null
                 ? await client.GetFileAsync(rootId, apiKey, ct)
                 : null;
-            var m = meta ?? new GoogleDriveApiClient.DriveFileMeta(rootId, rootId, "", null, null, null);
-            foreach (var o in Yield(m, "", ct))
-            {
-                if (seen++ >= maxFiles) yield break;
-                yield return o;
-            }
+            // Public single-file links: probe Content-Disposition for the real
+            // name — an id-as-name has no extension and never indexes (RF-005).
+            var m = meta ?? await client.TryGetPublicFileMetaAsync(rootId, ct)
+                ?? new GoogleDriveApiClient.DriveFileMeta(rootId, rootId, "", null, null, null);
+            foreach (var o in Emit(m, "")) yield return o;
             yield break;
         }
 
@@ -49,27 +63,21 @@ internal sealed class GoogleDriveGateway(
         {
             await foreach (var (meta, dir) in client.ListFolderAsync(rootId, apiKey, ct: ct))
             {
-                foreach (var o in Yield(meta, dir, ct))
-                {
-                    if (seen++ >= maxFiles) yield break;
-                    yield return o;
-                }
+                foreach (var o in Emit(meta, dir)) yield return o;
+                if (Truncated) yield break;
             }
             yield break;
         }
 
         await foreach (var meta in client.ListPublicFolderAsync(rootId, ct))
         {
-            foreach (var o in Yield(meta, "", ct))
-            {
-                if (seen++ >= maxFiles) yield break;
-                yield return o;
-            }
+            foreach (var o in Emit(meta, "")) yield return o;
+            if (Truncated) yield break;
         }
     }
 
     private IEnumerable<RemoteObject> Yield(
-        GoogleDriveApiClient.DriveFileMeta meta, string dir, CancellationToken ct)
+        GoogleDriveApiClient.DriveFileMeta meta, string dir)
     {
         var key = $"{dir}{meta.Name}";
         if (NativeMap.TryGetValue(meta.MimeType, out var native))
@@ -80,6 +88,8 @@ internal sealed class GoogleDriveGateway(
         _byKey[key] = meta;
         // RF-005: fingerprint combines modifiedTime + md5Checksum (size
         // fallback — natives have no md5).
+        // RF-005: no usable marker at all (scraped public listing) → etag ""
+        // + MinValue → empty Fingerprint → always reprocessed, never "unchanged".
         var etag = meta.Md5Checksum ?? meta.Size?.ToString() ?? "";
         // Natives/listing-scraped items have no size — report 1 so the base
         // loop does not skip them as empty; the real byte limit is enforced

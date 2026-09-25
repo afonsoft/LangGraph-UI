@@ -76,7 +76,17 @@ public sealed class IngestionQueue(
         await db.SaveChangesAsync(ct);
 
         if (!Channel.Writer.TryWrite(job.Id))
+        {
+            // RF-007 (SPEC-20260926-ingestion-connector-integrity): a persisted
+            // "queued" job that never reached the channel would deadlock dedup —
+            // every future enqueue returns it as `Existing`. Mark it failed so
+            // the next cycle enqueues normally.
+            job.Status = "failed";
+            job.Error = "ingestion queue is full";
+            job.FinishedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
             throw new QueueFullException();
+        }
         return new IngestionJobEnqueueResult(job, Existing: false);
     }
 
