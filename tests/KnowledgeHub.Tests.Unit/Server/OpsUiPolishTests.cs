@@ -186,8 +186,11 @@ public sealed class OpsUiPolishTests
 
         var result = Assert.Single(report.Results);
         Assert.NotNull(result.LatencyMs);
-        Assert.True(result.LatencyMs < 250,
-            $"case latency {result.LatencyMs}ms should measure search (~20ms), not the 300ms LLM answer");
+        // Gap-based (starvation-proof): total run duration minus case latency
+        // must cover the ~300ms answer path — if LatencyMs still measured the
+        // whole case the gap would be ~0.
+        Assert.True(report.DurationMs - result.LatencyMs.Value >= 250,
+            $"gap {report.DurationMs - result.LatencyMs}ms should include the 300ms LLM answer");
     }
 
     // ---- diagnostics: vec0 is not an HNSW index ----
