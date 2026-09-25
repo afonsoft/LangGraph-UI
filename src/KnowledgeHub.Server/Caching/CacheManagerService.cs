@@ -151,12 +151,15 @@ public sealed class CacheManagerService : ICacheManagerService
             }
             stats.ServerKeys = count;
             stats.Partial = truncated;
-            stats.ServerReported = true;
 
             var info = await server.InfoAsync("memory");
             var clients = await server.InfoAsync("clients");
             stats.ServerUsedMemoryBytes = ParseInfoLong(info, "used_memory");
             stats.ServerConnectedClients = (int?)ParseInfoLong(clients, "connected_clients");
+            // SPEC-20260926-cache-key-consistency RF-003: ServerReported means
+            // "server-side stats available" — only true once INFO answered;
+            // a failed INFO leaves it false with StatsError describing why.
+            stats.ServerReported = true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -167,18 +170,39 @@ public sealed class CacheManagerService : ICacheManagerService
     }
 
     /// <inheritdoc />
-    public async Task<bool> RemoveEntryAsync(string key, CancellationToken ct = default)
+    public async Task<CacheKeyRemovalResult> RemoveEntryAsync(string key, CancellationToken ct = default)
     {
-        var tracked = _trackedKeys.TryRemove(key, out _);
+        // SPEC-20260926-cache-key-consistency RF-002: untrack ONLY after the
+        // backend removal succeeds — a failed delete must stay visible in the
+        // panel and surface as an error, not a silent success.
+        var tracked = _trackedKeys.ContainsKey(key);
         try
         {
             await _cache.RemoveAsync(key, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to remove key {Key} from cache", key);
+            _logger.LogWarning(ex, "Failed to remove key {Key} from cache", SafeCache.LogSafe(key));
+            return new CacheKeyRemovalResult { Tracked = tracked, Removed = false, Error = TrimError(ex) };
         }
-        return tracked;
+
+        _trackedKeys.TryRemove(key, out _);
+
+        // SPEC-20260926-cache-key-consistency RF-001: propagate the eviction so
+        // other replicas drop their L1 copy — L2 (redis) is already gone.
+        if (_bus is not null)
+        {
+            try
+            {
+                await _bus.PublishAsync($"cache-key:{key}", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "failed to publish cache-key invalidation");
+            }
+        }
+
+        return new CacheKeyRemovalResult { Tracked = tracked, Removed = true };
     }
 
     private static string TrimError(Exception ex)
@@ -211,7 +235,7 @@ public sealed class CacheManagerService : ICacheManagerService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to remove key {Key} from cache", key);
+                _logger.LogWarning(ex, "Failed to remove key {Key} from cache", SafeCache.LogSafe(key));
             }
         }
 

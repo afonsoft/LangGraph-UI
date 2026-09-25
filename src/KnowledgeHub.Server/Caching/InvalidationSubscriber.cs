@@ -38,6 +38,16 @@ public sealed class InvalidationSubscriber : BackgroundService
                 l1.InvalidateAllLocal();
                 _logger.LogInformation("remote cache-clear — L1 compacted");
                 break;
+            default:
+                // SPEC-20260926-cache-key-consistency RF-001: per-key eviction
+                // propagated from another replica — drop only the L1 copy.
+                if (topic.StartsWith("cache-key:", StringComparison.Ordinal))
+                {
+                    var key = topic["cache-key:".Length..];
+                    l1.InvalidateLocal(key);
+                    _logger.LogDebug("remote cache-key eviction — L1 entry dropped");
+                }
+                break;
         }
     }
 

@@ -22,6 +22,7 @@ namespace KnowledgeHub.Server.Services;
 public sealed class SearchService(
     KnowledgeHubDbContext db,
     IEmbeddingProvider embeddings,
+    IEmbeddingProviderResolver embeddingsResolver,
     IVectorStore vectors,
     ILexicalSearchService lexical,
     IDistributedCache cache,
@@ -602,7 +603,7 @@ public sealed class SearchService(
     /// misses on the same query to a single provider call.</summary>
     private async Task<float[]> EmbedQueryAsync(string query, CancellationToken ct)
     {
-        var key = CacheKeys.Embedding(embeddings.ModelId, query);
+        var key = CacheKeys.Embedding(embeddings.ModelId, embeddingsResolver.Fingerprint, query);
         var vector = await SafeCache.GetOrCreateAsync<float[]>(
             cache, key,
             async innerCt =>

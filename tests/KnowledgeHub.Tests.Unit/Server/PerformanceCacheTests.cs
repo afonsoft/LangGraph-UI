@@ -137,7 +137,7 @@ public sealed class PerformanceCacheTests
         var vectors = new CountingVectorStore(new VectorHit(chunk.Id, 0.9));
         var cache = new MemoryDistributedCache(
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
-        var search = new SearchService(db, embeddings, vectors, new DisabledLexical(), cache,
+        var search = new SearchService(db, embeddings, new Fakes.FixedEmbeddingProviderResolver(embeddings), vectors, new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
 
@@ -180,7 +180,8 @@ public sealed class PerformanceCacheTests
         db.Chunks.Add(chunk);
         await db.SaveChangesAsync();
 
-        var search = new SearchService(db, new CountingEmbeddingProvider(),
+        var emb = new CountingEmbeddingProvider();
+        var search = new SearchService(db, emb, new Fakes.FixedEmbeddingProviderResolver(emb),
             new CountingVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(),
             new ThrowingCache(), new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);

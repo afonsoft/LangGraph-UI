@@ -47,6 +47,11 @@ public sealed class RedisStatsTests
 
         Assert.True(stats.IsConnected);
         Assert.NotNull(stats.StatsError);
+        // SPEC-20260926-cache-key-consistency RF-003: SCAN data alone doesn't
+        // count as "server reported" — ServerReported flips only when INFO
+        // actually answers.
+        Assert.False(stats.ServerReported);
+        Assert.True(stats.ServerKeys >= 0);
     }
 
     [Fact]

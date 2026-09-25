@@ -25,9 +25,9 @@ public static class VectorStoreDiagnostics
         {
             provider,
             rows = embedded,
-            size = (string?)null,
+            size = default(string),
             hnswIndex = provider.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase),
-            pgvectorVersion = (string?)null,
+            pgvectorVersion = default(string),
             dimensions = cfg.GetValue("Embeddings:Dimensions", 384)
         };
     }

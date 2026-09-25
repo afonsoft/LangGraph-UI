@@ -6,13 +6,13 @@ O KnowledgeHub roda de três formas: a partir do código-fonte (.NET SDK), como 
 
 ```bash
 cp .env.example .env   # edite os valores
-mkdir -p data logs && chown 1654:1654 logs   # o container roda como uid 1654 (app)
+mkdir -p data logs && chown -R 1654:1654 data logs   # o container roda como uid 1654 (app)
 docker compose up -d
 ```
 
 - Gera a imagem `knowledgehub:latest` e serve na porta mapeada (`docker-compose.yml` — `5550:8080` por padrão).
 - `./data` é bind-mount e persiste `knowledgehub.db` + uploads.
-- `./logs` é bind-mount e persiste o file sink do Serilog — rolling diário (`knowledgehub-YYYYMMDD.log`), retenção de 14 dias, secrets redigidos como `***REDACTED***`. **Se `./logs` não existir o Docker o cria como `root` e o file sink não consegue escrever** (o container roda como `app`, uid 1654) — pré-crie com o `chown` acima ou corrija uma vez após o primeiro `up`.
+- `./logs` é bind-mount e persiste o file sink do Serilog — rolling diário (`knowledgehub-YYYYMMDD.log`), retenção de 14 dias, secrets redigidos como `***REDACTED***`. **Se `./logs` não existir o Docker o cria como `root` e o file sink não consegue escrever** (o container roda como `app`, uid 1654) — pré-crie com o `chown` acima (incluindo `./data` — o SQLite migra ali) ou corrija uma vez após o primeiro `up`.
 - Migrations EF Core aplicadas automaticamente no startup.
 - Health probe: `GET /healthz`.
 
@@ -49,4 +49,4 @@ Produz um binário autocontido de ~120 MB — sem runtime .NET. O instalador cri
 | OTLP / Prometheus | `Telemetry:Otlp:Endpoint` / `Telemetry:Metrics:Prometheus` | Traces + `/metrics` (+ sink de logs OTLP) |
 | Tuning pgvector | `VectorStore:Postgres:*` | `StorageType` vector\|halfvec (pgvector ≥0.7 + `AllowStorageMigration`), `IterativeScan` (≥0.8), `Hnsw*`, pool — ver README §Configuração |
 | Tuning de cache | `Cache:RegionTtlMinutes`, `Cache:L1*` | TTLs por região + L1 em processo à frente do Redis (invalidação via pub/sub `kh:invalidate`) — ver README §Configuração |
-| Nível de log em runtime | `GET/PUT /api/settings/log-level` | `LoggingLevelSwitch` com `autoResetMinutes` opcional (0–120) |
+| Nível de log em runtime | `GET/PUT /api/settings/log-level` | `LoggingLevelSwitch` com `minutes` opcional (0–120) |

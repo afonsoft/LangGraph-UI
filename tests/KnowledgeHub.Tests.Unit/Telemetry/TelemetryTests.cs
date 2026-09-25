@@ -91,7 +91,8 @@ public sealed class TelemetryTests
 
         var cache = new MemoryDistributedCache(
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
-        var search = new SearchService(db, new StubEmbeddings(),
+        var emb = new StubEmbeddings();
+        var search = new SearchService(db, emb, new Fakes.FixedEmbeddingProviderResolver(emb),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);
@@ -232,7 +233,8 @@ public sealed class TelemetryTests
 
         var cache = new MemoryDistributedCache(
             Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
-        var search = new SearchService(db, new StubEmbeddings(),
+        var emb = new StubEmbeddings();
+        var search = new SearchService(db, emb, new Fakes.FixedEmbeddingProviderResolver(emb),
             new StubVectorStore(new VectorHit(chunk.Id, 0.9)), new DisabledLexical(), cache,
             new ConfigurationBuilder().Build(), new PassthroughRewriter(), NoOpExpander.Instance, new GraphEntityLinker(db, NullLogger<GraphEntityLinker>.Instance),
             NoOpReranker.Instance, new UnrestrictedScope(), Search.FakeGraphSettings.Enabled, NullLogger<SearchService>.Instance);

@@ -54,4 +54,10 @@ public interface IVectorStore
         float[] queryVector, string model, int topK,
         IReadOnlyCollection<Guid>? sourceIds = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-001: vector
+    /// dimension this store accepts, or <c>null</c> when unconstrained
+    /// (per-chunk blob storage). sqlite-vec/pgvector schemas are fixed at
+    /// creation time — the embedding provider's effective dims must match.</summary>
+    int? Dimensions => null;
 }

@@ -23,6 +23,7 @@ public sealed class SqliteVecVectorStore : IVectorStore
 
     private readonly KnowledgeHubDbContext _db;
     private readonly int _dimensions;
+    public int? Dimensions => _dimensions;
     private readonly SemaphoreSlim _initGate = new(1, 1);
     private bool _initialized;
 

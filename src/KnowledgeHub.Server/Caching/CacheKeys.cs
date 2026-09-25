@@ -11,8 +11,11 @@ public static class CacheKeys
     /// keys embed it so index changes invalidate stale results immediately.</summary>
     public const string IndexVersion = "index:version";
 
-    public static string Embedding(string modelId, string text) =>
-        $"emb:{modelId}:{Sha256(text)}";
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-004: the provider
+    /// signature fingerprint is part of the key — same ModelId over a different
+    /// endpoint/key/input_type never reuses another provider's vectors.</summary>
+    public static string Embedding(string modelId, string fingerprint, string text) =>
+        $"emb:{modelId}:{fingerprint}:{Sha256(text)}";
 
     /// <summary>SPEC-20260923-retrieval-quality RF-005: v2 embedded the filter
     /// fingerprint; SPEC-20260923-source-authorization RF-003 bumps to v3 adding

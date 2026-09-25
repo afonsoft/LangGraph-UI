@@ -13,6 +13,11 @@ namespace KnowledgeHub.Server.Embeddings;
 public interface IEmbeddingProviderResolver
 {
     IEmbeddingProvider Current { get; }
+
+    /// <summary>SPEC-20260926-embeddings-runtime-coherence RF-004: short hash of
+    /// the current effective-options signature — embed in cache keys so entries
+    /// produced under another endpoint/key/input_type are never reused.</summary>
+    string Fingerprint { get; }
 }
 
 /// <summary>Builds providers lazily and caches them by effective-options
@@ -21,11 +26,15 @@ public interface IEmbeddingProviderResolver
 public sealed class EmbeddingProviderResolver(
     IEmbeddingSettingsService settings,
     IHttpClientFactory httpFactory,
-    ILogger<EmbeddingProviderResolver> logger) : IEmbeddingProviderResolver
+    ILogger<EmbeddingProviderResolver> logger,
+    Func<EmbeddingOptions, IEmbeddingProvider>? providerFactory = null) : IEmbeddingProviderResolver
 {
     private readonly object _gate = new();
     private string? _signature;
     private IEmbeddingProvider? _provider;
+
+    private IEmbeddingProvider Build(EmbeddingOptions options) =>
+        providerFactory?.Invoke(options) ?? EmbeddingProviderFactory.Create(options, httpFactory);
 
     public IEmbeddingProvider Current
     {
@@ -39,16 +48,45 @@ public sealed class EmbeddingProviderResolver(
                 if (_provider is not null && signature == _signature)
                     return _provider;
 
-                var built = EmbeddingProviderFactory.Create(
-                    settings.GetEffectiveOptions(), httpFactory);
-                if (_provider is not null)
+                var built = Build(settings.GetEffectiveOptions());
+                var previous = _provider;
+                if (previous is not null)
+                {
                     logger.LogWarning(
                         "embedding provider changed ({Old} → {New}) — vectors already stored keep the old dims; existing corpora may need reindex",
                         _signature, signature);
+                    // SPEC-20260926-embeddings-runtime-coherence RF-005: release
+                    // native resources of the previous provider (e.g. ONNX
+                    // InferenceSession) — best-effort, off the swap path.
+                    _ = Task.Run(() => DisposeQuietly(previous));
+                }
                 _provider = built;
                 _signature = signature;
                 return built;
             }
+        }
+    }
+
+    public string Fingerprint => Convert.ToHexString(SHA256.HashData(
+        Encoding.UTF8.GetBytes(Signature(settings.GetEffectiveOptions()))))[..8].ToLowerInvariant();
+
+    private void DisposeQuietly(IEmbeddingProvider old)
+    {
+        try
+        {
+            switch (old)
+            {
+                case IAsyncDisposable ad:
+                    ad.DisposeAsync().AsTask().Wait();
+                    break;
+                case IDisposable d:
+                    d.Dispose();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "failed to dispose replaced embedding provider");
         }
     }
 

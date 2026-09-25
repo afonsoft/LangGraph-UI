@@ -54,7 +54,9 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
 
     private async Task<JsonElement> WaitTerminalJobAsync(Guid jobId)
     {
-        for (var i = 0; i < 60; i++)
+        // CI flake (PR #205): under parallel load a reindex exceeded the old
+        // 30s budget — 120×500ms gives headroom without masking real hangs.
+        for (var i = 0; i < 120; i++)
         {
             var job = await _client.GetFromJsonAsync<JsonElement>($"/api/ingestion/jobs/{jobId}");
             var status = job.GetProperty("status").GetString();

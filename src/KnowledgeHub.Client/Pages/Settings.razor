@@ -153,7 +153,14 @@ else
                 <HeaderTemplate>
                     <div class="d-flex justify-content-between align-items-center">
                         <span>Provider de embeddings</span>
-                        @if (_embeddings.Source == "store")
+                        @* SPEC-20260926-embeddings-runtime-coherence RF-002:
+                           provider build failures surface here — the editor
+                           still renders (GET is fail-soft). *@
+                        @if (_embeddings.ProviderError is { } perr)
+                        {
+                            <Badge Color="Color.Danger" title="@perr">provider falhou</Badge>
+                        }
+                        else if (_embeddings.Source == "store")
                         {
                             <Badge Color="Color.Success">configurada</Badge>
                         }
@@ -193,6 +200,10 @@ else
                             <label class="form-label">Dimensions</label>
                             <input type="number" class="form-control font-monospace" min="64" max="4096"
                                    @bind="_embForm.Dimensions" />
+                            @if (_embeddings.StoreDimensions is { } sd)
+                            {
+                                <small class="text-muted">índice: @sd</small>
+                            }
                         </div>
                         @if (_embForm.Provider == "onnx")
                         {
@@ -237,6 +248,17 @@ else
                     {
                         <div class="mb-2 small text-muted">
                             Provider efetivo: <code>@stamped</code> — em vigor imediatamente.
+                        </div>
+                    }
+                    @* SPEC-20260926-embeddings-runtime-coherence RF-001: dims
+                       ≠ schema do índice — o PUT também bloqueia, mas o aviso
+                       ajuda antes de tentar salvar. *@
+                    @if (_embeddings.DimsMismatch)
+                    {
+                        <div class="alert alert-warning small mb-2 py-2">
+                            Dimensions @_embeddings.Dimensions ≠ índice @_embeddings.StoreDimensions —
+                            o schema do vector store é fixo no startup. Ajuste
+                            <code>Embeddings:Dimensions</code> no ambiente, reinicie e rode reindex.
                         </div>
                     }
 
@@ -669,10 +691,21 @@ else
             <Card>
                 <HeaderTemplate><span>Entidades (@_dbStats.Tables.Count)</span></HeaderTemplate>
                 <BodyTemplate>
+                    @* SPEC-20260926-review-docs-and-misc RF-005: clickable
+                       column sort — default Linhas desc. *@
                     <table class="table table-sm small mb-0">
-                        <thead><tr><th>Tabela</th><th class="text-end">Linhas</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th role="button" style="cursor:pointer" @onclick="() => ToggleEntitySort(0)">
+                                    Tabela @SortGlyph(0)
+                                </th>
+                                <th class="text-end" role="button" style="cursor:pointer" @onclick="() => ToggleEntitySort(1)">
+                                    Linhas @SortGlyph(1)
+                                </th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            @foreach (var t in _dbStats.Tables.OrderByDescending(x => x.RowCount))
+                            @foreach (var t in SortedEntities())
                             {
                                 <tr><td class="font-monospace">@t.Name</td><td class="text-end">@t.RowCount.ToString("N0")</td></tr>
                             }
@@ -856,6 +889,28 @@ else
         d.PageCount is > 0 && d.FreelistCount is { } free
             ? $"{free:N0} ({free * 100.0 / d.PageCount.Value:F1}%)"
             : "—";
+
+    private int _entitySortCol = 1;
+    private bool _entitySortDesc = true;
+
+    private void ToggleEntitySort(int col)
+    {
+        if (_entitySortCol == col) _entitySortDesc = !_entitySortDesc;
+        else { _entitySortCol = col; _entitySortDesc = col == 1; }
+    }
+
+    private IEnumerable<KnowledgeHub.Shared.Contracts.TableCountDto> SortedEntities() =>
+        _dbStats is null ? []
+        : (_entitySortCol, _entitySortDesc) switch
+        {
+            (0, true) => _dbStats.Tables.OrderByDescending(t => t.Name),
+            (0, false) => _dbStats.Tables.OrderBy(t => t.Name),
+            (1, true) => _dbStats.Tables.OrderByDescending(t => t.RowCount),
+            _ => _dbStats.Tables.OrderBy(t => t.RowCount)
+        };
+
+    private string SortGlyph(int col) =>
+        _entitySortCol != col ? "" : _entitySortDesc ? "▾" : "▴";
 
     private static string JsonStr(System.Text.Json.JsonElement el, string name) =>
         el.TryGetProperty(name, out var p) && p.ValueKind != System.Text.Json.JsonValueKind.Null
