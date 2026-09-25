@@ -66,6 +66,10 @@ public static class EvalEndpoints
             {
                 return Results.NotFound(new { error = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         });
 
         group.MapGet("/runs", async (KnowledgeHubDbContext db, int? limit, CancellationToken ct) =>

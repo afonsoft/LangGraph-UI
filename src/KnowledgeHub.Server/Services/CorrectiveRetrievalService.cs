@@ -56,10 +56,15 @@ public sealed class CorrectiveRetrievalService(
             var retryResults = await search.SearchAsync(rewritten, topK, sourceId, mode, filter, conversationContext, ct);
             var retryGrading = await grader.GradeAsync(rewritten, retryResults, ct);
 
-            // Keep the better attempt; the grade reflects what we will answer from.
+            // SPEC-20260926-search-correctness-and-stream RF-003: keep the
+            // better attempt AND its grading together — adopting a worse
+            // attempt's grading over the kept results could force an
+            // unjustified abstention.
             if (IsBetter(retryGrading, retryResults, grading, results))
+            {
                 results = retryResults;
-            grading = retryGrading;
+                grading = retryGrading;
+            }
         }
 
         ActivityTag(grading, retries > 0);

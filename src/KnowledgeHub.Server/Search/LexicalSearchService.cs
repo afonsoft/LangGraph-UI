@@ -45,14 +45,68 @@ public sealed class LexicalSearchService(
         string query, int topK, IReadOnlyCollection<Guid>? sourceIds, CancellationToken cancellationToken = default)
     {
         var match = FtsQuerySanitizer.ToMatchExpression(query);
-        if (match is null || !Enabled || !await IsAvailableAsync(cancellationToken))
+        if (match is null || !Enabled)
             return [];
 
-        var connection = db.Database.GetDbConnection();
-        var wasOpen = connection.State == ConnectionState.Open;
-        if (!wasOpen)
-            await connection.OpenAsync(cancellationToken);
+        // SPEC-20260926-search-correctness-and-stream RF-001: expansion issues
+        // N concurrent calls; the scoped DbContext shares ONE SqliteConnection
+        // that cannot serve concurrent readers — dedicated clone for file DBs,
+        // per-connection gate for :memory:.
+        var efConnection = db.Database.GetDbConnection();
+        if (Data.SqliteConnectionLease.Dedicated(efConnection) is { } dedicated)
+        {
+            try
+            {
+                await using (dedicated)
+                {
+                    await dedicated.OpenAsync(cancellationToken);
+                    if (!await IsAvailableAsync(dedicated, cancellationToken))
+                        return [];
+                    return await SearchOnAsync(dedicated, match, topK, sourceIds, cancellationToken);
+                }
+            }
+            catch (SqliteException ex)
+            {
+                logger.LogWarning(ex, "Lexical search failed on dedicated connection — falling back to empty result set");
+                return [];
+            }
+        }
+
+        var gate = Data.SqliteConnectionLease.GateFor(efConnection);
+        await gate.WaitAsync(cancellationToken);
         try
+        {
+            if (!await IsAvailableAsync(efConnection, cancellationToken))
+                return [];
+            var wasOpen = efConnection.State == ConnectionState.Open;
+            if (!wasOpen)
+                await efConnection.OpenAsync(cancellationToken);
+            try
+            {
+                return await SearchOnAsync(efConnection, match, topK, sourceIds, cancellationToken);
+            }
+            finally
+            {
+                if (!wasOpen)
+                    await efConnection.CloseAsync();
+            }
+        }
+        catch (SqliteException ex)
+        {
+            // FTS syntax/IO errors degrade to "no lexical hits" — never a 500.
+            logger.LogWarning(ex, "Lexical search failed for match expression — falling back to empty result set");
+            return [];
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task<IReadOnlyList<LexicalHit>> SearchOnAsync(
+        DbConnection connection, string match, int topK,
+        IReadOnlyCollection<Guid>? sourceIds, CancellationToken cancellationToken)
+    {
         {
             await using var command = connection.CreateCommand();
             var sourceFilter = "";
@@ -97,17 +151,6 @@ public sealed class LexicalSearchService(
             }
             return hits;
         }
-        catch (SqliteException ex)
-        {
-            // FTS syntax/IO errors degrade to "no lexical hits" — never a 500.
-            logger.LogWarning(ex, "Lexical search failed for match expression — falling back to empty result set");
-            return [];
-        }
-        finally
-        {
-            if (!wasOpen)
-                await connection.CloseAsync();
-        }
     }
 
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
@@ -135,9 +178,11 @@ public sealed class LexicalSearchService(
     // later in the same process (tests create fresh files per case).
     private static readonly ConcurrentDictionary<string, bool> FtsAvailableByDataSource = new();
 
-    private async Task<bool> IsAvailableAsync(CancellationToken cancellationToken)
+    private Task<bool> IsAvailableAsync(CancellationToken cancellationToken) =>
+        IsAvailableAsync(db.Database.GetDbConnection(), cancellationToken);
+
+    private static async Task<bool> IsAvailableAsync(DbConnection connection, CancellationToken cancellationToken)
     {
-        var connection = db.Database.GetDbConnection();
         if (connection is SqliteConnection sqlite
             && FtsAvailableByDataSource.TryGetValue(sqlite.DataSource, out var known)
             && known)
