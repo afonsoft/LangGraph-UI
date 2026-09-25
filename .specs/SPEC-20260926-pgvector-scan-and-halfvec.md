@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Server` (PostgresVectorStore, PostgresOptions) |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` |
+| Status | `Done` |
 | Ticket | #213 ([E22] Epic #208) — devin-ai-integration review — PR #190 (🔍 SPEC-time), #197 (🔴), #198 (2×🔴) |
 | Origem | `.claude/memory/devin-review-triage-20260925.md` — cluster E (E1–E3) |
 
