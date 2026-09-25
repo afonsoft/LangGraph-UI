@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using KnowledgeHub.Shared.Contracts;
 
 namespace KnowledgeHub.Client.Services;
@@ -10,6 +11,21 @@ public sealed class AuthApiClient(HttpClient http)
     {
         var response = await http.PostAsJsonAsync("api/auth/login", new LoginRequest(username, password), ct);
         return await ReadAsync<LoginResponse>(response, ct);
+    }
+
+    /// <summary>SPEC-20260926-ops-and-ui-polish: anonymous MCP capabilities —
+    /// the login page only advertises legacy SSE when the transport serves it.</summary>
+    public async Task<bool> LegacySseEnabledAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var doc = await http.GetFromJsonAsync<JsonElement>("api/mcp/capabilities", ct);
+            return doc.TryGetProperty("legacySse", out var v) && v.GetBoolean();
+        }
+        catch
+        {
+            return true; // probe failed — assume the default hybrid transport
+        }
     }
 
     public async Task<MeResponse?> MeAsync(CancellationToken ct = default)

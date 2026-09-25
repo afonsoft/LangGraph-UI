@@ -52,7 +52,13 @@
                 @switch (v.Row.LastSyncStatus)
                 {
                     case "completed":
-                        <Badge Color="Color.Success">ok</Badge>
+                        @* completed jobs can carry warnings — keep the detail
+                           modal reachable (it lists them when present). *@
+                        <span role="button" tabindex="0" title="Clique para ver detalhes"
+                              style="cursor:pointer"
+                              @onclick="() => ShowStatusDetail(v.Row)">
+                            <Badge Color="Color.Success">ok</Badge>
+                        </span>
                         break;
                     case "failed":
                         <span role="button" tabindex="0" title="Clique para ver detalhes"

@@ -59,7 +59,9 @@ if command -v jq >/dev/null 2>&1; then
     while IFS= read -r vault_path; do
         [[ -z "$vault_path" || "$vault_path" == "null" ]] && continue
         if [[ -d "$vault_path" ]]; then
-            slug="$(basename "$vault_path" | tr -c '[:alnum:]_-' '_')"
+            # SPEC-20260926-ops-and-ui-polish: basename alone collides across
+            # homonymous vaults (/a/docs + /b/docs) — suffix a path hash.
+            slug="$(basename "$vault_path" | tr -c '[:alnum:]_-' '_')-$(printf '%s' "$vault_path" | cksum | cut -d' ' -f1)"
             echo "==> Archiving vault $vault_path -> vaults/$slug.tar.gz"
             tar -czf "$DEST/vaults/$slug.tar.gz" -C "$(dirname "$vault_path")" "$(basename "$vault_path")"
             VAULT_COUNT=$((VAULT_COUNT + 1))

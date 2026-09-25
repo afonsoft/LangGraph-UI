@@ -48,8 +48,11 @@
             </p>
             <div class="border rounded bg-body-tertiary p-2 mb-3 small">
                 <div><strong>Streamable HTTP</strong> (recomendado): <code>@_mcpUrl</code></div>
-                <div class="mt-1"><strong>Legacy SSE</strong>: <code>@_sseUrl</code>
-                    <span class="text-muted"> — sem suporte a header? use <code>?access_token=aft_...</code></span></div>
+                @if (_legacySse)
+                {
+                    <div class="mt-1"><strong>Legacy SSE</strong>: <code>@_sseUrl</code>
+                        <span class="text-muted"> — sem suporte a header? use <code>?access_token=aft_...</code></span></div>
+                }
             </div>
 
             @foreach (var c in _clients)
@@ -66,10 +69,13 @@
                 </div>
             }
 
-            <p class="text-muted small mt-3 mb-0">
-                Clients que só falam SSE legado usam <code>@_sseUrl</code>; o token pode ir no
-                query param <code>?access_token=</code> quando o client não envia headers.
-            </p>
+            @if (_legacySse)
+            {
+                <p class="text-muted small mt-3 mb-0">
+                    Clients que só falam SSE legado usam <code>@_sseUrl</code>; o token pode ir no
+                    query param <code>?access_token=</code> quando o client não envia headers.
+                </p>
+            }
         </div>
     </div>
 </div>
@@ -84,12 +90,14 @@
     private string _mcpUrl = "";
     private string _sseUrl = "";
     private List<(string Name, string Snippet)> _clients = [];
+    private bool _legacySse = true;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         var baseUri = Nav.BaseUri.TrimEnd('/');
         _mcpUrl = $"{baseUri}/mcp";
         _sseUrl = $"{baseUri}/mcp/sse";
+        _legacySse = await Auth.LegacySseEnabledAsync();
 
         // SPEC-20260926-login-split-layout RF-003: ordered Claude Code → Devin →
         // opencode → agy (Claude Desktop intentionally omitted).
@@ -100,7 +108,7 @@
             ("Devin",
              $"Org/user settings → MCP servers → add custom server:\n" +
              $"  URL: {_mcpUrl}\n  Header: Authorization: Bearer aft_...\n" +
-             $"(SSE-only flows: {_sseUrl}?access_token=aft_...)"),
+             (_legacySse ? $"(SSE-only flows: {_sseUrl}?access_token=aft_...)" : "")),
             ("opencode",
              "// opencode.json\n{\n  \"mcp\": {\n    \"knowledgehub\": {\n" +
              $"      \"type\": \"remote\",\n      \"url\": \"{_mcpUrl}\",\n" +
