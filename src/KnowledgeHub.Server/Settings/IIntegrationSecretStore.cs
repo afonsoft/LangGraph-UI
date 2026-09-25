@@ -12,6 +12,11 @@ public static class IntegrationProviders
     /// endpoints, never listed in the integrations grid.</summary>
     public const string Chat = "chat";
 
+    /// <summary>Embeddings API key slug (SPEC-20260926-settings-ux-embeddings) —
+    /// same treatment as <see cref="Chat"/>: managed by /api/settings/embeddings,
+    /// never listed in the integrations grid.</summary>
+    public const string Embeddings = "embeddings";
+
     public static readonly IReadOnlyList<string> All = [Firecrawl, DeepWiki, Tavily, Context7];
 }
 

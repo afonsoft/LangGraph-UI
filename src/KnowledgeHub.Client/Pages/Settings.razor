@@ -9,8 +9,8 @@
 
 @* SPEC-20260926-settings-tabs-database-metrics RF-001: seções em abas —
    Chat (LLM) / GraphRAG / Integrações / Cache / Banco de Dados. *@
-<Tab>
-    <TabItem Text="Chat (LLM)">
+<Tab TabStyle="TabStyle.Chrome">
+    <TabItem Text="Chat (LLM)" Icon="fa-solid fa-comments">
 
 <p class="text-muted">
     Provider OpenAI-compatible usado na síntese de respostas e no loop do agente.
@@ -130,8 +130,142 @@ else
         </div>
     </div>
 }
+
+@* SPEC-20260926-settings-ux-embeddings RF-004: embedding/indexing provider —
+   mesma linha do chat (LLM): configuração persistida, sem restart. *@
+<h5 class="mb-2 text-muted">Embeddings (indexação)</h5>
+<p class="text-muted">
+    Provider que gera os vetores dos chunks na ingestão e das queries na busca.
+    Troca de <code>model</code>/<code>dimensions</code> aplica sem restart, mas
+    <strong>exige reindex das fontes</strong> — vetores já gravados mantêm as
+    dimensões/modelo antigos.
+</p>
+
+@if (_embeddings is null)
+{
+    <div class="text-muted mb-4 kh-action-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando configuração de embeddings…</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <Card>
+                <HeaderTemplate>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Provider de embeddings</span>
+                        @if (_embeddings.Source == "store")
+                        {
+                            <Badge Color="Color.Success">configurada</Badge>
+                        }
+                        else
+                        {
+                            <Badge Color="Color.Info">ambiente</Badge>
+                        }
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    <div class="row g-2 mb-2">
+                        <div class="col-12 col-md-3">
+                            <label class="form-label">Provider</label>
+                            <select class="form-select font-monospace" @bind="_embForm.Provider">
+                                <option value="deterministic">deterministic</option>
+                                <option value="ollama">ollama</option>
+                                <option value="openai">openai</option>
+                                <option value="onnx">onnx</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-5">
+                            <label class="form-label">Endpoint</label>
+                            <input type="text" class="form-control font-monospace"
+                                   @bind="_embForm.Endpoint"
+                                   placeholder="http://localhost:11434" autocomplete="off" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Model</label>
+                            <input type="text" class="form-control font-monospace"
+                                   @bind="_embForm.Model"
+                                   placeholder="nomic-embed-text" autocomplete="off" />
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Dimensions</label>
+                            <input type="number" class="form-control font-monospace" min="64" max="4096"
+                                   @bind="_embForm.Dimensions" />
+                        </div>
+                        @if (_embForm.Provider == "onnx")
+                        {
+                            <div class="col-12 col-md-5">
+                                <label class="form-label">Model path</label>
+                                <input type="text" class="form-control font-monospace"
+                                       @bind="_embForm.ModelPath"
+                                       placeholder="models/all-MiniLM-L6-v2" autocomplete="off" />
+                            </div>
+                        }
+                        <div class="col-6 col-md-4">
+                            <label class="form-label">API key</label>
+                            <input type="password" class="form-control font-monospace"
+                                   @bind="_embForm.ApiKey"
+                                   placeholder="@(_embeddings.HasApiKey ? "em branco mantém a atual" : "sk-…")"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Max tokens / chunk</label>
+                            <input type="number" class="form-control font-monospace" min="100" max="4000"
+                                   @bind="_embForm.MaxTokens" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Overlap tokens</label>
+                            <input type="number" class="form-control font-monospace" min="0" max="2000"
+                                   @bind="_embForm.OverlapTokens" />
+                            <small class="text-muted">&lt; max tokens</small>
+                        </div>
+                    </div>
+
+                    @if (_embeddings.HasApiKey)
+                    {
+                        <div class="mb-2">
+                            <small class="text-muted">Key ativa (@_embeddings.ApiKeySource):</small>
+                            <code class="ms-1">@_embeddings.ApiKeyHint</code>
+                        </div>
+                    }
+                    @if (_embeddings.StampedModelId is { } stamped)
+                    {
+                        <div class="mb-2 small text-muted">
+                            Provider efetivo: <code>@stamped</code> — em vigor imediatamente.
+                        </div>
+                    }
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
+                                IsAsync="true" IsDisabled="_embForm.Saving"
+                                OnClick="SaveEmbeddingsAsync" />
+                        @if (_embeddings.ApiKeySource == "store")
+                        {
+                            <PopConfirmButton Color="Color.Danger" Icon="fa-solid fa-trash"
+                                              Text="Remover key" Title="Remover key"
+                                              Content="A key salva será removida; a env var (se houver) volta a valer."
+                                              OnConfirm="RemoveEmbeddingsKeyAsync" />
+                        }
+                        @if (_embeddings.Source == "store")
+                        {
+                            <PopConfirmButton Color="Color.Warning" Icon="fa-solid fa-rotate-left"
+                                              Text="Restaurar ambiente" Title="Restaurar ambiente"
+                                              Content="A configuração salva será removida; as variáveis de ambiente voltam a valer."
+                                              OnConfirm="ClearEmbeddingsAsync" />
+                        }
+                    </div>
+                </BodyTemplate>
+            </Card>
+        </div>
+    </div>
+}
     </TabItem>
-    <TabItem Text="GraphRAG">
+    <TabItem Text="GraphRAG" Icon="fa-solid fa-diagram-project">
 
 <p class="text-muted">
     Extrai entidades e relações dos chunks indexados e expõe as tools
@@ -212,7 +346,7 @@ else
     </div>
 }
     </TabItem>
-    <TabItem Text="Integrações">
+    <TabItem Text="Integrações" Icon="fa-solid fa-plug">
 
 <p class="text-muted">
     API keys de serviços upstream consumidos pelo MCP interno. As chaves são
@@ -299,7 +433,7 @@ else
     </div>
 }
     </TabItem>
-    <TabItem Text="Cache">
+    <TabItem Text="Cache" Icon="fa-solid fa-bolt">
 
 @* SPEC-20260924-redis-cache-and-tool-caching RF-004: cache inspection + clear. *@
 <p class="text-muted">
@@ -367,21 +501,6 @@ else
                             Hit-rate: @((_cache.Hits * 100.0 / (_cache.Hits + _cache.Misses)).ToString("F1"))%
                         </div>
                     }
-                    @if (_cache.Keys.Count > 0)
-                    {
-                        <details class="mt-2">
-                            <summary class="small">Keys (@_cache.Keys.Count)</summary>
-                            <ul class="small font-monospace mb-0 mt-1" style="max-height:200px;overflow-y:auto">
-                                @foreach (var k in _cache.Keys)
-                                {
-                                    <li>
-                                        @k.Key
-                                        <span class="text-muted">(@FormatBytes(k.SizeBytes)@(k.ExpiresInSeconds is { } ttl ? $", ttl {ttl}s" : ""))</span>
-                                    </li>
-                                }
-                            </ul>
-                        </details>
-                    }
                 </BodyTemplate>
             </Card>
         </div>
@@ -440,10 +559,46 @@ else
                 </BodyTemplate>
             </Card>
         </div>
+        @* SPEC-20260926-settings-ux-embeddings RF-003: per-key eviction —
+           cada linha remove a entrada real do cache (L1+L2). *@
+        @if (_cache.Keys.Count > 0)
+        {
+            <div class="col-12">
+                <Card>
+                    <HeaderTemplate><span>Keys salvas (@_cache.Keys.Count)</span></HeaderTemplate>
+                    <BodyTemplate>
+                        <div style="max-height:320px;overflow-y:auto">
+                            <table class="table table-sm small mb-0">
+                                <thead>
+                                    <tr><th>Key</th><th class="text-end">Tamanho</th><th class="text-end">TTL</th><th class="text-end" style="width:48px"></th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var k in _cache.Keys)
+                                    {
+                                        <tr>
+                                            <td class="font-monospace text-break">@k.Key</td>
+                                            <td class="text-end">@FormatBytes(k.SizeBytes)</td>
+                                            <td class="text-end">@(k.ExpiresInSeconds is { } ttl ? $"{ttl}s" : "—")</td>
+                                            <td class="text-end">
+                                                <PopConfirmButton Size="Size.ExtraSmall" Color="Color.Danger"
+                                                                  Icon="fa-solid fa-trash" Text=""
+                                                                  Title="Limpar key"
+                                                                  Content="@($"Remover a entrada '{k.Key}' do cache?")"
+                                                                  OnConfirm="() => DeleteCacheKeyAsync(k.Key)" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </BodyTemplate>
+                </Card>
+            </div>
+        }
     </div>
 }
     </TabItem>
-    <TabItem Text="Banco de Dados">
+    <TabItem Text="Banco de Dados" Icon="fa-solid fa-database">
 
 @* SPEC-20260926-settings-tabs-database-metrics RF-003: storage snapshot —
    provider, file sizes, PRAGMAs, per-entity counts, migrations, vector store. *@
@@ -540,6 +695,8 @@ else
     private readonly GraphFormState _graphForm = new();
     private CacheStatsDto? _cache;
     private DatabaseStatsDto? _dbStats;
+    private EmbeddingSettingsDto? _embeddings;
+    private readonly EmbFormState _embForm = new();
     private LogLevelState? _logLevel;
     private string _logLevelChoice = "Debug";
     private int _logLevelMinutes = 15;
@@ -569,6 +726,19 @@ else
         public bool Saving { get; set; }
     }
 
+    private sealed class EmbFormState
+    {
+        public string Provider { get; set; } = "deterministic";
+        public string Endpoint { get; set; } = "";
+        public string Model { get; set; } = "";
+        public string ModelPath { get; set; } = "";
+        public int Dimensions { get; set; } = 384;
+        public int MaxTokens { get; set; } = 500;
+        public int OverlapTokens { get; set; } = 50;
+        public string ApiKey { get; set; } = "";
+        public bool Saving { get; set; }
+    }
+
     /// <summary>Inicializa a página carregando integrações e as configurações de chat e grafo.</summary>
     protected override async Task OnInitializedAsync()
     {
@@ -578,6 +748,95 @@ else
         await ReloadCacheAsync();
         await ReloadLogLevelAsync();
         await ReloadDatabaseAsync();
+        await ReloadEmbeddingsAsync();
+    }
+
+    /// <summary>SPEC-20260926-settings-ux-embeddings RF-004.</summary>
+    private async Task ReloadEmbeddingsAsync()
+    {
+        try
+        {
+            _embeddings = await Api.GetEmbeddingsAsync();
+            if (_embeddings is { } e)
+            {
+                _embForm.Provider = e.Provider;
+                _embForm.Endpoint = e.Endpoint ?? "";
+                _embForm.Model = e.Model ?? "";
+                _embForm.ModelPath = e.ModelPath ?? "";
+                _embForm.Dimensions = e.Dimensions;
+                _embForm.MaxTokens = e.MaxTokens;
+                _embForm.OverlapTokens = e.OverlapTokens;
+                _embForm.ApiKey = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            _embeddings = null;
+            await Toast.Error("Erro", $"Falha ao carregar embeddings: {ex.Message}");
+        }
+    }
+
+    /// <summary>Persiste o provider de embeddings — aplica sem restart; a troca
+    /// de model/dims exige reindex manual das fontes.</summary>
+    private async Task SaveEmbeddingsAsync()
+    {
+        if (_embForm.OverlapTokens >= _embForm.MaxTokens)
+        {
+            await Toast.Error("Validação", "Overlap tokens deve ser menor que max tokens.");
+            return;
+        }
+        _embForm.Saving = true;
+        try
+        {
+            var result = await Api.SaveEmbeddingsAsync(new SaveEmbeddingSettingsRequest
+            {
+                Provider = _embForm.Provider,
+                Endpoint = string.IsNullOrWhiteSpace(_embForm.Endpoint) ? null : _embForm.Endpoint.Trim(),
+                Model = string.IsNullOrWhiteSpace(_embForm.Model) ? null : _embForm.Model.Trim(),
+                ModelPath = string.IsNullOrWhiteSpace(_embForm.ModelPath) ? null : _embForm.ModelPath.Trim(),
+                Dimensions = _embForm.Dimensions,
+                MaxTokens = _embForm.MaxTokens,
+                OverlapTokens = _embForm.OverlapTokens,
+                ApiKey = string.IsNullOrWhiteSpace(_embForm.ApiKey) ? null : _embForm.ApiKey.Trim()
+            });
+            if (!result.IsSuccess)
+            {
+                await Toast.Error("Erro", result.Error ?? "Falha ao salvar embeddings");
+                return;
+            }
+            _embForm.ApiKey = "";
+            await Toast.Success("Salva",
+                "Configuração de embeddings aplicada — se mudou model/dimensions, rode reindex das fontes.");
+            await ReloadEmbeddingsAsync();
+        }
+        finally
+        {
+            _embForm.Saving = false;
+        }
+    }
+
+    private async Task RemoveEmbeddingsKeyAsync()
+    {
+        var result = await Api.RemoveEmbeddingsKeyAsync();
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao remover a key");
+            return;
+        }
+        await Toast.Success("Removida", "Key de embeddings removida.");
+        await ReloadEmbeddingsAsync();
+    }
+
+    private async Task ClearEmbeddingsAsync()
+    {
+        var result = await Api.ClearEmbeddingsAsync();
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao restaurar o ambiente");
+            return;
+        }
+        await Toast.Success("Restaurada", "Embeddings voltou às variáveis de ambiente.");
+        await ReloadEmbeddingsAsync();
     }
 
     /// <summary>SPEC-20260926-settings-tabs-database-metrics RF-003.</summary>
@@ -634,6 +893,19 @@ else
         }
         _logLevel = result.Value;
         await Toast.Success("Log", $"Nível agora: {_logLevel.Level}.");
+    }
+
+    /// <summary>SPEC-20260926-settings-ux-embeddings RF-003: per-key eviction.</summary>
+    private async Task DeleteCacheKeyAsync(string key)
+    {
+        var result = await Api.DeleteCacheKeyAsync(key);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? $"Falha ao remover '{key}'");
+            return;
+        }
+        await Toast.Success("Key removida", $"'{key}' saiu do cache.");
+        await ReloadCacheAsync();
     }
 
     private async Task ClearCacheAsync()

@@ -27,6 +27,7 @@ public sealed class IngestionService(
     Microsoft.Extensions.Caching.Distributed.IDistributedCache cache,
     Security.IContentSanitizer sanitizer,
     Settings.IGraphSettingsService graphSettings,
+    Settings.IEmbeddingSettingsService embeddingSettings,
     ILogger<IngestionService> logger,
     Caching.ICacheInvalidationBus? invalidationBus = null) : IIngestionService
 {
@@ -136,8 +137,9 @@ public sealed class IngestionService(
             // SPEC-20260924-async-ingestion-queue RF-003: chunker versioning —
             // content-identical docs are still re-chunked when the chunker
             // version or chunking-relevant config changed.
-            var maxTokens = configuration.GetValue("Ingestion:MaxTokens", 500);
-            var overlapTokens = configuration.GetValue("Ingestion:OverlapTokens", 50);
+            // SPEC-20260926-settings-ux-embeddings RF-004: chunking knobs from
+            // the embedding settings store over env.
+            var (maxTokens, overlapTokens) = embeddingSettings.GetChunking();
             var chunkStrategy = Chunking.ChunkerSelector.StrategyFor(source.ConfigurationJson);
             var configHash = Chunking.ChunkerSelector.ConfigHash(
                 maxTokens, overlapTokens,
@@ -317,8 +319,7 @@ public sealed class IngestionService(
         var graphBudget = graphSettings.GetEffective().MaxChunksPerSync;
 
         // SPEC-20260924-async-ingestion-queue RF-003: chunker versioning.
-        var maxTokens = configuration.GetValue("Ingestion:MaxTokens", 500);
-        var overlapTokens = configuration.GetValue("Ingestion:OverlapTokens", 50);
+        var (maxTokens, overlapTokens) = embeddingSettings.GetChunking();
         var chunkStrategy = Chunking.ChunkerSelector.StrategyFor(source.ConfigurationJson);
         var configHash = Chunking.ChunkerSelector.ConfigHash(
             maxTokens, overlapTokens,
@@ -782,11 +783,12 @@ public sealed class IngestionService(
             if (doc?.ContentHash == hash)
                 return;
 
+            var (chunkMaxTokens, chunkOverlapTokens) = embeddingSettings.GetChunking();
             var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
                 relativePath,
                 body,
-                configuration.GetValue("Ingestion:MaxTokens", 500),
-                configuration.GetValue("Ingestion:OverlapTokens", 50),
+                chunkMaxTokens,
+                chunkOverlapTokens,
                 embeddings, configuration,
                 Chunking.ChunkerSelector.StrategyFor(source.ConfigurationJson),
                 logger, cancellationToken);
