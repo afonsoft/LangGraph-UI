@@ -216,6 +216,11 @@ builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, PasswordGat
 
 var app = builder.Build();
 
+// SPEC-20260926-cache-coherence-and-ttl RF-001: resolve the TTL-policy singleton
+// eagerly — SafeCache reaches it through the static Current property; lazy DI
+// would leave it null and silently apply the 10-min default to every region.
+_ = app.Services.GetRequiredService<KnowledgeHub.Server.Caching.CacheTtlPolicy>();
+
 // SPEC-20260916-redis-exposure-risk RF-002: non-fatal config warnings (e.g.
 // Redis without auth) — surfaced once at startup, never block the host.
 foreach (var warning in ConfigurationValidator.CollectWarnings(app.Configuration))

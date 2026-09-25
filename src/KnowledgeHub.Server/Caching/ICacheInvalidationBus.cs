@@ -39,19 +39,41 @@ public sealed class RedisInvalidationBus : ICacheInvalidationBus
 
     public event EventHandler<string>? Received;
 
+    private int _subscribed;
+
     public RedisInvalidationBus(IConnectionMultiplexer redis, ILogger<RedisInvalidationBus> logger)
     {
         _redis = redis;
         _logger = logger;
-        var sub = _redis.GetSubscriber();
-        sub.Subscribe(RedisChannel.Literal(Channel), (_, msg) =>
+        // RF-003 (SPEC-20260926-cache-coherence-and-ttl): subscribe must not
+        // crash startup when Redis is briefly unavailable — retry on reconnect.
+        TrySubscribe();
+        _redis.ConnectionFailed += (_, _) => Interlocked.Exchange(ref _subscribed, 0);
+        _redis.ConnectionRestored += (_, _) => TrySubscribe();
+    }
+
+    private void TrySubscribe()
+    {
+        if (Interlocked.CompareExchange(ref _subscribed, 1, 0) != 0)
+            return;
+        try
         {
-            var parts = ((string?)msg)?.Split('|', 2);
-            if (parts is not [var origin, var topic] || origin == _instanceId)
-                return;
-            try { Received?.Invoke(this, topic); }
-            catch (Exception ex) { _logger.LogWarning(ex, "invalidation handler failed for {Topic}", topic); }
-        });
+            var sub = _redis.GetSubscriber();
+            sub.Subscribe(RedisChannel.Literal(Channel), (_, msg) =>
+            {
+                var parts = ((string?)msg)?.Split('|', 2);
+                if (parts is not [var origin, var topic] || origin == _instanceId)
+                    return;
+                try { Received?.Invoke(this, topic); }
+                catch (Exception ex) { _logger.LogWarning(ex, "invalidation handler failed for {Topic}", topic); }
+            });
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Exchange(ref _subscribed, 0);
+            _logger.LogWarning(ex,
+                "invalidation subscribe failed — degraded to no-propagation until reconnect");
+        }
     }
 
     public async Task PublishAsync(string topic, CancellationToken ct = default)
