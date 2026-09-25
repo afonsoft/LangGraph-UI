@@ -1,15 +1,14 @@
 # Short-term memory — session state (overwritten each session, ≤100 lines)
 
-- **Last verified commit on `main`**: `5b3339f` (PR #153 — SPEC tool-descriptions Done).
-- **Baseline**: `dotnet build` 0 warnings · `dotnet test` 369 unit + 168 integration green · `dotnet format` clean.
-- **Branch protection**: `main` protected (PR + 5 status checks, enforce_admins=false) — owner bypass used for docs/SPEC merges on explicit request.
-- **Done hoje (2026-09-23)**: gap-analysis vs. external RAG/GraphRAG proposal → 13 candidates, 13 CONFIRMADO, 10 SPECs Draft written on `feature/Devin-20260923-rag-gap-specs`: retrieval-quality, eval-harness, prompt-injection-guard, observability-metrics, rate-limiting, pgvector-hnsw-scale, agent-runtime-hardening, source-authorization, code-aware-chunking, graphrag. Report: `.claude/memory/gap-analysis-20260923.md`.
-- **Blockers**: none.
-- **Next**: user reviews Draft SPECs → approve → implement via execute-specs. Priority suggestion: eval-harness + prompt-injection-guard first (alta).
+- **Last verified commit on `main`**: `05571ea` (PR #206 — memory log).
+- **Baseline**: build 0 warnings · 665 unit + 243 integration green (última sessão) · prod container healthy :5550 pós-#205 redeploy.
+- **Done hoje (2026-09-25, sessão 4)**: triage completo devin-review (~90 findings em #184–#206 + #9–#43) → ~45 CONFIRMADOS abertos, relatório em `.claude/memory/devin-review-triage-20260925.md`; 4 branches obsoletas deletadas; redeploy pós-#205 healthy.
+- **Blockers**: agrupamento dos findings em SPECs aguarda aprovação do owner.
+- **Next**: owner aprova SPEC grouping → write-specs → execute; `enforce_admins` decisão pendente; teste shutdown gracioso×abrupto em aberto.
 
-## Session summary (2026-09-23 — RAG/GraphRAG proposal gap analysis)
+## Session summary (2026-09-25 — devin-review triage + housekeeping)
 
-- Audited repo against external proposal "RAG e GraphRAG com C#, MCP, Ollama e Bancos Vetoriais".
-- Repo already covers most of the proposal: hybrid FTS5+RRF, pgvector+sqlite-vec opt-ins, IDistributedCache, batch embeddings, HITL, per-key secrets, MCP proxies.
-- Confirmed gaps → 10 Draft SPECs (see gap-analysis-20260923.md for verdicts+evidence).
-- Carried pendency: `enforce_admins=true` decision still open.
+- Análise dos comentários devin-ai-integration em todos os PRs com findings (155 comments, #184–#206 + era antiga): cada finding verificado contra main — clusters A (ingestão/conectores, 9), B (cache, 6), C (embeddings/settings, 5), D (search/RAG, 4), E (pgvector, 3), F (log-level, 4), G (UI/monitor, 10), H (era antiga: backup.sh vault-collision válido), I (bookkeeping).
+- Cluster mais severo: integridade de ingestão (wipe de docs no reindex por texto vazio; falha transitória → delete; fila-cheia deadlock) e CacheTtlPolicy morta (nunca resolvida no DI).
+- Housekeeping: 4 branches locais deletadas (Antigravity×2, flagged-chunk-badge, quality-test — conteúdo em main); redeploy pós-#205 (healthz+ready 200).
+- Aguardando: aprovação do agrupamento em SPECs; enforce_admins; shutdown test.
