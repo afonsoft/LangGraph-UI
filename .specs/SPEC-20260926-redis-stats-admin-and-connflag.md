@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Server` (CacheManagerService, DI), `KnowledgeHub.Shared` (CacheStatsDto), `KnowledgeHub.Client` (Settings cache card) |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` — aprovada pelo owner 2026-09-26 |
+| Status | `Done` |
 | Ticket | BUG-cache-card-disconnected |
 | Origem | report do usuário + reprodução com teste real (root cause confirmado) |
 
