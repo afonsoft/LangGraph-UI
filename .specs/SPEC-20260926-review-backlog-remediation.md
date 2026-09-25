@@ -6,7 +6,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Server` (AgentService, Chat clients, IngestionService/Queue, VaultWatcher, Caching, VectorStores, EmbeddingProviderResolver, AsymmetricEmbeddingProvider, OnnxEmbeddingProvider, SettingsEndpoints, StreamingEndpoints, PostgresVectorStore, ToolSlugger, HealthChecks, Ingestion/Chunking) + `KnowledgeHub.Client` (Playground) + `install.sh`, `restore.sh`, `backup.sh` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` |
+| Status | `Done` — entregue via PR #225 |
 | Ticket | devin-ai-integration review backlog — 184 comentários inline em 35 PRs (#9–#219); cada comentário triado contra main@cd8d213 |
 | Origem | `/tmp/devin-all.txt` — dedup vs `.claude/memory/devin-review-triage-20260925.md` (cobriu #184–#206); esta SPEC cobre o restante + era antiga #9–#43 |
 
