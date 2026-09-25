@@ -443,13 +443,13 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         {
             await using (var drop = conn.CreateCommand())
             {
-                drop.Transaction = (NpgsqlTransaction)tx;
+                drop.Transaction = tx;
                 drop.CommandText = $"DROP INDEX IF EXISTS {HnswIndexName}";
                 await drop.ExecuteNonQueryAsync(ct);
             }
 
             await using var alter = conn.CreateCommand();
-            alter.Transaction = (NpgsqlTransaction)tx;
+            alter.Transaction = tx;
             alter.CommandTimeout = 600; // table rewrite — give it room
             alter.CommandText =
                 $"ALTER TABLE kh_embeddings ALTER COLUMN embedding TYPE {_storageType} USING embedding::{_storageType}";

@@ -255,7 +255,7 @@ public sealed class AgentService(
         // RF-104: the gated call's siblings from the same model turn were
         // suspended un-executed — answer them now so the resumed model sees
         // every call it made.
-        foreach (var sib in state.RemainingCalls ?? (IEnumerable<StoredCall>)[])
+        foreach (var sib in state.RemainingCalls ?? [])
         {
             var sibFn = loop.Functions.FirstOrDefault(f => f.Name == sib.Name);
             object? sibResult;
@@ -270,7 +270,7 @@ public sealed class AgentService(
                         cancellationToken);
                 sibErr = sibResult?.ToString()?.StartsWith("ERROR:") == true;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 sibErr = true;
                 sibResult = $"ERROR: {ex.Message}";

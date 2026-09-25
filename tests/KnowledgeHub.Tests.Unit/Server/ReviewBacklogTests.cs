@@ -225,7 +225,7 @@ public sealed class ReviewBacklogTests
         var vault = Directory.CreateTempSubdirectory("kh-vault-");
         try
         {
-            File.WriteAllText(Path.Combine(vault.FullName, "note.md"), "# changed content\n\nnew body");
+            File.WriteAllText(Path.Join(vault.FullName, "note.md"), "# changed content\n\nnew body");
 
             Guid docId;
             await using (var db = new KnowledgeHubDbContext(opts))
@@ -269,7 +269,7 @@ public sealed class ReviewBacklogTests
                 NullLogger<IngestionService>.Instance);
 
             var srcId = await db_src(opts);
-            var result = await ingestion.SyncAsync(srcId, new SyncOptions { ForceReindex = true });
+            await ingestion.SyncAsync(srcId, new SyncOptions { ForceReindex = true });
 
             await using (var check = new KnowledgeHubDbContext(opts))
             {
@@ -398,7 +398,7 @@ public sealed class ReviewBacklogTests
 
     private sealed class MethodTracker : IEmbeddingProvider
     {
-        public List<string> Called = [];
+        public List<string> Called { get; } = [];
         public string ModelId => "t:4";
         public int Dimensions => 4;
         public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
