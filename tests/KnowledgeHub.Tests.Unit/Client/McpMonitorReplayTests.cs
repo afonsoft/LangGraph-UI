@@ -4,8 +4,8 @@ using KnowledgeHub.Shared.Contracts;
 namespace KnowledgeHub.Tests.Unit.Client;
 
 // Covers SPEC-20260915-mcp-monitor-activity RF-003/RF-005: snapshot replay and
-// live events share this routine — session lifecycle updates the session map,
-// everything else appends to the bounded activity list.
+// live events share this routine — session lifecycle updates the session map
+// AND appends to the bounded activity list (SPEC-20260926-ops-and-ui-polish).
 public class McpMonitorReplayTests
 {
     private static McpMonitorEventDto Event(
@@ -26,7 +26,9 @@ public class McpMonitorReplayTests
         McpMonitorReplay.Apply(Event(McpMonitorEventKind.SessionOpened, "s1"), sessions, activity, 200);
 
         Assert.True(sessions.ContainsKey("s1"));
-        Assert.Empty(activity);
+        // SPEC-20260926-ops-and-ui-polish: transitions enter the activity list
+        // too — the "sessões" kind filter was empty before.
+        Assert.Single(activity);
     }
 
     [Fact]
@@ -39,7 +41,7 @@ public class McpMonitorReplayTests
         McpMonitorReplay.Apply(Event(McpMonitorEventKind.SessionClosed, "s1"), sessions, activity, 200);
 
         Assert.Empty(sessions);
-        Assert.Empty(activity);
+        Assert.Equal(2, activity.Count); // open + close are auditable rows
     }
 
     [Fact]

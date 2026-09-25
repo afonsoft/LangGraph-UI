@@ -25,8 +25,11 @@ public sealed class LogLevelControl : IDisposable
             return (_switch.MinimumLevel.ToString(), _autoResetAt);
     }
 
+    private int _generation;
+
     /// <summary>Raises (or restores) the level; <paramref name="minutes"/> ≤0
-    /// restores the configured default immediately.</summary>
+    /// restores the configured default immediately — a raised level with no
+    /// timer would otherwise stay forever.</summary>
     public (string Level, DateTimeOffset? AutoResetAt) Set(LogEventLevel level, int minutes)
     {
         lock (_gate)
@@ -35,19 +38,32 @@ public sealed class LogLevelControl : IDisposable
             _resetTimer = null;
             _autoResetAt = null;
 
-            _switch.MinimumLevel = level;
+            var effective = minutes <= 0 ? ConfiguredDefault : level;
+            _switch.MinimumLevel = effective;
 
-            if (level != ConfiguredDefault && minutes > 0)
+            if (effective != ConfiguredDefault)
             {
+                var gen = ++_generation;
                 _autoResetAt = DateTimeOffset.UtcNow.AddMinutes(minutes);
                 _resetTimer = new Timer(_ =>
                 {
                     lock (_gate)
                     {
+                        // SPEC-20260926-ops-and-ui-polish: a callback already
+                        // queued when the timer was disposed must not clobber a
+                        // NEWER session's level — generation guards it.
+                        if (gen != _generation)
+                            return;
                         _switch.MinimumLevel = ConfiguredDefault;
                         _autoResetAt = null;
                     }
                 }, null, TimeSpan.FromMinutes(minutes), Timeout.InfiniteTimeSpan);
+            }
+            else
+            {
+                // Restoring bumps the generation too — any still-queued timer
+                // from a prior session becomes a no-op.
+                ++_generation;
             }
             return (_switch.MinimumLevel.ToString(), _autoResetAt);
         }

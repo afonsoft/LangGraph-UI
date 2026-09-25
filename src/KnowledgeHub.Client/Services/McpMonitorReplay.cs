@@ -24,16 +24,26 @@ public static class McpMonitorReplay
             case McpMonitorEventKind.SessionOpened:
                 if (e.SessionId is not null)
                     sessions[e.SessionId] = new SessionInfo(e.Timestamp, e.Caller);
+                AppendActivity(e);
                 break;
             case McpMonitorEventKind.SessionClosed:
                 if (e.SessionId is not null)
                     sessions.Remove(e.SessionId);
+                AppendActivity(e);
                 break;
             default:
-                activity.Add(e);
-                while (activity.Count > maxActivity)
-                    activity.RemoveAt(0);
+                AppendActivity(e);
                 break;
+        }
+
+        // SPEC-20260926-ops-and-ui-polish: session transitions belong to the
+        // activity list too — the "sessões" kind filter previously matched
+        // nothing because transitions only updated the sessions map.
+        void AppendActivity(McpMonitorEventDto ev)
+        {
+            activity.Add(ev);
+            while (activity.Count > maxActivity)
+                activity.RemoveAt(0);
         }
     }
 }

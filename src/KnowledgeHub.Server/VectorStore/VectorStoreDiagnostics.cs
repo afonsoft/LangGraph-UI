@@ -21,12 +21,16 @@ public static class VectorStoreDiagnostics
         // sqlite providers: embeddings live in DocumentChunks / vec_chunks —
         // count embedded chunks from the catalog db.
         var embedded = await db.Chunks.CountAsync(c => c.Embedding != null, ct);
+        // SPEC-20260926-ops-and-ui-polish: vec0 is a flat-KNN virtual table,
+        // not an HNSW index — report the index type instead of pretending one.
         return new
         {
             provider,
             rows = embedded,
             size = default(string),
-            hnswIndex = provider.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase),
+            hnswIndex = false,
+            indexType = provider.Equals("sqlite-vec", StringComparison.OrdinalIgnoreCase)
+                ? "vec0" : "none",
             pgvectorVersion = default(string),
             dimensions = cfg.GetValue("Embeddings:Dimensions", 384)
         };

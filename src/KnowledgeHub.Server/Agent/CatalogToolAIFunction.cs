@@ -79,6 +79,7 @@ public sealed class CatalogToolAIFunction(
             Transport = "agent",
             Method = "agent_chat",
             ToolName = tool.Name,
+            Caller = CallerResolver.Resolve(services),
             DurationMs = started.Elapsed.TotalMilliseconds,
             Succeeded = result.IsError != true,
             Error = error

@@ -325,7 +325,8 @@ public static class SettingsEndpoints
         group.MapPut("/log-level", (
             SetLogLevelRequest? body,
             Telemetry.LogLevelControl control,
-            ILoggerFactory loggerFactory) =>
+            ILoggerFactory loggerFactory,
+            HttpContext http) =>
         {
             if (body is null
                 || !Enum.TryParse<Serilog.Events.LogEventLevel>(body.Level, ignoreCase: true, out var level))
@@ -333,9 +334,16 @@ public static class SettingsEndpoints
 
             var minutes = Math.Clamp(body.Minutes ?? 15, 0, 120);
             var (current, resetAt) = control.Set(level, minutes);
+            // RF audit: the log line carries the caller identity.
             loggerFactory.CreateLogger("Settings.LogLevel")
-                .LogInformation("log level changed to {Level} (auto-reset {AutoReset})", current, resetAt);
-            return Results.Ok(new { level = current, autoResetAt = resetAt });
+                .LogInformation("log level changed to {Level} (auto-reset {AutoReset}, caller {Caller})",
+                    current, resetAt, http.User.Identity?.Name ?? "anonymous");
+            return Results.Ok(new
+            {
+                level = current,
+                autoResetAt = resetAt,
+                configuredDefault = control.ConfiguredDefault.ToString()
+            });
         });
 
         return group;

@@ -66,8 +66,7 @@ public sealed class EvalRunner(
             var caseSw = Stopwatch.StartNew();
             try
             {
-                var r = await RunCaseAsync(evalCase, defaultMode, defaultK, faith, ct);
-                results.Add(r with { LatencyMs = caseSw.Elapsed.TotalMilliseconds });
+                results.Add(await RunCaseAsync(evalCase, defaultMode, defaultK, faith, ct));
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -222,7 +221,12 @@ public sealed class EvalRunner(
     {
         var mode = ParseMode(evalCase.Mode) ?? defaultMode;
         var k = evalCase.TopK is > 0 ? evalCase.TopK.Value : defaultK;
+        // RF (SPEC-20260926-ops-and-ui-polish): latency percentiles measure the
+        // RETRIEVAL call — the old case-wide stopwatch folded optional LLM
+        // answer/judge time into p95, inflating it well beyond search latency.
+        var searchSw = Stopwatch.StartNew();
         var results = await search.SearchAsync(evalCase.Question, k, null, mode, filter: null, ct: ct);
+        var searchMs = searchSw.Elapsed.TotalMilliseconds;
 
         var recall = EvalMetrics.RecallAtK(results, evalCase);
         var precision = EvalMetrics.PrecisionAtK(results, evalCase);
@@ -256,6 +260,7 @@ public sealed class EvalRunner(
             Hit = hit,
             Inconsistent = evalCase.ExpectNoAnswer && results.Count > 0,
             Faithfulness = faithfulness,
+            LatencyMs = searchMs,
             Tags = evalCase.Tags
         };
     }
