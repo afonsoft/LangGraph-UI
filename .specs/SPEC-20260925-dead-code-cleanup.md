@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `.NET 10` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-automation-dead-notimplemented-ingestion |
 | Origem | gap-analysis 2026-09-25 — higiene |
 

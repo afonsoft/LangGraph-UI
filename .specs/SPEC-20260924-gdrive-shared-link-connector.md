@@ -10,7 +10,7 @@
 | Repository | `LangGraph-UI` |
 | Branch | `feature/Antigravity-20260924-gdrive-shared-link-connector` |
 | Ticket | [#179](https://github.com/afonsoft/LangGraph-UI/issues/179) |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 

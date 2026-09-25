@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `.NET 10`, `VaultWatcherService`, `IngestionQueue` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-operation-autosync-no-job-record |
 | Origem | gap-analysis 2026-09-25 — desvio de SPEC-20260924-async-ingestion-queue RF-001/RF-002 |
 

@@ -45,4 +45,31 @@ public sealed class StagingStorageService : IStagingStorageService
         }
         return Task.CompletedTask;
     }
+
+    public Task<int> CleanupOrphanedStagingAsync(IReadOnlySet<Guid> knownSourceIds, CancellationToken ct = default)
+    {
+        var removed = 0;
+        if (!Directory.Exists(_baseStagingPath))
+            return Task.FromResult(removed);
+
+        foreach (var dir in Directory.EnumerateDirectories(_baseStagingPath))
+        {
+            if (ct.IsCancellationRequested)
+                break;
+            var name = Path.GetFileName(dir);
+            if (Guid.TryParse(name, out var sourceId) && knownSourceIds.Contains(sourceId))
+                continue;
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+                removed++;
+                _logger.LogInformation("Removed orphaned staging directory {Dir}", dir);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to remove orphaned staging directory {Dir}", dir);
+            }
+        }
+        return Task.FromResult(removed);
+    }
 }

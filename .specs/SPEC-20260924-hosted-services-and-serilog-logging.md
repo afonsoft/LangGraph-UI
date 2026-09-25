@@ -10,7 +10,7 @@
 | Repository | `LangGraph-UI` |
 | Branch | `feature/Antigravity-20260924-hosted-services-and-serilog-logging` |
 | Ticket | [#182](https://github.com/afonsoft/LangGraph-UI/issues/182) |
-| Status | `Approved` |
+| Status | `Done` |
 
 ## 1. User Story
 

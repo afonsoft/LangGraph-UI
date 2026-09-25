@@ -26,8 +26,18 @@ All `/api/*` endpoints require authentication (cookie session or `Authorization:
 | Route | Purpose |
 |---|---|
 | `GET/POST /api/sources` · `GET/PUT/DELETE /api/sources/{id}` | source CRUD (configs redacted) |
-| `POST /api/sources/{id}/sync` · `/activate` · `/deactivate` | sync + activation |
+| `POST /api/sources/{id}/sync` | **async** — `202 {jobId,status,existing}`; `?wait=true` keeps the legacy synchronous `SyncResultDto` |
+| `POST /api/sources/{id}/reindex` | `202` — forces re-chunk/re-embed even for unchanged content |
+| `POST /api/sources/{id}/activate` · `/deactivate` | activation |
 | `GET /api/sources/{id}/documents` · `/usage` | documents + usage stats |
+
+### Ingestion jobs
+
+| Route | Purpose |
+|---|---|
+| `GET /api/ingestion/jobs?sourceId=&status=&limit=` | list jobs (source filter + in-memory status filter) |
+| `GET /api/ingestion/jobs/{id}` | one job — status, per-doc counters, error |
+| `POST /api/ingestion/jobs/{id}/cancel` | cancel a queued job (`409` when already running/terminal) |
 
 ## Search, answers, agent
 
@@ -58,7 +68,19 @@ All `/api/*` endpoints require authentication (cookie session or `Authorization:
 | Route | Purpose |
 |---|---|
 | `GET /api/security/events` | prompt-injection flag audit (metadata only — never raw content) |
-| `POST /api/eval/run` · `GET /api/eval/runs` · `GET /api/eval/runs/{id}` | retrieval eval harness (Recall@K/P@K/MRR/faithfulness) |
+| `POST /api/eval/run` · `GET /api/eval/runs` · `GET /api/eval/runs/{id}` | retrieval eval harness (Recall@K/P@K/MRR/faithfulness, p50/p95/p99 latency) — request accepts `baseline` (name) and `gate` (rules `[{metric,direction,threshold}]`), report carries `gateResult` + `topRegressions` |
+| `GET/POST /api/eval/baselines` | list named baselines; `POST {name, runId}` promotes a run |
+
+### Search/ask tool args
+
+`search_knowledge` and `ask_knowledge` (MCP tools and REST façade) accept, besides
+`mode`/`topK`/metadata filters:
+
+| Arg | Values |
+|---|---|
+| `expand` | `off` (default) · `multi` (N query rewrites fused via RRF) · `hyde` (hypothetical doc on the vector arm) · `both` |
+| `contextExpand` | `none` · `window` (neighbouring chunks) · `section` (parent section) — attaches `context` to each hit without changing ranking |
+| `useGraph` | bool — enables the knowledge-graph retrieval arm (entity linking + 1-hop evidence) |
 
 ## Other
 

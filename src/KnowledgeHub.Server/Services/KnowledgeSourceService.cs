@@ -34,7 +34,8 @@ public sealed class KnowledgeSourceService(
         [SourceType.Notion] = [],
         [SourceType.AwsS3] = ["bucketName", "region", "accessKeyId"],
         [SourceType.AzureFiles] = ["shareName"],
-        [SourceType.OciStorage] = ["namespace", "region", "bucketName", "accessKeyId"]
+        [SourceType.OciStorage] = ["namespace", "region", "bucketName", "accessKeyId"],
+        [SourceType.GoogleDrive] = ["sharedUrl"]
     };
 
     public async Task<IReadOnlyList<KnowledgeSourceDto>> ListAsync(SourceType? type, bool? active, CancellationToken ct = default)
@@ -123,6 +124,13 @@ public sealed class KnowledgeSourceService(
         {
             foreach (var key in CloudSecretKeys(source.SourceType, source.Id))
                 await secrets.RemoveAsync(key, ct);
+            if (staging is not null)
+                await staging.CleanupStagingAsync(source.Id, ct);
+        }
+        // SPEC-20260924-gdrive-shared-link-connector RF-006/RF-008.
+        if (source.SourceType == SourceType.GoogleDrive)
+        {
+            await secrets.RemoveAsync(Ingestion.Connectors.GoogleDriveSharedConnector.SecretKey(source.Id), ct);
             if (staging is not null)
                 await staging.CleanupStagingAsync(source.Id, ct);
         }
@@ -219,6 +227,7 @@ public sealed class KnowledgeSourceService(
         {
             SourceType.McpProxy => ("apiKey", McpProxySession.SecretKey(source.Id)),
             SourceType.Notion => ("token", Ingestion.Connectors.NotionConnector.SecretKey(source.Id)),
+            SourceType.GoogleDrive => ("apiKey", Ingestion.Connectors.GoogleDriveSharedConnector.SecretKey(source.Id)),
             _ => (null, null)
         };
         if (configKey is not null && secretKey is not null && configuration is not null)
@@ -343,6 +352,11 @@ public sealed class KnowledgeSourceService(
             if (configuration[key] is null || string.IsNullOrWhiteSpace(configuration[key]?.GetValue<string>()))
                 return $"Configuration key '{key}' is required for {type}";
         }
+
+        if (type == SourceType.GoogleDrive
+            && !Ingestion.Connectors.GoogleDriveApiClient.TryParseSharedUrl(
+                configuration["sharedUrl"]?.GetValue<string>(), out _, out _))
+            return "Configuration key 'sharedUrl' must be a Google Drive /folders/ or /file/d/ share link";
 
         if (type == SourceType.McpProxy)
         {

@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `Blazor WASM`, `BootstrapBlazor`, `/api/eval/*` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-requirements-eval-ui |
 | Origem | gap-analysis 2026-09-25 — RF-005 deferido de SPEC-20260924-eval-regression-gate |
 

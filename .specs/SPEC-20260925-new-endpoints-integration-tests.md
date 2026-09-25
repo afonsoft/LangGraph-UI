@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `xUnit`, `WebApplicationFactory`, SQLite in-memory |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-tests-ingestion-eval-endpoints |
 | Origem | gap-analysis 2026-09-25 — endpoints sem cobertura de integração |
 

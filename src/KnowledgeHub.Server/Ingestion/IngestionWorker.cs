@@ -15,6 +15,7 @@ public sealed class IngestionWorker(
     IIngestionQueue queue,
     IServiceScopeFactory scopeFactory,
     IConfiguration configuration,
+    IIngestionProgressFeed progressFeed,
     ILogger<IngestionWorker> logger) : BackgroundService
 {
     /// <summary>Synchronous <see cref="IProgress{T}"/> — just stores the latest
@@ -87,10 +88,24 @@ public sealed class IngestionWorker(
         job.Status = "running";
         job.StartedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(stoppingToken);
+        // SPEC-20260924-hosted-services-and-serilog-logging RF-004: structured
+        // job context on every log emitted while the job runs.
+        using var logScope = Serilog.Context.LogContext.PushProperty("JobId", jobId);
+        using var logScopeSrc = Serilog.Context.LogContext.PushProperty("SourceId", job.SourceId);
+        using var logScope2 = Serilog.Context.LogContext.PushProperty("JobKind", job.Kind);
+        logger.LogInformation("Ingestion job {JobId} started (kind {Kind}, source {SourceId})",
+            jobId, job.Kind, job.SourceId);
 
         var jobCt = queue.TokenFor(jobId, stoppingToken);
         SyncProgress latest = new(0, 0, 0, 0);
-        var progress = new LatestProgress(p => latest = p);
+        var progress = new LatestProgress(p =>
+        {
+            latest = p;
+            // SPEC-20260925-job-progress-feed: push throttled ticks to subscribers.
+            progressFeed.Publish(new IngestionProgressEvent(
+                jobId, job.SourceId, "running",
+                p.Processed, p.Skipped, p.Failed, p.ChunksCreated, DateTimeOffset.UtcNow));
+        });
         var flushEverySeconds = Math.Max(2,
             configuration.GetValue("Ingestion:ProgressFlushSeconds", 5));
         using var flushTimer = new PeriodicTimer(TimeSpan.FromSeconds(flushEverySeconds));
@@ -129,6 +144,16 @@ public sealed class IngestionWorker(
             try { await flusher; } catch { /* already logged inside */ }
             try { await db.SaveChangesAsync(CancellationToken.None); }
             catch (Exception ex) { logger.LogWarning(ex, "Could not persist job {JobId} outcome", jobId); }
+            // SPEC-20260925-job-progress-feed: terminal state always published.
+            progressFeed.Publish(new IngestionProgressEvent(
+                jobId, job.SourceId, job.Status,
+                job.DocsProcessed, job.DocsSkipped, job.DocsFailed, job.ChunksCreated,
+                DateTimeOffset.UtcNow));
+            // SPEC-20260924-hosted-services-and-serilog-logging RF-004: one
+            // structured completion line per job with all counters.
+            logger.LogInformation(
+                "Ingestion job {JobId} finished: status={Status} docs={DocsProcessed} skipped={DocsSkipped} failed={DocsFailed} chunks={ChunksCreated}",
+                jobId, job.Status, job.DocsProcessed, job.DocsSkipped, job.DocsFailed, job.ChunksCreated);
         }
     }
 

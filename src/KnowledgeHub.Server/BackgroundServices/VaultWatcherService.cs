@@ -10,8 +10,9 @@ namespace KnowledgeHub.Server.BackgroundServices;
 /// <summary>
 /// Watches active ObsidianVault sources (SPEC-03 RF-005): one FileSystemWatcher per
 /// vault, events debounced ~500ms into per-file incremental sync; the watcher set
-/// refreshes periodically and honors per-source AutoSync/SyncIntervalMinutes for
-/// full re-scans. Failures are logged, never crash the host.
+/// refreshes periodically. Periodic auto-sync lives in
+/// <see cref="ScheduledSyncBackgroundService"/>. Failures are logged, never
+/// crash the host.
 /// </summary>
 public sealed class VaultWatcherService(
     IServiceScopeFactory scopeFactory,
@@ -23,7 +24,6 @@ public sealed class VaultWatcherService(
 
     private readonly ConcurrentDictionary<Guid, VaultWatch> _watches = new();
     private readonly ConcurrentDictionary<(Guid SourceId, string Path), DateTimeOffset> _pendingFiles = new();
-    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFullSync = new();
 
     private sealed record VaultWatch(string Root, FileSystemWatcher Watcher, SourceType Type);
 
@@ -35,7 +35,6 @@ public sealed class VaultWatcherService(
             {
                 await RefreshWatchersAsync(stoppingToken);
                 await FlushPendingFilesAsync(stoppingToken);
-                await RunDueAutoSyncsAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -90,7 +89,6 @@ public sealed class VaultWatcherService(
             watcher.Deleted += (_, e) => Enqueue(id, source.SourceType, root, e);
             watcher.Renamed += (_, e) => { Enqueue(id, source.SourceType, root, e); EnqueueOldName(id, source.SourceType, root, e); };
             _watches[id] = new VaultWatch(root, watcher, source.SourceType);
-            _lastFullSync.TryAdd(id, DateTimeOffset.MinValue);
             logger.LogInformation("Watching vault '{Name}' at {Root}", source.Name, root);
         }
 
@@ -132,40 +130,6 @@ public sealed class VaultWatcherService(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Incremental sync failed for {Path} (source {SourceId})", key.Path, key.SourceId);
-            }
-        }
-    }
-
-    private async Task RunDueAutoSyncsAsync(CancellationToken ct)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
-        var autoSources = await db.Sources
-            .Where(s => s.IsActive && s.AutoSyncEnabled
-                && (s.SourceType == SourceType.ObsidianVault
-                    || s.SourceType == SourceType.WebPage
-                    || s.SourceType == SourceType.DocumentFile
-                    || s.SourceType == SourceType.Notion
-                    || s.SourceType == SourceType.AwsS3
-                    || s.SourceType == SourceType.AzureFiles
-                    || s.SourceType == SourceType.OciStorage))
-            .Select(s => new { s.Id, s.SyncIntervalMinutes })
-            .ToListAsync(ct);
-
-        foreach (var source in autoSources)
-        {
-            var interval = TimeSpan.FromMinutes(source.SyncIntervalMinutes ?? 30);
-            var last = _lastFullSync.GetValueOrDefault(source.Id, DateTimeOffset.MinValue);
-            if (DateTimeOffset.UtcNow - last < interval)
-                continue;
-            _lastFullSync[source.Id] = DateTimeOffset.UtcNow;
-            try
-            {
-                await ingestion.SyncAsync(source.Id, cancellationToken: ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Auto-sync failed for source {SourceId}", source.Id);
             }
         }
     }

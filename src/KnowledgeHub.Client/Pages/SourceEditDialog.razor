@@ -221,7 +221,8 @@
             <div class="form-text">Cole a connection string completa, ou só a account key com o account name acima.</div>
         </div>
     }
-    @if (Model.Type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+    @if (Model.Type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage
+        or SourceType.GoogleDrive)
     {
         <div class="col-12 col-md-6">
             <BootstrapInput @bind-Value="Model.Glob" DisplayText="Filtro glob (ex.: **/*.{pdf,docx,md,txt})" ShowLabel="true" />
@@ -231,6 +232,30 @@
                                   ShowLabel="true" IsNullable="true" />
         </div>
     }
+    @* SPEC-20260924-gdrive-shared-link-connector RF-007. *@
+    @if (Model.Type is SourceType.GoogleDrive)
+    {
+        <div class="col-12">
+            <BootstrapInput @bind-Value="Model.SharedUrl" DisplayText="Link Compartilhado do Google Drive *"
+                            ShowLabel="true"
+                            PlaceHolder="https://drive.google.com/drive/folders/..." />
+        </div>
+        <div class="col-12 col-md-6">
+            <BootstrapInputNumber @bind-Value="Model.MaxFiles" DisplayText="Máximo de arquivos (padrão 200)"
+                                  ShowLabel="true" IsNullable="true" Min="1" Max="1000" />
+        </div>
+        <div class="col-12">
+            <label class="form-label">
+                API Key do Google @(Model.HasStoredKey ? "(armazenada — em branco mantém a atual)" : "(opcional)")
+            </label>
+            <input type="password" class="form-control font-monospace" @bind="Model.ApiKey"
+                   autocomplete="new-password" placeholder="@(Model.HasStoredKey ? "••••••••" : "AIza…")" />
+            <div class="form-text">
+                Sem key, links de arquivo único funcionam e pastas usam a listagem pública
+                (plana, sem recursão). Com key a listagem é recursiva via Drive API v3.
+            </div>
+        </div>
+    }
 
     <div class="col-6 col-md-3">
         <Switch @bind-Value="Model.IsActive" DisplayText="Ativa" ShowLabel="true" />
@@ -238,6 +263,21 @@
     <div class="col-6 col-md-3">
         <Switch @bind-Value="Model.AutoSyncEnabled" DisplayText="Auto-sync" ShowLabel="true" />
     </div>
+    @* SPEC-20260925-semantic-chunking-source-ui RF-001/RF-002: per-source
+       chunking strategy for document-producing types. *@
+    @if (Model.Type is SourceType.ObsidianVault or SourceType.DocumentFile or SourceType.WebPage
+        or SourceType.Notion or SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage
+        or SourceType.GoogleDrive)
+    {
+        <div class="col-12 col-md-6">
+            <Select @bind-Value="Model.Chunking" Items="ChunkingItems" DisplayText="Estratégia de chunking"
+                    ShowLabel="true"
+                    PlaceHolder="Auto" />
+            <div class="form-text">
+                Semantic embedda sentenças e corta por mudança de assunto (mais lento na ingestão).
+            </div>
+        </div>
+    }
     @if (Model.Type is SourceType.ObsidianVault)
     {
         <div class="col-6 col-md-3">
@@ -347,10 +387,14 @@
          "transport", "namePrefix", "apiKey", "hasKey",
          "token", "rootPageIds", "rootDatabaseIds", "maxPages",
          "bucketName", "region", "namespace", "shareName", "directoryPath", "prefix",
-         "glob", "maxFileSizeMB", "accessKeyId", "secretAccessKey", "accountName", "accountKey"];
+         "glob", "maxFileSizeMB", "accessKeyId", "secretAccessKey", "accountName", "accountKey",
+         "chunking", "sharedUrl", "maxFiles"];
 
     private static readonly List<SelectedItem> TransportItems =
         [new("auto", "auto"), new("http", "http"), new("sse", "sse")];
+
+    private static readonly List<SelectedItem> ChunkingItems =
+        [new("", "Auto (estrutural)"), new("semantic", "Semantic (por assunto)")];
 
     /// <summary>
     /// Builds the JsonObject configuration payload: starts from the original
@@ -435,9 +479,21 @@
                 if (!string.IsNullOrEmpty(Model.SecretAccessKey))
                     config[Model.SecretAccessKey.Contains('=') ? "connectionString" : "accountKey"] = Model.SecretAccessKey;
                 break;
+            case SourceType.GoogleDrive:
+                config["sharedUrl"] = Model.SharedUrl;
+                // Empty keeps the stored key; non-empty replaces it (server
+                // moves the value to the encrypted store — never persisted).
+                if (!string.IsNullOrEmpty(Model.ApiKey))
+                    config["apiKey"] = Model.ApiKey;
+                else if (Model.HasStoredKey)
+                    config["apiKey"] = "***";
+                if (Model.MaxFiles is not null)
+                    config["maxFiles"] = Model.MaxFiles;
+                break;
         }
 
-        if (Model.Type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage)
+        if (Model.Type is SourceType.AwsS3 or SourceType.AzureFiles or SourceType.OciStorage
+            or SourceType.GoogleDrive)
         {
             if (!string.IsNullOrWhiteSpace(Model.Glob))
                 config["glob"] = Model.Glob;
@@ -447,6 +503,9 @@
 
         if (Model.Type is SourceType.ObsidianVault && Model.ReadOnly)
             config["readOnly"] = true;
+
+        if (!string.IsNullOrWhiteSpace(Model.Chunking))
+            config["chunking"] = Model.Chunking;
 
         return config;
     }
@@ -491,6 +550,9 @@
         public string? AccessKeyId { get; set; }
         public string? SecretAccessKey { get; set; }
         public string? AccountName { get; set; }
+        public string? Chunking { get; set; }
+        public string? SharedUrl { get; set; }
+        public int? MaxFiles { get; set; }
 
         /// <summary>True when the source already has an API key in the
         /// encrypted store (McpProxy) — the value itself is never returned.</summary>
@@ -532,6 +594,10 @@
                 && mf.TryGetValue<int>(out var mfn) ? mfn : null,
             AccessKeyId = dto.Configuration?["accessKeyId"]?.GetValue<string>(),
             AccountName = dto.Configuration?["accountName"]?.GetValue<string>(),
+            Chunking = dto.Configuration?["chunking"]?.GetValue<string>(),
+            SharedUrl = dto.Configuration?["sharedUrl"]?.GetValue<string>(),
+            MaxFiles = dto.Configuration?["maxFiles"] is JsonValue mx
+                && mx.TryGetValue<int>(out var mxn) ? mxn : null,
             OriginalConfiguration = dto.Configuration?.DeepClone() as JsonObject
         };
 

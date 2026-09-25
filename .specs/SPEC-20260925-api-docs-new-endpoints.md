@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `docs/en|pt/API.md`, `README.md` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-documentation-rest-api-new-endpoints |
 | Origem | gap-analysis 2026-09-25 — drift doc × código |
 

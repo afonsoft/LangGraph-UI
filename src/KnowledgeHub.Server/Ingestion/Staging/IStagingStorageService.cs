@@ -11,4 +11,8 @@ public interface IStagingStorageService
 
     /// <summary>Deletes the staging directory and all downloaded files for a source.</summary>
     Task CleanupStagingAsync(Guid sourceId, CancellationToken ct = default);
+
+    /// <summary>Removes staging directories whose source id is not in
+    /// <paramref name="knownSourceIds"/>. Returns removed count.</summary>
+    Task<int> CleanupOrphanedStagingAsync(IReadOnlySet<Guid> knownSourceIds, CancellationToken ct = default);
 }

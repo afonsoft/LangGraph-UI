@@ -1,0 +1,276 @@
+@page "/eval"
+@attribute [Authorize]
+@inject EvalApiClient Api
+@inject ToastService Toast
+
+<PageTitle>Eval — Knowledge</PageTitle>
+
+@* SPEC-20260925-eval-ui: runs list + detail + run form + baselines. *@
+
+<h3 class="mb-3">Avaliação de retrieval</h3>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="border rounded p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>Runs recentes</strong>
+                <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" TooltipText="Recarregar"
+                        OnClick="ReloadAsync" />
+            </div>
+            @if (_runs is null)
+            {
+                <div class="text-muted small"><i class="fa-solid fa-spinner fa-spin"></i> Carregando…</div>
+            }
+            else if (_runs.Count == 0)
+            {
+                <div class="text-muted small">Nenhum run ainda — execute um dataset ao lado.</div>
+            }
+            else
+            {
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr><th>Data</th><th>Recall</th><th>MRR</th><th>P95</th><th>Gate</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _runs)
+                        {
+                            <tr class="@(_selected?.RunId == r.Id ? "table-active" : "")">
+                                <td class="small">@r.StartedAt.LocalDateTime.ToString("dd/MM HH:mm")</td>
+                                <td class="small">@r.Metrics?.RecallAtK.ToString("F2")</td>
+                                <td class="small">@r.Metrics?.Mrr.ToString("F2")</td>
+                                <td class="small">@(r.Metrics is null ? "—" : $"{r.DurationMs}ms")</td>
+                                <td>
+                                    @if (r.Gate is { } g)
+                                    {
+                                        <Badge Color="@(g.Status == "pass" ? Color.Success : Color.Danger)">@g.Status</Badge>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                    @if (r.BaselineName is { } bl)
+                                    {
+                                        <Badge Color="Color.Info">@bl</Badge>
+                                    }
+                                </td>
+                                <td>
+                                    <Button Size="Size.ExtraSmall" Text="Ver" Color="Color.Secondary"
+                                            OnClick="() => SelectAsync(r.Id)" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @if (_selected is { } report)
+        {
+            <div class="border rounded p-3 mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>Run @report.RunId.ToString("N")[..8]</strong>
+                    @if (report.Gate is { } rg)
+                    {
+                        <Badge Color="@(rg.Status == "pass" ? Color.Success : Color.Danger)">gate: @rg.Status</Badge>
+                    }
+                </div>
+                <div class="row small">
+                    <div class="col-6 col-md-3"><strong>Recall@K</strong><br />@report.Metrics?.RecallAtK.ToString("F3")</div>
+                    <div class="col-6 col-md-3"><strong>Precision@K</strong><br />@report.Metrics?.PrecisionAtK.ToString("F3")</div>
+                    <div class="col-6 col-md-3"><strong>MRR</strong><br />@report.Metrics?.Mrr.ToString("F3")</div>
+                    <div class="col-6 col-md-3"><strong>Faithfulness</strong><br />@(report.Metrics?.Faithfulness?.ToString("F3") ?? "—")</div>
+                </div>
+                @if (report.Latency is { } lat)
+                {
+                    <div class="row small mt-2">
+                        <div class="col-6 col-md-3"><strong>p50</strong><br />@lat.P50.ToString("F0")ms</div>
+                        <div class="col-6 col-md-3"><strong>p95</strong><br />@lat.P95.ToString("F0")ms</div>
+                        <div class="col-6 col-md-3"><strong>p99</strong><br />@lat.P99.ToString("F0")ms</div>
+                        <div class="col-6 col-md-3"><strong>mean</strong><br />@lat.Mean.ToString("F0")ms</div>
+                    </div>
+                }
+                @if (report.Gate?.Violations.Count > 0)
+                {
+                    <div class="small text-danger mt-2">
+                        <strong>Violações do gate:</strong>
+                        <ul class="mb-0">
+                            @foreach (var v in report.Gate.Violations)
+                            {
+                                <li>@v</li>
+                            }
+                        </ul>
+                    </div>
+                }
+                @if (report.Delta?.Regressions.Count > 0)
+                {
+                    <div class="small text-warning mt-2">
+                        <strong>Regressões vs baseline:</strong> @string.Join(", ", report.Delta.Regressions)
+                    </div>
+                }
+                <div class="mt-3 d-flex gap-2 align-items-center">
+                    <BootstrapInput @bind-Value="_baselineName" DisplayText="Nome do baseline" ShowLabel="false"
+                                    PlaceHolder="ex.: main" style="max-width:200px" />
+                    <Button Size="Size.ExtraSmall" Color="Color.Primary" Text="Promover a baseline"
+                            OnClick="PromoteAsync" IsDisabled="string.IsNullOrWhiteSpace(_baselineName)" />
+                </div>
+                <details class="mt-2">
+                    <summary class="small">Casos (@report.Results.Count)</summary>
+                    <ul class="small mb-0 mt-1" style="max-height:200px;overflow-y:auto">
+                        @foreach (var c in report.Results)
+                        {
+                            <li>
+                                <strong>@c.CaseId</strong> — @(c.Hit ? "hit" : "miss")
+                                (recall @c.Recall.ToString("F2"), prec @c.Precision.ToString("F2"))
+                                @if (c.Error is not null) { <span class="text-danger">@c.Error</span> }
+                            </li>
+                        }
+                    </ul>
+                </details>
+            </div>
+        }
+    </div>
+
+    <div class="col-12 col-lg-5">
+        <div class="border rounded p-3">
+            <strong>Novo run</strong>
+            <div class="mt-2">
+                <Textarea @bind-Value="_dataset" DisplayText="Dataset (JSON array de cases)" ShowLabel="true" rows="8" />
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-6">
+                    <Select @bind-Value="_mode" Items="ModeItems" DisplayText="Mode" ShowLabel="true" />
+                </div>
+                <div class="col-6">
+                    <BootstrapInputNumber @bind-Value="_topK" DisplayText="topK" ShowLabel="true" IsNullable="true" />
+                </div>
+                <div class="col-6">
+                    <Select @bind-Value="_faithfulness" Items="FaithfulnessItems" DisplayText="Faithfulness" ShowLabel="true" />
+                </div>
+                <div class="col-6">
+                    <Select @bind-Value="_baseline" Items="_baselineItems" DisplayText="Baseline" ShowLabel="true" />
+                </div>
+            </div>
+            <div class="mt-2">
+                <Textarea @bind-Value="_gateJson" DisplayText="Gate rules (JSON, opcional)" ShowLabel="true" rows="3"
+                          PlaceHolder="[{""metric"":""recall_at_k"",""direction"":""gte"",""threshold"":0.8}]" />
+            </div>
+            <Button Color="Color.Primary" Text="@(_running ? "Executando…" : "Executar eval")"
+                    Icon="fa-solid fa-flask" IsDisabled="_running" OnClick="RunEvalAsync" class="mt-2" />
+            @if (_runError is not null)
+            {
+                <Alert Color="Color.Danger" ShowDismiss="false" class="mt-2">@_runError</Alert>
+            }
+        </div>
+
+        <div class="border rounded p-3 mt-3">
+            <strong>Baselines</strong>
+            @if (_baselines is { Count: > 0 } bls)
+            {
+                <ul class="small mb-0 mt-1">
+                    @foreach (var b in bls)
+                    {
+                        <li><strong>@b.Name</strong> — run @b.EvalRunId.ToString("N")[..8] · @b.CreatedAt.LocalDateTime.ToString("dd/MM")</li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <div class="text-muted small mt-1">Nenhum baseline nomeado.</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<EvalRunSummaryDto>? _runs;
+    private EvalReportDto? _selected;
+    private List<EvalBaselineDto>? _baselines;
+    private List<SelectedItem> _baselineItems = [new("", "nenhum")];
+
+    private string? _dataset;
+    private string _mode = "hybrid";
+    private int? _topK;
+    private string _faithfulness = "none";
+    private string? _baseline;
+    private string? _gateJson;
+    private string? _baselineName;
+    private bool _running;
+    private string? _runError;
+
+    private static readonly List<SelectedItem> ModeItems =
+        [new("hybrid", "hybrid"), new("semantic", "semantic"), new("lexical", "lexical")];
+    private static readonly List<SelectedItem> FaithfulnessItems =
+        [new("none", "none"), new("keyword", "keyword"), new("llm", "llm")];
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _runs = await Api.RunsAsync();
+            _baselines = await Api.BaselinesAsync();
+            _baselineItems = [new SelectedItem("", "nenhum"),
+                .. (_baselines ?? []).Select(b => new SelectedItem(b.Name, b.Name))];
+        }
+        catch (Exception ex)
+        {
+            _runs = [];
+            await Toast.Error("Erro", $"Falha ao carregar evals: {ex.Message}");
+        }
+    }
+
+    private async Task SelectAsync(Guid id)
+    {
+        try
+        {
+            _selected = await Api.RunAsync(id);
+        }
+        catch (Exception ex)
+        {
+            await Toast.Error("Erro", ex.Message);
+        }
+    }
+
+    private async Task RunEvalAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_dataset))
+        {
+            _runError = "Dataset é obrigatório (JSON array de cases).";
+            return;
+        }
+        _running = true;
+        _runError = null;
+        try
+        {
+            var result = await Api.RunEvalAsync(_dataset, _mode, _topK, _faithfulness, _baseline, _gateJson);
+            if (!result.IsSuccess)
+            {
+                _runError = result.Error;
+                return;
+            }
+            _selected = result.Value;
+            await Toast.Success("Eval concluído",
+                $"recall {_selected?.Metrics?.RecallAtK:F2}" +
+                (_selected?.Gate is { } g ? $" — gate {g.Status}" : ""));
+            await ReloadAsync();
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task PromoteAsync()
+    {
+        if (_selected is null || string.IsNullOrWhiteSpace(_baselineName)) return;
+        var result = await Api.PromoteBaselineAsync(_baselineName, _selected.RunId);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error!);
+            return;
+        }
+        await Toast.Success("Baseline salvo", $"'{_baselineName}' → run {_selected.RunId:N}");
+        await ReloadAsync();
+    }
+}

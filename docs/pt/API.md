@@ -26,8 +26,18 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 | Rota | Propósito |
 |---|---|
 | `GET/POST /api/sources` · `GET/PUT/DELETE /api/sources/{id}` | CRUD de sources (configs redigidos) |
-| `POST /api/sources/{id}/sync` · `/activate` · `/deactivate` | sync + ativação |
+| `POST /api/sources/{id}/sync` | **assíncrono** — `202 {jobId,status,existing}`; `?wait=true` mantém o `SyncResultDto` síncrono legado |
+| `POST /api/sources/{id}/reindex` | `202` — força re-chunk/re-embed mesmo sem alteração de conteúdo |
+| `POST /api/sources/{id}/activate` · `/deactivate` | ativação |
 | `GET /api/sources/{id}/documents` · `/usage` | documentos + estatísticas |
+
+### Jobs de ingestão
+
+| Rota | Propósito |
+|---|---|
+| `GET /api/ingestion/jobs?sourceId=&status=&limit=` | lista jobs (filtro por fonte + status) |
+| `GET /api/ingestion/jobs/{id}` | um job — status, contadores por doc, erro |
+| `POST /api/ingestion/jobs/{id}/cancel` | cancela job em fila (`409` se já em execução/terminal) |
 
 ## Busca, respostas, agente
 
@@ -58,7 +68,19 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 | Rota | Propósito |
 |---|---|
 | `GET /api/security/events` | auditoria de flags de prompt-injection (só metadados — nunca conteúdo bruto) |
-| `POST /api/eval/run` · `GET /api/eval/runs` · `GET /api/eval/runs/{id}` | harness de eval de retrieval (Recall@K/P@K/MRR/faithfulness) |
+| `POST /api/eval/run` · `GET /api/eval/runs` · `GET /api/eval/runs/{id}` | harness de eval de retrieval (Recall@K/P@K/MRR/faithfulness, latências p50/p95/p99) — request aceita `baseline` (nome) e `gate` (regras `[{metric,direction,threshold}]`), report traz `gateResult` + `topRegressions` |
+| `GET/POST /api/eval/baselines` | lista baselines nomeados; `POST {name, runId}` promove um run |
+
+### Args das tools search/ask
+
+`search_knowledge` e `ask_knowledge` (tools MCP e fachada REST) aceitam, além de
+`mode`/`topK`/filtros de metadados:
+
+| Arg | Valores |
+|---|---|
+| `expand` | `off` (default) · `multi` (N rewrites fundidos via RRF) · `hyde` (doc hipotético no braço vetorial) · `both` |
+| `contextExpand` | `none` · `window` (chunks vizinhos) · `section` (seção-pai) — anexa `context` a cada hit sem mudar o ranking |
+| `useGraph` | bool — ativa o braço de knowledge graph (entity linking + evidência de 1 hop) |
 
 ## Outros
 

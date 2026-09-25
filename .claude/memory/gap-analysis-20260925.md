@@ -47,3 +47,21 @@
 ## 4. Gate
 
 Aguardando aprovação do usuário antes de criar Issues/commitar (hard gate da skill).
+
+## Execution (2026-09-25, Devin)
+
+All 7 gap SPECs + 3 remaining Approved SPECs implemented on `feature/Devin-20260925-remaining-specs`:
+- dead-code: NotImplementedIngestionService stub removed
+- autosync: moved to dedicated ScheduledSyncBackgroundService → enqueues "autosync" jobs
+- semantic-chunking-source-ui: chunking select in SourceEditDialog (all doc-producing types)
+- api-docs: API.md en/pt + README + CLAUDE.md updated (async sync, jobs, baselines, new args)
+- integration tests: IngestionJobsApiTests (6) + EvalBaselinesApiTests (3) + gdrive cases (3)
+- job-progress-feed: IIngestionProgressFeed (1s throttle) → "IngestionProgress" on /hubs/mcp; Sources.razor races push vs poll fallback
+- eval-ui: /eval page + EvalApiClient + nav item; runs list now exposes gate+baselineName
+- redis RF-004: Cache section in Settings (stats card + clear)
+- serilog: Serilog.AspNetCore 10.0.0, console+rolling-file sinks (logs/, 14d), ScheduledSync + Maintenance (orphan staging purge, 6h) services, structured job logs in worker
+- gdrive: SourceType.GoogleDrive=11, GoogleDriveApiClient (v3 + public fallbacks), GoogleDriveGateway (natives→txt/csv export, maxFiles cap, md5|modifiedTime fingerprint), GoogleDriveSharedConnector (gdrive:{id} secret), UI fields, 400 on bad link
+
+Gotchas: Drive natives report no size → sentinel 1 so base loop doesn't skip. DateTimeOffset "O" → Z suffix. Staging subdirs need CreateDirectory before File.Create (found earlier).
+
+Suite: 613 unit + 229 integration green.
