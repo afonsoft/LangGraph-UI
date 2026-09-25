@@ -9,4 +9,5 @@ public sealed class FixedEmbeddingProviderResolver(IEmbeddingProvider provider, 
 {
     public IEmbeddingProvider Current => provider;
     public string Fingerprint => fingerprint;
+    public EmbeddingLease Acquire() => new(provider, () => { });
 }

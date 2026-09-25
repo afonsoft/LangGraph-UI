@@ -233,24 +233,27 @@ public sealed class EmbeddingSettingsServiceTests : IDisposable
 
         var version = await cache.GetStringAsync("index:version");
         Assert.NotEqual("v-old", version);
-        Assert.Equal("index-version", Assert.Single(bus.Published));
+        // index-version on signature change; settings-changed on every mutation
+        // (SPEC-20260926-embeddings-swap-safety RF-004).
+        Assert.Equal(["index-version", "settings-changed"], bus.Published);
     }
 
     [Fact]
-    public async Task Save_NoSignatureChange_DoesNotPublish()
+    public async Task Save_NoSignatureChange_PublishesOnlySettingsChanged()
     {
         var bus = new FakeBus();
         var sut = Sut(new EmbeddingOptions { Provider = "deterministic", Dimensions = 384 },
             bus: bus);
 
-        // Same values as env → signature identical → no cache churn.
+        // Same values as env → signature identical → no index-version churn,
+        // but settings-changed still fires (RF-004).
         await sut.SaveAsync(new SaveEmbeddingSettingsRequest
         {
             Provider = "deterministic",
             Dimensions = 384
         });
 
-        Assert.Empty(bus.Published);
+        Assert.Equal("settings-changed", Assert.Single(bus.Published));
     }
 
     private sealed class FakeBus : KnowledgeHub.Server.Caching.ICacheInvalidationBus

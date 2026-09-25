@@ -28,6 +28,7 @@ public sealed class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposable
     private readonly BertTokenizer _tokenizer;
     private readonly string _outputName;
     private readonly bool _expectsTokenTypeIds;
+    private readonly int _dimensions;
 
     private OnnxEmbeddingProvider(InferenceSession session, BertTokenizer tokenizer)
     {
@@ -35,11 +36,17 @@ public sealed class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposable
         _tokenizer = tokenizer;
         _outputName = session.OutputMetadata.Keys.First();
         _expectsTokenTypeIds = session.InputMetadata.ContainsKey("token_type_ids");
+        // SPEC-20260926-embeddings-swap-safety RF-001: the model file declares
+        // its own output width — never assume EmbeddingDimensions. A non-384
+        // model must surface its real size so the settings gate can reject
+        // mismatched configurations instead of silently slicing vectors.
+        var outputDims = session.OutputMetadata[_outputName].Dimensions;
+        _dimensions = outputDims.Length > 0 ? outputDims[^1] : EmbeddingDimensions;
     }
 
     public string ModelId => "onnx:all-MiniLM-L6-v2";
 
-    public int Dimensions => EmbeddingDimensions;
+    public int Dimensions => _dimensions;
 
     /// <summary>Loads the tokenizer and ONNX session from <paramref name="modelDirectory"/>;
     /// throws a descriptive <see cref="EmbeddingProviderException"/> when artifacts are missing.</summary>
@@ -99,11 +106,11 @@ public sealed class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposable
         // Mean pooling over the token axis weighted by the attention mask
         // (all ones — padding is never emitted), then L2 normalize like the
         // other providers so cosine similarity stays valid.
-        var pooled = new float[EmbeddingDimensions];
+        var pooled = new float[_dimensions];
         for (var t = 0; t < length; t++)
-            for (var d = 0; d < EmbeddingDimensions; d++)
+            for (var d = 0; d < _dimensions; d++)
                 pooled[d] += hidden[0, t, d];
-        for (var d = 0; d < EmbeddingDimensions; d++)
+        for (var d = 0; d < _dimensions; d++)
             pooled[d] /= length;
 
         Normalize(pooled);
