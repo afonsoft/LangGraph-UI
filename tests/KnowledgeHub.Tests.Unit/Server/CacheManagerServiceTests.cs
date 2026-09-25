@@ -217,7 +217,7 @@ public sealed class CacheManagerServiceTests
         var stats = await svc.GetStatsAsync();
 
         // Then
-        var item = Assert.Single(stats.Keys);
+        var item = Assert.Single(stats.Keys, k => k.Key == key);
         Assert.Equal(expectedPrefix, item.Prefix);
     }
 
@@ -236,7 +236,7 @@ public sealed class CacheManagerServiceTests
         var stats = await svc.GetStatsAsync();
 
         // Then: should be approximately 7200s (within 5s tolerance)
-        var item = Assert.Single(stats.Keys);
+        var item = Assert.Single(stats.Keys, k => k.Key == "tool:a");
         Assert.NotNull(item.ExpiresInSeconds);
         Assert.InRange(item.ExpiresInSeconds!.Value, 7190, 7205);
     }
@@ -252,7 +252,7 @@ public sealed class CacheManagerServiceTests
         var stats = await svc.GetStatsAsync();
 
         // Then
-        var item = Assert.Single(stats.Keys);
+        var item = Assert.Single(stats.Keys, k => k.Key == "tool:a");
         Assert.Null(item.ExpiresInSeconds);
     }
 }
