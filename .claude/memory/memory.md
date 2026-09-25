@@ -43,3 +43,14 @@ Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
 - .mmd espelhados (context_container + deployment); .drawio regenerado via script (estava stale — faltavam MCP/Search/Graph/Emb).
 - ADRs novos: AD-0011 async ingestion queue, AD-0012 hybrid cache L1/L2+pub/sub, AD-0013 env-composed postgres vector store.
 - runtime-architecture.json: +queue/cache/cloud/redis components; archify validate+deliver 9/9 (layout ajustado p/ não cruzar edge→ingest).
+
+## Gap-analysis 2026-09-26 (post-docs #229 + #230)
+
+Auditoria fresca — 4 candidatos → 2 CONFIRMADOS + 2 housekeeping, 1 INCONCLUSIVO carregado (enforce_admins ×4).
+
+- `GAP-tests-pgvector-live-integration` CONFIRMADO → `SPEC-20260926-pgvector-live-tests` (Draft): 14 tests do PostgresVectorStore cobrem só seams sem conexão; bug OperationInProgress (4aa88d4) escapou p/ prod. Fix: Testcontainers `pgvector/pgvector` + skip-sem-Docker.
+- `GAP-tests-ingestion-jobs-flaky` CONFIRMADO → `SPEC-20260926-ingestion-jobs-test-deflake` (Draft): run 36192973074 falhou 2 testes distintos da classe (61s e 116s); budget já foi 30s→60s. Causa provável: worker/fila compartilhada entre classes paralelas.
+- Housekeeping executado: deletados locals `feature/Devin-20260926-memory-225-deploy` + `feature/Devin-20260926-review-backlog-remediation`; `SPEC-20260926-review-backlog-remediation` Status Approved→Done.
+- `enforce_admins` INCONCLUSIVO — decisão do owner, carregado pela 4ª vez.
+- Branches remotas: todas limpas após prune (squash merges já haviam deletado).
+- 0 issues/PRs abertos. Nenhum TODO/FIXME/NotImplementedException em src/.
