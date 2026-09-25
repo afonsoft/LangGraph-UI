@@ -125,7 +125,7 @@ public sealed class CorrectiveRetrievalTests
     public async Task Retrieve_Insufficient_SkipsRetry()
     {
         var search = new FakeSearchService([[]]);
-        var sut = Sut(search);
+        var sut = Sut(search, Cfg(new() { ["Search:Grading:Mode"] = "heuristic" }));
 
         var outcome = await sut.RetrieveAsync("q", 5, null, SearchMode.Hybrid, null, ct: CancellationToken.None);
 
@@ -138,7 +138,8 @@ public sealed class CorrectiveRetrievalTests
     public async Task Retrieve_RewriteIdentical_StopsWithoutExtraCall()
     {
         var search = new FakeSearchService([[Hit(0.015)]]);
-        var sut = Sut(search, rewriter: new FakeRewriter("q")); // same as input
+        var sut = Sut(search, Cfg(new() { ["Search:Grading:Mode"] = "heuristic" }),
+            rewriter: new FakeRewriter("q")); // same as input
 
         var outcome = await sut.RetrieveAsync("q", 5, null, SearchMode.Hybrid, null, ct: CancellationToken.None);
 
@@ -166,7 +167,7 @@ public sealed class CorrectiveRetrievalTests
     public async Task BuildAbstention_Insufficient_MarksResponseAndAttachesTop3()
     {
         var search = new FakeSearchService([[Hit(0.005), Hit(0.004), Hit(0.003), Hit(0.002)]]);
-        var sut = Sut(search);
+        var sut = Sut(search, Cfg(new() { ["Search:Grading:Mode"] = "heuristic" }));
         var outcome = await sut.RetrieveAsync("q", 5, null, SearchMode.Hybrid, null, ct: CancellationToken.None);
 
         var response = sut.BuildAbstention("q", outcome);
