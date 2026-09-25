@@ -119,6 +119,11 @@ public sealed class IngestionWorker(
 
         try
         {
+            // SPEC-20260925-otel-pipeline-spans RF-001: job-level span —
+            // sync sub-stages (chunk/embed/graph) hang off it in traces.
+            using var jobSpan = Telemetry.KnowledgeHubActivity.Start("ingestion.job");
+            jobSpan?.SetTag("job.kind", job.Kind);
+            jobSpan?.SetTag("job.source_id", job.SourceId.ToString());
             var result = await ingestion.SyncAsync(job.SourceId, options, jobCt);
             job.Status = result.Status == "failed" ? "failed" : "done";
             // SPEC-20260926-job-error-details RF-001/RF-004: persist per-doc

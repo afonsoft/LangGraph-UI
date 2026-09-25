@@ -17,9 +17,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 // SPEC-20260924-hosted-services-and-serilog-logging RF-001: Serilog host
 // logger — console + rolling file under logs/, enriched with LogContext props.
+// SPEC-20260925-runtime-log-level RF-001: the switch lives outside DI-build so
+// the Serilog config can bind to it before the provider exists.
+var logLevelControl = new KnowledgeHub.Server.Telemetry.LogLevelControl();
+builder.Services.AddSingleton(logLevelControl);
+builder.Services.AddSingleton<Serilog.Core.LoggingLevelSwitch>(logLevelControl.Switch);
+
 builder.Host.UseSerilog((ctx, cfg) =>
 {
     cfg.ReadFrom.Configuration(ctx.Configuration)
+        .MinimumLevel.ControlledBy(logLevelControl.Switch)
         .Enrich.FromLogContext()
         // SPEC-20260925-log-sinks-and-redaction RF-002: secrets never reach a
         // sink — redact sensitive property names and token-shaped values.
@@ -46,7 +53,10 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
     .AddCheck<EmbeddingHealthCheck>("embeddings", tags: ["ready"])
-    .AddCheck<IngestionHealthCheck>("ingestion", tags: ["ready"]);
+    .AddCheck<IngestionHealthCheck>("ingestion", tags: ["ready"])
+    // SPEC-20260925-vectorstore-metrics RF-003: store down → Degraded (search
+    // keeps working via FTS-only) — never Unhealthy.
+    .AddCheck<VectorStoreHealthCheck>("vectorstore", tags: ["ready"]);
 
 // SPEC-20260925-redis-health-and-scan-stats RF-001: Redis is degraded-not-fatal
 // (cache is fail-soft) — the check reports Degraded so ready stays 200.

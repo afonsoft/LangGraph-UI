@@ -164,6 +164,30 @@ public static class SettingsEndpoints
             CancellationToken ct) =>
             Results.Ok(await cacheMgr.ClearAllAsync(ct)));
 
+        // SPEC-20260925-runtime-log-level RF-002/RF-003: runtime log level with
+        // auto-reset — a Debug session expires instead of filling the disk.
+        group.MapGet("/log-level", (Telemetry.LogLevelControl control) =>
+        {
+            var (level, resetAt) = control.Current();
+            return Results.Ok(new { level, autoResetAt = resetAt, configuredDefault = control.ConfiguredDefault.ToString() });
+        });
+
+        group.MapPut("/log-level", (
+            SetLogLevelRequest? body,
+            Telemetry.LogLevelControl control,
+            ILoggerFactory loggerFactory) =>
+        {
+            if (body is null
+                || !Enum.TryParse<Serilog.Events.LogEventLevel>(body.Level, ignoreCase: true, out var level))
+                return Results.BadRequest(new { error = "level must be one of Verbose|Debug|Information|Warning|Error|Fatal" });
+
+            var minutes = Math.Clamp(body.Minutes ?? 15, 0, 120);
+            var (current, resetAt) = control.Set(level, minutes);
+            loggerFactory.CreateLogger("Settings.LogLevel")
+                .LogInformation("log level changed to {Level} (auto-reset {AutoReset})", current, resetAt);
+            return Results.Ok(new { level = current, autoResetAt = resetAt });
+        });
+
         return group;
     }
 
@@ -258,3 +282,6 @@ public static class SettingsEndpoints
         await services.GetRequiredService<Mcp.IToolCatalogChangeNotifier>().NotifyToolsChangedAsync(ct);
     }
 }
+
+/// <summary>PUT /api/settings/log-level body (SPEC-20260925-runtime-log-level).</summary>
+public sealed record SetLogLevelRequest(string? Level, int? Minutes);

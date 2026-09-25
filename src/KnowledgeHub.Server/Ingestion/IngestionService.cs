@@ -503,6 +503,10 @@ public sealed class IngestionService(
             ["indexedAt"] = doc.IndexedAt.ToString("o")
         };
         IReadOnlyList<float[]> batchVectors;
+        // SPEC-20260925-otel-pipeline-spans RF-001: embed is a provider call —
+        // isolate its latency from the rest of the job span.
+        using var embedSpan = Telemetry.KnowledgeHubActivity.Start("ingestion.embed");
+        embedSpan?.SetTag("embed.count", chunks.Count);
         try
         {
             batchVectors = await embeddings.EmbedDocumentBatchAsync(
@@ -510,6 +514,7 @@ public sealed class IngestionService(
         }
         catch (EmbeddingProviderException ex)
         {
+            Telemetry.KnowledgeHubActivity.Fail(embedSpan, ex);
             logger.LogWarning("Batch embedding failed for document {DocumentId}, falling back to per-chunk: {Message}",
                 doc.Id, ex.Message);
             return await EmbedChunksIndividuallyAsync(chunks, doc.Id, source.Id, vectors, metadata, cancellationToken);
@@ -520,7 +525,24 @@ public sealed class IngestionService(
             var items = chunks.Zip(batchVectors)
                 .Select(pair => new VectorUpsert(pair.First.Id, doc.Id, source.Id, pair.Second, metadata))
                 .ToList();
-            await vectors.UpsertBatchAsync(items, embeddings.ModelId, cancellationToken);
+            // SPEC-20260925-vectorstore-metrics RF-001: upsert latency + errors.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                await vectors.UpsertBatchAsync(items, embeddings.ModelId, cancellationToken);
+            }
+            catch
+            {
+                Telemetry.KnowledgeHubMetrics.VectorErrors.Add(1,
+                    new KeyValuePair<string, object?>("store", vectors.GetType().Name),
+                    new KeyValuePair<string, object?>("op", "upsert"));
+                throw;
+            }
+            finally
+            {
+                Telemetry.KnowledgeHubMetrics.VectorUpsertDuration.Record(sw.Elapsed.TotalMilliseconds,
+                    new KeyValuePair<string, object?>("store", vectors.GetType().Name));
+            }
             return items.Count;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

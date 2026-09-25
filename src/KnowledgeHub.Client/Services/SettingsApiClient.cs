@@ -108,6 +108,20 @@ public sealed class SettingsApiClient(HttpClient http)
     public Task<CacheStatsDto?> GetCacheStatsAsync(CancellationToken ct = default) =>
         http.GetFromJsonAsync<CacheStatsDto>("api/settings/cache", ct);
 
+    // SPEC-20260925-runtime-log-level RF-003/RF-004: runtime log level.
+
+    /// <summary>Nível de log atual + auto-reset.</summary>
+    public Task<LogLevelState?> GetLogLevelAsync(CancellationToken ct = default) =>
+        http.GetFromJsonAsync<LogLevelState>("api/settings/log-level", ct);
+
+    /// <summary>Define o nível; <paramref name="minutes"/> agenda auto-reset.</summary>
+    public async Task<ApiResult<LogLevelState>> SetLogLevelAsync(string level, int minutes, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/settings/log-level",
+            new { level, minutes }, ct);
+        return await ReadAsync<LogLevelState>(response, ct);
+    }
+
     /// <summary>Limpa todas as chaves do cache no backend ativo.</summary>
     public async Task<ApiResult<ClearCacheResultDto>> ClearCacheAsync(CancellationToken ct = default)
     {
@@ -138,4 +152,12 @@ public sealed class SettingsApiClient(HttpClient http)
 
         return new ApiResult<T>(default, error ?? $"HTTP {(int)response.StatusCode}");
     }
+}
+
+/// <summary>GET/PUT /api/settings/log-level payload (SPEC-20260925-runtime-log-level).</summary>
+public sealed class LogLevelState
+{
+    public string Level { get; set; } = "Information";
+    public string? ConfiguredDefault { get; set; }
+    public DateTimeOffset? AutoResetAt { get; set; }
 }
