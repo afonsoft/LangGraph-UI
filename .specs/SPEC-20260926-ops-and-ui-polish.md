@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Server` (LogLevelControl, SettingsEndpoints, IngestionWorker, VectorStoreDiagnostics, CatalogToolAIFunction, McpMonitorReplay feed) + `KnowledgeHub.Client` (Sources, Settings, Login, McpMonitor, Eval, EvalApiClient, app.css) + `backup.sh` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Approved` |
 | Ticket | devin-ai-integration review — PRs #185 (6), #188 (3), #189 (4), #191 (2), #192 (3), #193 (1), #195 (2), #196 (4), #204 (1), era antiga #43 (backup) |
 | Origem | `.claude/memory/devin-review-triage-20260925.md` — clusters F, G, H |
 

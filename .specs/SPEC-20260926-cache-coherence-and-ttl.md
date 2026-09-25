@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Server` (CacheTtlPolicy, L1L2Cache, RedisInvalidationBus, InvalidationSubscriber, CacheManagerService, SearchService, SafeCache, Program.cs) |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Approved` |
 | Ticket | devin-ai-integration review — PRs #195 (3), #196 (1), #197 (4), #198 (3) |
 | Origem | `.claude/memory/devin-review-triage-20260925.md` — cluster B (B1–B6) |
 
