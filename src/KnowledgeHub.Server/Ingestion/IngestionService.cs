@@ -225,7 +225,9 @@ public sealed class IngestionService(
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Document '{Path}' failed during sync — continuing", relative);
-                    warnings.Add($"{relative}: {ex.Message}");
+                    // SPEC-20260926-job-error-details RF-003: record the real
+                    // cause (inner exception), not the EF wrapper message.
+                    warnings.Add($"{relative}: {ex.GetBaseException().Message}");
                     failed++;
                 }
                 options?.Progress?.Report(new SyncProgress(processed, skipped, failed, chunksCreated));
@@ -396,7 +398,7 @@ public sealed class IngestionService(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Document '{Uri}' failed during sync — continuing", raw.UriReference);
-                warnings.Add($"{raw.UriReference}: {ex.Message}");
+                warnings.Add($"{raw.UriReference}: {ex.GetBaseException().Message}");
                 failed++;
             }
             options?.Progress?.Report(new SyncProgress(processed, skipped, failed, chunksCreated));
@@ -565,8 +567,13 @@ public sealed class IngestionService(
         if (chunks.Count == 0 || budgetRemaining <= 0 || !GraphEnabledFor(source))
             return 0;
 
-        var extractor = scope.ServiceProvider.GetService<Graph.EntityExtractor>();
-        var store = scope.ServiceProvider.GetService<Graph.IKnowledgeGraphStore>();
+        // SPEC-20260926-kg-alias-conflict-dedup RF-003: dedicated scope for graph
+        // work — a failed graph SaveChanges must never leave the caller's
+        // DbContext with poisoned Added entries that break every later save.
+        var scopeFactory = scope.ServiceProvider.GetRequiredService<IServiceScopeFactory>();
+        await using var graphScope = scopeFactory.CreateAsyncScope();
+        var extractor = graphScope.ServiceProvider.GetService<Graph.EntityExtractor>();
+        var store = graphScope.ServiceProvider.GetService<Graph.IKnowledgeGraphStore>();
         if (extractor is null || store is null)
             return 0;
 
@@ -619,7 +626,8 @@ public sealed class IngestionService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "graph extraction failed for {Uri} — continuing sync", doc.UriReference);
-            warnings.Add($"graph extraction failed for '{doc.UriReference}'");
+            // RF-005: surface the real cause (inner SqliteException), not the EF envelope.
+            warnings.Add($"graph extraction failed for '{doc.UriReference}': {ex.GetBaseException().Message}");
             return Math.Min(chunks.Count, budgetRemaining);
         }
     }

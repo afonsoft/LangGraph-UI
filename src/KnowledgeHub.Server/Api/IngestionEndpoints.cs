@@ -30,22 +30,25 @@ public static class IngestionEndpoints
                 {
                     j.Id, j.SourceId, j.Kind, j.Status,
                     j.DocsProcessed, j.DocsSkipped, j.DocsFailed, j.ChunksCreated,
-                    j.Error, j.CreatedAt, j.StartedAt, j.FinishedAt
+                    j.Error, j.CreatedAt, j.StartedAt, j.FinishedAt,
+                    Warnings = DeserializeWarnings(j.WarningsJson)
                 });
             return Results.Ok(jobs);
         });
 
         group.MapGet("/{id:guid}", async (KnowledgeHubDbContext db, Guid id, CancellationToken ct) =>
         {
-            var job = await db.IngestionJobs.AsNoTracking()
+            var job = (await db.IngestionJobs.AsNoTracking()
                 .Where(j => j.Id == id)
+                .ToListAsync(ct))
                 .Select(j => new
                 {
                     j.Id, j.SourceId, j.Kind, j.Status,
                     j.DocsProcessed, j.DocsSkipped, j.DocsFailed, j.ChunksCreated,
-                    j.Error, j.CreatedAt, j.StartedAt, j.FinishedAt
+                    j.Error, j.CreatedAt, j.StartedAt, j.FinishedAt,
+                    Warnings = DeserializeWarnings(j.WarningsJson)
                 })
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefault();
             return job is null ? Results.NotFound(new { error = "job not found" }) : Results.Ok(job);
         });
 
@@ -72,5 +75,14 @@ public static class IngestionEndpoints
         });
 
         return group;
+    }
+
+    /// <summary>SPEC-20260926-job-error-details RF-002: WarningsJson → string[] for the API.</summary>
+    private static List<string>? DeserializeWarnings(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json); }
+        catch { return null; }
     }
 }

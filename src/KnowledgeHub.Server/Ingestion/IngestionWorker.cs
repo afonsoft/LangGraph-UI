@@ -121,7 +121,12 @@ public sealed class IngestionWorker(
         {
             var result = await ingestion.SyncAsync(job.SourceId, options, jobCt);
             job.Status = result.Status == "failed" ? "failed" : "done";
-            job.Error = result.Status == "failed" ? result.Reason : null;
+            // SPEC-20260926-job-error-details RF-001/RF-004: persist per-doc
+            // failures and enrich the generic failure reason with a real digest.
+            job.WarningsJson = SerializeWarnings(result.Warnings);
+            job.Error = result.Status == "failed"
+                ? EnrichError(result.Reason, result.Warnings, result.DocumentsFailed)
+                : null;
             job.DocsProcessed = result.DocumentsProcessed;
             job.DocsSkipped = result.DocumentsSkipped;
             job.DocsFailed = result.DocumentsFailed;
@@ -183,5 +188,33 @@ public sealed class IngestionWorker(
         {
             logger.LogDebug(ex, "Progress flush for job {JobId} stopped", jobId);
         }
+    }
+
+    /// <summary>SPEC-20260926-job-error-details RF-001: cap persisted warnings —
+    /// first <see cref="MaxWarnings"/> entries, else the row balloons on mass failures.</summary>
+    private const int MaxWarnings = 100;
+
+    private static string? SerializeWarnings(IReadOnlyList<string>? warnings)
+    {
+        if (warnings is null || warnings.Count == 0)
+            return null;
+        var capped = warnings.Count > MaxWarnings
+            ? warnings.Take(MaxWarnings).Append($"… e mais {warnings.Count - MaxWarnings} item(ns)").ToList()
+            : warnings;
+        return System.Text.Json.JsonSerializer.Serialize(capped);
+    }
+
+    /// <summary>RF-004: "sync failed — see server logs" tells the operator nothing;
+    /// attach the real first error + counts.</summary>
+    private static string EnrichError(string? reason, IReadOnlyList<string>? warnings, int failed)
+    {
+        var first = warnings?.FirstOrDefault(w => !w.StartsWith("graph extraction failed", StringComparison.Ordinal));
+        var sample = first ?? warnings?.FirstOrDefault();
+        var digest = sample is null
+            ? null
+            : $"{failed} doc(s) falharam — {sample}";
+        if (string.IsNullOrEmpty(reason))
+            return digest ?? "sync failed";
+        return digest is null ? reason : $"{reason}: {digest}";
     }
 }

@@ -18,6 +18,10 @@ public sealed class IngestionJob
     public int DocsFailed { get; set; }
     public int ChunksCreated { get; set; }
     public string? Error { get; set; }
+    /// <summary>SPEC-20260926-job-error-details RF-001: JSON array of per-document
+    /// warnings/failures from the sync (capped by the worker) — surfaced in the
+    /// Sources status popup instead of "see server logs".</summary>
+    public string? WarningsJson { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
