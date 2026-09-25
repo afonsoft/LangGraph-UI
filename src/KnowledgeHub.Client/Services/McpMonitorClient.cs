@@ -9,6 +9,11 @@ namespace KnowledgeHub.Client.Services;
 public sealed record SessionOpenedEvent(string SessionId, DateTimeOffset ConnectedAt);
 public sealed record SessionClosedEvent(string SessionId);
 
+/// <summary>SPEC-20260925-job-progress-feed: ingestion job tick/terminal event.</summary>
+public sealed record IngestionProgressEventDto(
+    Guid JobId, Guid SourceId, string Status,
+    int Processed, int Skipped, int Failed, int ChunksCreated);
+
 /// <summary>
 /// Wraps the SignalR connection to /hubs/mcp (SPEC-05 RF-003).
 /// Auto-reconnect with backoff; caller registers handlers before StartAsync.
@@ -38,6 +43,8 @@ public sealed class McpMonitorClient(NavigationManager nav) : IAsyncDisposable
     public event Action<SessionClosedEvent>? SessionClosed;
     public event Action<McpMonitorEventDto>? Activity;
     public event Action<IReadOnlyList<McpMonitorEventDto>>? Snapshot;
+    /// <summary>SPEC-20260925-job-progress-feed RF-002: pushed job progress.</summary>
+    public event Action<IngestionProgressEventDto>? IngestionProgress;
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -49,6 +56,7 @@ public sealed class McpMonitorClient(NavigationManager nav) : IAsyncDisposable
             _connection.On<SessionClosedEvent>("SessionClosed", e => SessionClosed?.Invoke(e));
             _connection.On<McpMonitorEventDto>("Activity", e => Activity?.Invoke(e));
             _connection.On<IReadOnlyList<McpMonitorEventDto>>("Snapshot", s => Snapshot?.Invoke(s));
+            _connection.On<IngestionProgressEventDto>("IngestionProgress", e => IngestionProgress?.Invoke(e));
             _connection.Reconnecting += _ => { StateChanged?.Invoke(); return Task.CompletedTask; };
             _connection.Reconnected += _ => { StateChanged?.Invoke(); return Task.CompletedTask; };
             _connection.Closed += _ => { StateChanged?.Invoke(); return Task.CompletedTask; };

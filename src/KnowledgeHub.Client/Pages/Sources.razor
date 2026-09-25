@@ -3,6 +3,8 @@
 @using System.Text.Json.Nodes
 @inject SourceApiClient Api
 @inject ToastService Toast
+@inject McpMonitorClient Hub
+@implements IAsyncDisposable
 
 <PageTitle>Fontes — Knowledge</PageTitle>
 
@@ -351,23 +353,59 @@
         await Toast.Information("Sync enfileirado",
             job.Existing ? "Já existe um job em andamento para esta fonte." : $"Job {job.JobId:N}");
 
-        // Poll the job — most sources finish fast; cap at ~5min.
-        for (var i = 0; i < 150; i++)
+        // SPEC-20260925-job-progress-feed RF-002: pushed terminal event wins;
+        // polling remains the fallback when the hub is unavailable.
+        var pushDone = new TaskCompletionSource<IngestionProgressEventDto>();
+        void OnProgress(IngestionProgressEventDto e)
         {
-            await Task.Delay(2000);
-            var j = await Api.GetJobAsync(job.JobId);
-            if (j is null || j.Status is "queued" or "running")
-                continue;
-            if (j.Status == "done")
-                await Toast.Success("Sync concluído",
-                    $"{j.DocsProcessed} docs, {j.ChunksCreated} chunks" +
-                    (j.DocsFailed > 0 ? $" — {j.DocsFailed} doc(s) falharam" : ""));
-            else
-                await Toast.Error($"Sync {j.Status}", j.Error ?? "");
-            await ReloadAsync();
-            return;
+            if (e.JobId == job.JobId && e.Status is "done" or "failed" or "cancelled")
+                pushDone.TrySetResult(e);
         }
-        await Toast.Warning("Sync em andamento", "O job continua em background.");
+        var hubStarted = false;
+        try
+        {
+            await Hub.StartAsync();
+            Hub.IngestionProgress += OnProgress;
+            hubStarted = true;
+        }
+        catch { /* hub unavailable — polling fallback below */ }
+
+        try
+        {
+            for (var i = 0; i < 150; i++)
+            {
+                var wait = Task.WhenAny(Task.Delay(2000), pushDone.Task);
+                if (await wait == pushDone.Task)
+                {
+                    var e = pushDone.Task.Result;
+                    await ReportJobTerminal(e.Status, e.Processed, e.ChunksCreated, e.Failed, null);
+                    await ReloadAsync();
+                    return;
+                }
+
+                var j = await Api.GetJobAsync(job.JobId);
+                if (j is null || j.Status is "queued" or "running")
+                    continue;
+                await ReportJobTerminal(j.Status, j.DocsProcessed, j.ChunksCreated, j.DocsFailed, j.Error);
+                await ReloadAsync();
+                return;
+            }
+            await Toast.Warning("Sync em andamento", "O job continua em background.");
+        }
+        finally
+        {
+            if (hubStarted)
+                Hub.IngestionProgress -= OnProgress;
+        }
+    }
+
+    private async Task ReportJobTerminal(string status, int processed, int chunks, int failed, string? error)
+    {
+        if (status == "done")
+            await Toast.Success("Sync concluído",
+                $"{processed} docs, {chunks} chunks" + (failed > 0 ? $" — {failed} doc(s) falharam" : ""));
+        else
+            await Toast.Error($"Sync {status}", error ?? "");
     }
 
     /// <summary>SPEC-20260925-sources-grid-ux RF-003: opens the status detail
@@ -408,4 +446,6 @@
         await Toast.Success("Excluída", $"'{dto.Name}' removida.");
         await ReloadAsync();
     }
+
+    public async ValueTask DisposeAsync() => await Hub.DisposeAsync();
 }

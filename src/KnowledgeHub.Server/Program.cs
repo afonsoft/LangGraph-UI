@@ -11,8 +11,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// SPEC-20260924-hosted-services-and-serilog-logging RF-001: Serilog host
+// logger — console + rolling file under logs/, enriched with LogContext props.
+builder.Host.UseSerilog((ctx, cfg) => cfg
+    .ReadFrom.Configuration(ctx.Configuration)
+    .Enrich.FromLogContext());
 
 // SPEC-20260914-config-validation: fail fast on invalid config before any work.
 ConfigurationValidator.Validate(builder.Configuration);
@@ -122,6 +129,7 @@ static System.Threading.RateLimiting.RateLimitPartition<string> RateLimiting(
         });
 }
 builder.Services.AddHostedService<McpActivityBroadcastService>();
+builder.Services.AddHostedService<IngestionProgressBroadcastService>();
 
 // SPEC-20260914-auth-login: cookie session (browser SPA) + aft_* API keys
 // (non-browser MCP/API/hub clients). Secure=SameAsRequest keeps dev/test over

@@ -21,15 +21,3 @@ public sealed record SyncOptions
 
 /// <summary>Progress tick reported per processed document.</summary>
 public sealed record SyncProgress(int Processed, int Skipped, int Failed, int ChunksCreated);
-
-/// <summary>Placeholder until SPEC-03 lands: every sync reports "skipped".</summary>
-public sealed class NotImplementedIngestionService : IIngestionService
-{
-    public Task<SyncResultDto> SyncAsync(
-        Guid sourceId, SyncOptions? options = null, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new SyncResultDto
-        {
-            Status = "skipped",
-            Reason = "Ingestion connector not implemented yet (SPEC-03)"
-        });
-}

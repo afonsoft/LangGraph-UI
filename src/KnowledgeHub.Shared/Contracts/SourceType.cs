@@ -22,5 +22,8 @@ public enum SourceType
     /// <summary>Azure Files share via Azure.Storage.Files.Shares.</summary>
     AzureFiles = 9,
     /// <summary>OCI Object Storage via the S3-compatible endpoint.</summary>
-    OciStorage = 10
+    OciStorage = 10,
+    /// <summary>Shared Google Drive folder/file link
+    /// (SPEC-20260924-gdrive-shared-link-connector).</summary>
+    GoogleDrive = 11
 }

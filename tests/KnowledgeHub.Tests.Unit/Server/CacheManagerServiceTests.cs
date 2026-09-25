@@ -69,10 +69,11 @@ public sealed class CacheManagerServiceTests
     [Fact]
     public async Task GetStats_PrunesExpiredKeys()
     {
-        // Given: key with TTL that's already expired
+        // Given: key with a TTL already elapsed (zero = expired at insertion —
+        // deterministic; a 1ms+Delay combo races clock granularity on CI)
         var svc = MakeService();
-        svc.TrackKey("expired:key", 100, TimeSpan.FromMilliseconds(1));
-        await Task.Delay(10); // let it expire
+        svc.TrackKey("expired:key", 100, TimeSpan.Zero);
+        await Task.Delay(1);
 
         // When
         svc.TrackKey("live:key", 200, TimeSpan.FromHours(1));

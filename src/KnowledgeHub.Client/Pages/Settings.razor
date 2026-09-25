@@ -293,6 +293,84 @@ else
     </div>
 }
 
+@* SPEC-20260924-redis-cache-and-tool-caching RF-004: cache inspection + clear. *@
+<h5 class="mb-2 text-muted mt-4">Cache</h5>
+<p class="text-muted">
+    Cache distribuído de busca, embeddings e respostas de tools.
+    Em modo <code>memory</code> os contadores vivem no processo; em <code>redis</code>
+    refletem o estado compartilhado do servidor.
+</p>
+
+@if (_cache is null)
+{
+    <div class="text-muted mb-4 kh-action-loading"><i class="fa-solid fa-spinner fa-spin"></i> Carregando cache…</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-8">
+            <Card>
+                <HeaderTemplate>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Provider: <code>@_cache.Provider</code></span>
+                        @if (_cache.IsConnected)
+                        {
+                            <Badge Color="Color.Success">conectado</Badge>
+                        }
+                        else
+                        {
+                            <Badge Color="Color.Danger">desconectado</Badge>
+                        }
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    <div class="row small">
+                        <div class="col-6 col-md-3"><strong>Keys</strong><br />@_cache.TotalKeys</div>
+                        <div class="col-6 col-md-3"><strong>Tamanho</strong><br />@FormatBytes(_cache.TotalSizeBytes)</div>
+                        <div class="col-6 col-md-3"><strong>Hits</strong><br />@_cache.Hits</div>
+                        <div class="col-6 col-md-3"><strong>Misses</strong><br />@_cache.Misses</div>
+                    </div>
+                    @if (_cache.Hits + _cache.Misses > 0)
+                    {
+                        <div class="small text-muted mt-2">
+                            Hit-rate: @((_cache.Hits * 100.0 / (_cache.Hits + _cache.Misses)).ToString("F1"))%
+                        </div>
+                    }
+                    @if (_cache.Keys.Count > 0)
+                    {
+                        <details class="mt-2">
+                            <summary class="small">Keys (@_cache.Keys.Count)</summary>
+                            <ul class="small font-monospace mb-0 mt-1" style="max-height:200px;overflow-y:auto">
+                                @foreach (var k in _cache.Keys)
+                                {
+                                    <li>
+                                        @k.Key
+                                        <span class="text-muted">(@FormatBytes(k.SizeBytes)@(k.ExpiresInSeconds is { } ttl ? $", ttl {ttl}s" : ""))</span>
+                                    </li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                </BodyTemplate>
+            </Card>
+        </div>
+        <div class="col-12 col-md-4">
+            <Card>
+                <HeaderTemplate><span>Ações</span></HeaderTemplate>
+                <BodyTemplate>
+                    <Button Color="Color.Secondary" Icon="fa-solid fa-rotate" Text="Atualizar"
+                            IsAsync="true" OnClick="ReloadCacheAsync" class="mb-2" />
+                    <PopConfirmButton Color="Color.Danger" Icon="fa-solid fa-trash"
+                                      Text="Limpar todo o cache"
+                                      Title="Limpar cache"
+                                      Content="Todas as keys de busca, embeddings e tools serão removidas. Continuar?"
+                                      OnConfirm="ClearCacheAsync" />
+                </BodyTemplate>
+            </Card>
+        </div>
+    </div>
+}
+
 @code {
     private IReadOnlyList<IntegrationSettingsDto>? _integrations;
     private readonly Dictionary<string, FormState> _forms = new();
@@ -300,6 +378,7 @@ else
     private readonly ChatFormState _chatForm = new();
     private GraphSettingsDto? _graph;
     private readonly GraphFormState _graphForm = new();
+    private CacheStatsDto? _cache;
 
     private sealed class FormState
     {
@@ -332,7 +411,42 @@ else
         await ReloadAsync();
         await ReloadChatAsync();
         await ReloadGraphAsync();
+        await ReloadCacheAsync();
     }
+
+    /// <summary>SPEC-20260924-redis-cache-and-tool-caching RF-004.</summary>
+    private async Task ReloadCacheAsync()
+    {
+        try
+        {
+            _cache = await Api.GetCacheStatsAsync();
+        }
+        catch (Exception ex)
+        {
+            _cache = new CacheStatsDto { IsConnected = false };
+            await Toast.Error("Erro", $"Falha ao carregar cache: {ex.Message}");
+        }
+    }
+
+    private async Task ClearCacheAsync()
+    {
+        var result = await Api.ClearCacheAsync();
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao limpar cache");
+            return;
+        }
+        await Toast.Success("Cache limpo",
+            result.Value is { } r ? $"{r.ClearedKeys} key(s) removida(s)." : "");
+        await ReloadCacheAsync();
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1L << 20 => $"{bytes / (1024.0 * 1024.0):F1} MB",
+        >= 1L << 10 => $"{bytes / 1024.0:F1} KB",
+        _ => $"{bytes} B"
+    };
 
     /// <summary>Recarrega a lista de integrações e garante o estado dos formulários.</summary>
     private async Task ReloadAsync()

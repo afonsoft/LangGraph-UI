@@ -83,6 +83,55 @@ public class CloudSourcesApiTests : IClassFixture<CloudSourcesApiTests.Fixture>
     }
 
     [Fact]
+    public async Task GoogleDrive_Create_InvalidSharedUrl_Returns400()
+    {
+        var response = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"gd-{Guid.NewGuid():N}",
+            type = "GoogleDrive",
+            configuration = new { sharedUrl = "https://example.com/not-a-drive-link" },
+            isActive = true
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GoogleDrive_Create_StoresHasKeyFalse_WhenNoApiKey()
+    {
+        var response = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"gd-{Guid.NewGuid():N}",
+            type = "GoogleDrive",
+            configuration = new { sharedUrl = "https://drive.google.com/drive/folders/ABC123_xyz" },
+            isActive = true
+        });
+        response.EnsureSuccessStatusCode();
+        var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
+        Assert.False(source.Configuration!["hasKey"]!.GetValue<bool>());
+        Assert.Null(source.Configuration["apiKey"]);
+    }
+
+    [Fact]
+    public async Task GoogleDrive_Create_WithApiKey_StoresSecretNotConfig()
+    {
+        var response = await _client.PostAsJsonAsync("/api/sources", new
+        {
+            name = $"gd-{Guid.NewGuid():N}",
+            type = "GoogleDrive",
+            configuration = new
+            {
+                sharedUrl = "https://drive.google.com/drive/folders/ABC123_xyz",
+                apiKey = "AIza-fake-key"
+            },
+            isActive = true
+        });
+        response.EnsureSuccessStatusCode();
+        var source = (await response.Content.ReadFromJsonAsync<KnowledgeSourceDto>())!;
+        Assert.True(source.Configuration!["hasKey"]!.GetValue<bool>());
+        Assert.Null(source.Configuration["apiKey"]);
+    }
+
+    [Fact]
     public async Task OciStorage_Sync_Unreachable_FailsGracefully()
     {
         var create = await _client.PostAsJsonAsync("/api/sources", new

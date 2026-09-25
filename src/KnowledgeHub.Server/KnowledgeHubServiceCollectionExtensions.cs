@@ -76,6 +76,15 @@ public static class KnowledgeHubServiceCollectionExtensions
                 o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(4);
                 o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(3);
             });
+        // SPEC-20260924-gdrive-shared-link-connector: Drive API + public downloads.
+        services.AddHttpClient<Ingestion.Connectors.GoogleDriveApiClient>(
+                c => c.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(o =>
+            {
+                o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+                o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(3);
+                o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(3);
+            });
 
         // SPEC-20260914-webpage-docfile-connectors: connector registry.
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.WebPageConnector>();
@@ -86,6 +95,8 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.AwsS3Connector>();
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.AzureFilesConnector>();
         services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.Cloud.OciStorageConnector>();
+        // SPEC-20260924-gdrive-shared-link-connector.
+        services.AddSingleton<Ingestion.Connectors.ISourceConnector, Ingestion.Connectors.GoogleDriveSharedConnector>();
         services.AddSingleton<IEmbeddingProvider>(sp =>
             EmbeddingProviderFactory.Create(
                 sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value,
@@ -237,8 +248,12 @@ public static class KnowledgeHubServiceCollectionExtensions
         // SPEC-20260924-async-ingestion-queue RF-001/RF-002: bounded channel +
         // sequential worker (SQLite write lock keeps MaxParallelJobs at 1).
         services.AddSingleton<Ingestion.IIngestionQueue, Ingestion.IngestionQueue>();
+        services.AddSingleton<Ingestion.IIngestionProgressFeed, Ingestion.IngestionProgressFeed>();
         services.AddHostedService<Ingestion.IngestionWorker>();
         services.AddHostedService<VaultWatcherService>();
+        // SPEC-20260924-hosted-services-and-serilog-logging RF-002/RF-003.
+        services.AddHostedService<ScheduledSyncBackgroundService>();
+        services.AddHostedService<MaintenanceBackgroundService>();
 
         // SPEC-04: dynamic MCP tool catalog + handlers + change notifier.
         services.AddSingleton<IToolProvider, KnowledgeHub.Server.Mcp.ToolProviders.KnowledgeToolsProvider>();

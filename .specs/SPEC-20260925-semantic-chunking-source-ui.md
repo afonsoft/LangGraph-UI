@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `Blazor WASM`, `BootstrapBlazor`, `SourceEditDialog.razor` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-requirements-semantic-chunking-source-ui |
 | Origem | gap-analysis 2026-09-25 — aceite não cumprido de SPEC-20260924-semantic-chunking RF-003 |
 

@@ -33,6 +33,8 @@ public sealed class CloudConnectorTests : IDisposable
         }
 
         public Task CleanupStagingAsync(Guid sourceId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> CleanupOrphanedStagingAsync(IReadOnlySet<Guid> known, CancellationToken ct = default) =>
+            Task.FromResult(0);
     }
 
     private sealed class FakeGateway(List<RemoteObject> objects) : IRemoteObjectGateway

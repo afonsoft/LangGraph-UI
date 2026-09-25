@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `.NET 10`, `SignalR`/activity feed, Blazor WASM |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Ticket | GAP-implementation-signalr-job-progress |
 | Origem | gap-analysis 2026-09-25 — desvio de SPEC-20260924-async-ingestion-queue RF-002 ("progresso via SignalR") |
 

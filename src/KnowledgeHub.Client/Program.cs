@@ -38,6 +38,7 @@ builder.Services.AddScoped<ApprovalsApiClient>();
 builder.Services.AddScoped<ThreadsApiClient>();
 builder.Services.AddScoped<StreamingApiClient>();
 builder.Services.AddScoped<SettingsApiClient>();
+builder.Services.AddScoped<EvalApiClient>();
 builder.Services.AddTransient<McpMonitorClient>();
 
 await builder.Build().RunAsync();

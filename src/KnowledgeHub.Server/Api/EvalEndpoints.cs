@@ -73,7 +73,11 @@ public static class EvalEndpoints
             var take = Math.Clamp(limit ?? 20, 1, 100);
             // SQLite cannot ORDER BY DateTimeOffset — sort in memory (runs are rare).
             var runs = (await db.EvalRuns.AsNoTracking()
-                    .Select(r => new { r.Id, r.StartedAt, r.DurationMs, r.DatasetHash, r.MetricsJson })
+                    .Select(r => new
+                    {
+                        r.Id, r.StartedAt, r.DurationMs, r.DatasetHash,
+                        r.MetricsJson, r.GateResultJson, r.BaselineName
+                    })
                     .ToListAsync(ct))
                 .OrderByDescending(r => r.StartedAt)
                 .Take(take);
@@ -83,7 +87,11 @@ public static class EvalEndpoints
                 r.StartedAt,
                 r.DurationMs,
                 r.DatasetHash,
-                metrics = JsonSerializer.Deserialize<EvalMetricsSummary>(r.MetricsJson, Json)
+                metrics = JsonSerializer.Deserialize<EvalMetricsSummary>(r.MetricsJson, Json),
+                gate = r.GateResultJson is null
+                    ? null
+                    : JsonSerializer.Deserialize<EvalGateResult>(r.GateResultJson, Json),
+                r.BaselineName
             }));
         });
 

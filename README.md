@@ -14,7 +14,9 @@ All-in-one standalone knowledge platform: Blazor WebAssembly admin UI, REST API,
 | Route | Purpose |
 |---|---|
 | `/` | Blazor WASM admin UI (`/sources`, `/mcp-monitor`, `/playground`, `/chat`, `/approvals`, `/settings`, `/api-keys`) — installable PWA, collapsible icon-rail sidebar, mobile-responsive layout |
-| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API |
+| `/api/sources`, `/api/search`, `/api/ask`, `/api/agent`, `/api/approvals`, `/api/threads` | REST API — `POST /sources/{id}/sync` is async (`202 + jobId`; `?wait=true` for the legacy sync contract) |
+| `/api/ingestion/jobs`, `/api/ingestion/jobs/{id}`, `/api/ingestion/jobs/{id}/cancel` | Background ingestion jobs — status, per-doc counters, cancellation |
+| `/api/eval/baselines` | Named eval baselines for regression gates (promote a run, auto-compare future runs) |
 | `/api/settings/chat`, `/api/settings/chat/test`, `/api/settings/graph`, `/api/settings/integrations*` | Persisted chat-provider config, GraphRAG runtime settings (enable, budgets), and masked integration keys (firecrawl, deepwiki, tavily, context7) |
 | `/api/api-keys/{id}/settings/chat`, `/api/api-keys/{id}/settings/integrations/{provider}`, `/api/api-keys/{id}/rate-limit`, `/api/api-keys/{id}/scopes` | Per-API-key overrides: chat endpoint/model/key, integration keys, rate limits, allowed sources/tools |
 | `/api/security/events`, `/api/eval/run`, `/api/eval/runs` | Prompt-injection audit feed and retrieval-quality eval harness (Recall@K/P@K/MRR/faithfulness) |
