@@ -18,6 +18,11 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
 {
     internal const string HnswIndexName = "kh_embeddings_embedding_hnsw_idx";
 
+    /// <summary>SPEC-20260926-pgvector-scan-and-halfvec RF-001: the iterative
+    /// filtered-scan GUC lives under the <c>hnsw.</c> namespace —
+    /// <c>pgvector.iterative_scan</c> is accepted silently but never honored.</summary>
+    internal const string IterativeScanGuc = "hnsw.iterative_scan";
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _dimensions;
     public int? Dimensions => _dimensions;
@@ -210,7 +215,7 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 {
                     await using var setCmd = conn.CreateCommand();
                     setCmd.Transaction = (NpgsqlTransaction)tx;
-                    setCmd.CommandText = "SET LOCAL pgvector.iterative_scan = relaxed_order";
+                    setCmd.CommandText = $"SET LOCAL {IterativeScanGuc} = relaxed_order";
                     await setCmd.ExecuteNonQueryAsync(cancellationToken);
 
                     if (_options.IterativeScanMaxTuples > 0)
@@ -306,6 +311,16 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 return;
             await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
 
+            // SPEC-20260926-pgvector-scan-and-halfvec RF-003: the extension must
+            // exist BEFORE ResolveStorageTypeAsync reads extversion — on a fresh
+            // database the lookup otherwise finds nothing and halfvec silently
+            // degrades to vector, ignoring the opt-in.
+            await using (var ext = conn.CreateCommand())
+            {
+                ext.CommandText = "CREATE EXTENSION IF NOT EXISTS vector";
+                await ext.ExecuteNonQueryAsync(cancellationToken);
+            }
+
             // SPEC-20260925-pgvector-halfvec RF-002: resolve the effective
             // storage type BEFORE the DDL — halfvec needs pgvector ≥0.7 and
             // dims ≤2000; otherwise fall back to vector with a warning.
@@ -314,7 +329,6 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
             await using var cmd = conn.CreateCommand();
             // RF-003: metadata jsonb — additive on existing DBs via ALTER … IF NOT EXISTS.
             cmd.CommandText = $$"""
-                CREATE EXTENSION IF NOT EXISTS vector;
                 CREATE TABLE IF NOT EXISTS kh_embeddings (
                     chunk_id    uuid PRIMARY KEY,
                     document_id uuid NOT NULL,
@@ -400,18 +414,22 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         if (!_options.AllowStorageMigration)
             return; // mismatch tolerated: queries work across vector/halfvec
 
+        // RF-002 (SPEC-20260926-pgvector-scan-and-halfvec): the HNSW index
+        // holds a vector ops class — ALTER TYPE would fail trying to rebuild
+        // it for halfvec, so drop BEFORE the column-type change and let the
+        // threshold logic recreate it with the right ops.
+        _hnswIndexCreated = false;
+        await using (var drop = conn.CreateCommand())
+        {
+            drop.CommandText = $"DROP INDEX IF EXISTS {HnswIndexName}";
+            await drop.ExecuteNonQueryAsync(ct);
+        }
+
         await using var alter = conn.CreateCommand();
         alter.CommandTimeout = 600; // table rewrite — give it room
         alter.CommandText =
             $"ALTER TABLE kh_embeddings ALTER COLUMN embedding TYPE {_storageType} USING embedding::{_storageType}";
         await alter.ExecuteNonQueryAsync(ct);
-
-        // Column-type change invalidates the HNSW ops class — drop so the
-        // threshold logic recreates it with the right ops.
-        await using var drop = conn.CreateCommand();
-        drop.CommandText = $"DROP INDEX IF EXISTS {HnswIndexName}";
-        await drop.ExecuteNonQueryAsync(ct);
-        _hnswIndexCreated = false;
     }
 
     /// <summary>Parameter for the embedding column — HalfVector when the

@@ -53,4 +53,63 @@ public sealed class PostgresVectorStoreTests
 
         await store.DeleteByDocumentAsync(docId);
     }
+
+    /// <summary>SPEC-20260926-pgvector-scan-and-halfvec RF-003: on a fresh
+    /// database the extension must exist before storage resolution — a
+    /// halfvec opt-in must actually produce a halfvec column.</summary>
+    [Fact]
+    public async Task FreshDb_StorageTypeHalfvec_ProducesHalfvecColumn()
+    {
+        if (string.IsNullOrWhiteSpace(ConnString))
+            return; // gated: docker run pgvector/pgvector:pg16
+
+        await using var store = new PostgresVectorStore(ConnString, dimensions: 4,
+            new PostgresOptions { StorageType = "halfvec", AllowStorageMigration = true });
+        await store.UpsertBatchAsync(
+            [new VectorUpsert(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new[] { 1f, 0f, 0f, 0f })],
+            "test-model");
+
+        await using var conn = new Npgsql.NpgsqlConnection(ConnString);
+        await conn.OpenAsync();
+        await using var check = conn.CreateCommand();
+        check.CommandText =
+            "SELECT udt_name FROM information_schema.columns WHERE table_name='kh_embeddings' AND column_name='embedding'";
+        Assert.Equal("halfvec", await check.ExecuteScalarAsync() as string);
+    }
+
+    /// <summary>SPEC-20260926-pgvector-scan-and-halfvec RF-002: with an HNSW
+    /// index present, migration drops it BEFORE altering the column type —
+    /// the ALTER would otherwise fail on the vector ops class.</summary>
+    [Fact]
+    public async Task HalfvecMigration_WithExistingHnsw_Completes()
+    {
+        if (string.IsNullOrWhiteSpace(ConnString))
+            return; // gated: docker run pgvector/pgvector:pg16
+
+        // 1) plain vector store with index created past threshold
+        await using (var store = new PostgresVectorStore(ConnString, 4,
+            new PostgresOptions { HnswThreshold = 1 }))
+        {
+            await store.UpsertBatchAsync(
+                [new VectorUpsert(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new[] { 1f, 0f, 0f, 0f }),
+                 new VectorUpsert(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new[] { 0f, 1f, 0f, 0f })],
+                "test-model");
+        }
+
+        // 2) same table, halfvec opt-in with migration allowed → must not fail
+        await using (var store = new PostgresVectorStore(ConnString, 4,
+            new PostgresOptions { StorageType = "halfvec", AllowStorageMigration = true, HnswThreshold = 1 }))
+        {
+            await store.UpsertBatchAsync(
+                [new VectorUpsert(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new[] { 0f, 0f, 1f, 0f })],
+                "test-model");
+        }
+
+        await using var conn = new Npgsql.NpgsqlConnection(ConnString);
+        await conn.OpenAsync();
+        await using var check = conn.CreateCommand();
+        check.CommandText =
+            "SELECT udt_name FROM information_schema.columns WHERE table_name='kh_embeddings' AND column_name='embedding'";
+        Assert.Equal("halfvec", await check.ExecuteScalarAsync() as string);
+    }
 }
