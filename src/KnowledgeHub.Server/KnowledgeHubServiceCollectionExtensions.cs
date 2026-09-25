@@ -202,7 +202,7 @@ public static class KnowledgeHubServiceCollectionExtensions
         // SPEC-20260924-corrective-rag RF-001: retrieval grading + corrective loop.
         services.AddScoped<Search.IRetrievalGrader>(sp =>
             string.Equals(
-                sp.GetRequiredService<IConfiguration>().GetValue("Search:Grading:Mode", "heuristic"),
+                sp.GetRequiredService<IConfiguration>().GetValue("Search:Grading:Mode", "off"),
                 "llm", StringComparison.OrdinalIgnoreCase)
                 ? (Search.IRetrievalGrader)new Search.LlmRetrievalGrader(
                     sp, sp.GetRequiredService<ILogger<Search.LlmRetrievalGrader>>())

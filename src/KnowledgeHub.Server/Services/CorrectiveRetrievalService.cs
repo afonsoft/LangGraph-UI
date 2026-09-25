@@ -26,7 +26,7 @@ public sealed class CorrectiveRetrievalService(
 
     public bool GradingEnabled =>
         !string.Equals(
-            configuration.GetValue("Search:Grading:Mode", "heuristic"), "off",
+            configuration.GetValue("Search:Grading:Mode", "off"), "off",
             StringComparison.OrdinalIgnoreCase);
 
     public async Task<RetrievalOutcome> RetrieveAsync(
