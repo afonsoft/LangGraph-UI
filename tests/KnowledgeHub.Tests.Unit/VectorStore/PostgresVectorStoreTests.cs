@@ -162,3 +162,13 @@ public sealed class PostgresHalfvecTests
     public void VersionSupported_ComparesNumeric(string have, string min, bool expected) =>
         Assert.Equal(expected, PostgresVectorStore.VersionSupported(have, min));
 }
+
+// SPEC-20260926-pgvector-scan-and-halfvec — iterative-scan GUC name.
+public sealed class PgIterativeScanTests
+{
+    [Fact]
+    public void IterativeScan_UsesHnswNamespaceGuc() =>
+        // The pgvector≥0.8 GUC is hnsw.iterative_scan — pgvector.iterative_scan
+        // parses but is never honored, which made the opt-in a no-op.
+        Assert.Equal("hnsw.iterative_scan", PostgresVectorStore.IterativeScanGuc);
+}
