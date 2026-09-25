@@ -71,6 +71,36 @@ public sealed class GoogleDriveApiClient(HttpClient http)
         return meta is null ? null : ToMeta(meta);
     }
 
+    /// <summary>SPEC-20260926-ingestion-connector-integrity RF-005: metadata probe
+    /// for public single-file links without an API key — a 1-byte ranged GET on
+    /// <c>uc?export=download</c> exposes the real filename (Content-Disposition)
+    /// and size (Content-Range/Content-Length) without downloading the body.
+    /// Returns null when the file is not publicly readable or has no name.</summary>
+    public async Task<DriveFileMeta?> TryGetPublicFileMetaAsync(string id, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"https://drive.google.com/uc?export=download&id={Uri.EscapeDataString(id)}";
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!response.IsSuccessStatusCode)
+                return null;
+            var name = response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                ?? response.Content.Headers.ContentDisposition?.FileNameStar?.Trim('"');
+            if (string.IsNullOrWhiteSpace(name))
+                return null;
+            long? size = response.Content.Headers.ContentRange?.Length
+                ?? response.Content.Headers.ContentLength;
+            return new DriveFileMeta(
+                id, name, response.Content.Headers.ContentType?.MediaType ?? "", size, null, null);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Recursively lists every file under <paramref name="folderId"/>
     /// via the v3 API — yields (meta, parentRelativePath) so callers can build
     /// relative keys. Requires an API key.</summary>

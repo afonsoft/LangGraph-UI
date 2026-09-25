@@ -20,7 +20,7 @@ namespace KnowledgeHub.Server.Ingestion.Connectors;
 public sealed class NotionConnector(
     IHttpClientFactory httpClientFactory,
     IIntegrationSecretStore secrets,
-    ILogger<NotionConnector> logger) : IIncrementalSourceConnector
+    ILogger<NotionConnector> logger) : IIncrementalSourceConnector, IItemFetchConnector
 {
     public SourceType Type => SourceType.Notion;
 
@@ -30,23 +30,17 @@ public sealed class NotionConnector(
     public Task<FetchResult> FetchAsync(KnowledgeSource source, CancellationToken cancellationToken) =>
         FetchAsync(source, new Dictionary<string, string>(), cancellationToken);
 
-    public async Task<FetchResult> FetchAsync(
-        KnowledgeSource source,
-        IReadOnlyDictionary<string, string> existingFingerprints,
-        CancellationToken cancellationToken)
+    /// <summary>Builds the authenticated v1 client shared by FetchAsync and the
+    /// on-demand item fetch (RF-001).</summary>
+    private async Task<NotionApiClient> BuildClientAsync(
+        KnowledgeSource source, ConnectorConfig config, CancellationToken cancellationToken)
     {
-        var config = ConnectorConfig.Parse(source.ConfigurationJson);
         var token = await secrets.GetAsync(SecretKey(source.Id), cancellationToken)
             ?? throw new InvalidOperationException(
                 $"Notion source '{source.Name}': token Notion não configurado — salve a source com o integration token");
 
         var apiBaseUrl = config.String("apiBaseUrl") ?? "https://api.notion.com";
         var apiVersion = config.String("apiVersion") ?? "2022-06-28";
-        var maxPages = config.Int("maxPages", 200, 1, 1000);
-        var maxBlockDepth = config.Int("maxBlockDepth", 10, 1, 50);
-        var maxBlocksPerPage = config.Int("maxBlocksPerPage", 500, 10, 5000);
-        var rootPageIds = config.StringArray("rootPageIds");
-        var rootDatabaseIds = config.StringArray("rootDatabaseIds");
 
         var http = httpClientFactory.CreateClient("notion");
         http.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
@@ -60,6 +54,55 @@ public sealed class NotionConnector(
         {
             throw new InvalidOperationException("token Notion inválido", ex);
         }
+        return client;
+    }
+
+    /// <summary>RF-001 (SPEC-20260926-ingestion-connector-integrity): on-demand
+    /// single-page fetch for stub docs that need reprocessing without stored
+    /// RawContent. Returns null when the page is unreachable.</summary>
+    public async Task<RawDocument?> FetchItemAsync(
+        KnowledgeSource source, string uriReference, CancellationToken cancellationToken)
+    {
+        const string prefix = "notion://page/";
+        if (!uriReference.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+        var pageId = uriReference[prefix.Length..];
+        var config = ConnectorConfig.Parse(source.ConfigurationJson);
+        var client = await BuildClientAsync(source, config, cancellationToken);
+        var ctx = new FetchContext(client, new Dictionary<string, string>(),
+            config.Int("maxPages", 200, 1, 1000),
+            config.Int("maxBlockDepth", 10, 1, 50),
+            config.Int("maxBlocksPerPage", 500, 10, 5000));
+        try
+        {
+            var page = await client.GetPageAsync(pageId, cancellationToken);
+            ctx.ResetPageBudget(pageId);
+            var tree = await BuildTreeAsync(pageId, 0, ctx, cancellationToken);
+            var title = NotionBlockRenderer.ExtractPageTitle(page);
+            return new RawDocument(
+                uriReference, title, Render(page, tree, includeProperties: false),
+                $"notion:{ReadEditedTime(page)}");
+        }
+        catch (NotionApiException ex)
+        {
+            logger.LogWarning("Notion on-demand fetch for {PageId} failed: {Message}", pageId, ex.Message);
+            return null;
+        }
+    }
+
+    public async Task<FetchResult> FetchAsync(
+        KnowledgeSource source,
+        IReadOnlyDictionary<string, string> existingFingerprints,
+        CancellationToken cancellationToken)
+    {
+        var config = ConnectorConfig.Parse(source.ConfigurationJson);
+        var maxPages = config.Int("maxPages", 200, 1, 1000);
+        var maxBlockDepth = config.Int("maxBlockDepth", 10, 1, 50);
+        var maxBlocksPerPage = config.Int("maxBlocksPerPage", 500, 10, 5000);
+        var rootPageIds = config.StringArray("rootPageIds");
+        var rootDatabaseIds = config.StringArray("rootDatabaseIds");
+
+        var client = await BuildClientAsync(source, config, cancellationToken);
 
         var ctx = new FetchContext(client, existingFingerprints, maxPages, maxBlockDepth, maxBlocksPerPage);
 
@@ -113,7 +156,8 @@ public sealed class NotionConnector(
 
         logger.LogInformation("Notion fetch for source {SourceId}: {Docs} documents, {Warnings} warnings",
             source.Id, ctx.Documents.Count, ctx.Warnings.Count);
-        return new FetchResult(ctx.Documents, ctx.Warnings);
+        return new FetchResult(ctx.Documents, ctx.Warnings,
+            ctx.FailedUris.Count > 0 ? ctx.FailedUris : null, ctx.Truncated);
     }
 
     /// <summary>Traversal-mode page fetch: resolves metadata, walks the tree for
@@ -132,6 +176,7 @@ public sealed class NotionConnector(
         {
             logger.LogWarning("Notion page {PageId} fetch failed: {Message}", pageId, ex.Message);
             ctx.Warnings.Add($"{pageId}: {ex.Message}");
+            ctx.FailedUris.Add($"notion://page/{pageId}"); // exists upstream, fetch failed — keep doc (RF-002)
         }
     }
 
@@ -195,6 +240,7 @@ public sealed class NotionConnector(
         {
             logger.LogWarning("Notion blocks for {PageId} failed: {Message}", id, ex.Message);
             ctx.Warnings.Add($"{title} ({id}): {ex.Message}");
+            ctx.FailedUris.Add(uri); // page exists, blocks failed — keep doc (RF-002)
             return;
         }
 
@@ -286,6 +332,9 @@ public sealed class NotionConnector(
         public string CurrentPageId { get; private set; } = "";
         public List<RawDocument> Documents { get; } = [];
         public List<string> Warnings { get; } = [];
+        /// <summary>Page URIs that exist upstream but failed mid-fetch —
+        /// reconciliation keeps their documents (RF-002).</summary>
+        public List<string> FailedUris { get; } = [];
         public HashSet<string> SeenPages { get; } = new();
         public HashSet<string> SeenDatabases { get; } = new();
         public List<string> DiscoveredPages { get; } = [];

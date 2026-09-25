@@ -474,10 +474,11 @@
                     config["accountName"] = Model.AccountName;
                 if (!string.IsNullOrWhiteSpace(Model.Prefix))
                     config["prefix"] = Model.Prefix;
-                // One credential field: a pasted connection string contains '='
-                // pairs; a bare account key does not.
+                // RF-004 (SPEC-20260926-ingestion-connector-integrity): classify
+                // by content, not by '=' — base64 account keys are '='-padded.
                 if (!string.IsNullOrEmpty(Model.SecretAccessKey))
-                    config[Model.SecretAccessKey.Contains('=') ? "connectionString" : "accountKey"] = Model.SecretAccessKey;
+                    config[AzureCredentialClassifier.LooksLikeConnectionString(Model.SecretAccessKey)
+                        ? "connectionString" : "accountKey"] = Model.SecretAccessKey;
                 break;
             case SourceType.GoogleDrive:
                 config["sharedUrl"] = Model.SharedUrl;

@@ -20,6 +20,7 @@ public sealed partial class DocumentFileConnector(ILogger<DocumentFileConnector>
     public static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".md", ".txt", ".pdf", ".docx",
+        ".csv", // Google Sheets export (SPEC-20260926-ingestion-connector-integrity RF-005)
         ".cs", ".java", ".js", ".ts", ".py", ".go", ".rs", ".sql",
         ".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".config"
     };
@@ -27,7 +28,7 @@ public sealed partial class DocumentFileConnector(ILogger<DocumentFileConnector>
     /// <summary>Extensions read as raw text (no parser).</summary>
     private static readonly HashSet<string> PlainTextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".md", ".txt",
+        ".md", ".txt", ".csv",
         ".cs", ".java", ".js", ".ts", ".py", ".go", ".rs", ".sql",
         ".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".config"
     };

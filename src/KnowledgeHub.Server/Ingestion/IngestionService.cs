@@ -153,13 +153,14 @@ public sealed class IngestionService(
                 cancellationToken.ThrowIfCancellationRequested();
                 var relative = Path.GetRelativePath(root, file);
                 seen.Add(relative);
+                KnowledgeDocument? doc = null;
 
                 try
                 {
                     var content = await File.ReadAllTextAsync(file, cancellationToken);
                     var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)));
 
-                    if (existing.TryGetValue(relative, out var doc) && doc.ContentHash == hash
+                    if (existing.TryGetValue(relative, out doc) && doc.ContentHash == hash
                         && !forceReindex
                         && doc.ChunkerVersion == Chunking.ChunkerSelector.CurrentVersion
                         && doc.ChunkerConfigHash == configHash)
@@ -232,6 +233,10 @@ public sealed class IngestionService(
                     // cause (inner exception), not the EF wrapper message.
                     warnings.Add($"{relative}: {ex.GetBaseException().Message}");
                     failed++;
+                    // RF-006 (SPEC-20260926-ingestion-connector-integrity): detach
+                    // this doc's partial tracked state — the next document's
+                    // SaveChanges must not persist or re-fail on it.
+                    DetachPartialAsync(doc, db);
                 }
                 options?.Progress?.Report(new SyncProgress(processed, skipped, failed, chunksCreated));
             }
@@ -316,6 +321,19 @@ public sealed class IngestionService(
         var processed = 0; var skipped = 0; var removed = 0; var failed = 0; var chunksCreated = 0;
         var warnings = new List<string>(fetch.Warnings);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // RF-002: upstream items that failed to download/extract still exist —
+        // their indexed documents count as "seen" and are never deleted here.
+        if (fetch.FailedUris is { Count: > 0 } failedUris)
+        {
+            seen.UnionWith(failedUris);
+            warnings.Add($"{failedUris.Count} item(s) failed to download/extract — indexed content kept");
+        }
+        // RF-002: a listing cut by a provider cap cannot prove absence — skip
+        // the unseen-deletion pass entirely for this sync.
+        if (fetch.Truncated)
+        {
+            warnings.Add("remote listing was truncated by provider limit — deletion pass skipped");
+        }
         var graphBudget = graphSettings.GetEffective().MaxChunksPerSync;
 
         // SPEC-20260924-async-ingestion-queue RF-003: chunker versioning.
@@ -332,15 +350,42 @@ public sealed class IngestionService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             seen.Add(raw.UriReference);
+            KnowledgeDocument? doc = null;
 
             try
             {
+                existing.TryGetValue(raw.UriReference, out doc);
+
+                // RF-001: an empty-text stub (unchanged-fingerprint marker) must
+                // never overwrite stored content — when the doc still needs
+                // reprocessing (force/chunker change), fall back to stored
+                // RawContent, then to the connector's on-demand item fetch.
+                var text = raw.TextContent;
+                if (text.Length == 0)
+                {
+                    text = doc?.RawContent ?? "";
+                    if (text.Length == 0 && connector is Connectors.IItemFetchConnector itemFetch)
+                    {
+                        var fetched = await itemFetch.FetchItemAsync(
+                            source, raw.UriReference, cancellationToken);
+                        if (fetched is not null)
+                            text = fetched.TextContent;
+                    }
+                    if (text.Length == 0)
+                    {
+                        warnings.Add($"{raw.UriReference}: no content available for reprocessing — kept as-is");
+                        failed++;
+                        continue;
+                    }
+                }
+
                 // RF-007: a connector-supplied fingerprint (upstream change marker)
                 // replaces the content hash for dedup — unchanged items arrive with
                 // empty TextContent and must not overwrite stored RawContent.
-                var hash = raw.Fingerprint
-                    ?? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw.TextContent)));
-                if (existing.TryGetValue(raw.UriReference, out var doc) && doc.ContentHash == hash
+                var hash = string.IsNullOrEmpty(raw.Fingerprint)
+                    ? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))
+                    : raw.Fingerprint;
+                if (doc is not null && doc.ContentHash == hash
                     && !forceReindex
                     && doc.ChunkerVersion == Chunking.ChunkerSelector.CurrentVersion
                     && doc.ChunkerConfigHash == configHash)
@@ -366,7 +411,7 @@ public sealed class IngestionService(
                         .ExecuteDeleteAsync(cancellationToken);
                 }
 
-                doc.RawContent = raw.TextContent;
+                doc.RawContent = text;
                 doc.ContentHash = hash;
                 doc.ChunkerVersion = Chunking.ChunkerSelector.CurrentVersion;
                 doc.ChunkerConfigHash = configHash;
@@ -376,7 +421,7 @@ public sealed class IngestionService(
                 // RemoveRange produces a bogus UPDATE inside the same SaveChanges batch.
                 var (kind, pieces) = await Chunking.ChunkerSelector.ChunkAsync(
                     raw.UriReference,
-                    raw.TextContent,
+                    text,
                     maxTokens, overlapTokens,
                     embeddings, configuration, chunkStrategy, logger, cancellationToken);
                 var newChunks = pieces
@@ -405,13 +450,17 @@ public sealed class IngestionService(
                 logger.LogWarning(ex, "Document '{Uri}' failed during sync — continuing", raw.UriReference);
                 warnings.Add($"{raw.UriReference}: {ex.GetBaseException().Message}");
                 failed++;
+                // RF-006: detach this doc's partially-mutated tracked state so the
+                // next document's SaveChanges cannot persist (or fail on) it.
+                DetachPartialAsync(doc, db);
             }
             options?.Progress?.Report(new SyncProgress(processed, skipped, failed, chunksCreated));
         }
 
         foreach (var (uri, doc) in existing)
         {
-            if (seen.Contains(uri))
+            // RF-002: a truncated listing cannot prove absence — keep everything.
+            if (seen.Contains(uri) || fetch.Truncated)
                 continue;
             await vectors.DeleteByDocumentAsync(doc.Id, cancellationToken);
             db.Documents.Remove(doc);
@@ -440,6 +489,23 @@ public sealed class IngestionService(
             Reason = warnings.Count == 0 ? null : $"{warnings.Count} item(s) skipped or flagged: {string.Join("; ", warnings.Take(5))}",
             Warnings = warnings.Count == 0 ? null : warnings
         };
+    }
+
+    /// <summary>SPEC-20260926-ingestion-connector-integrity RF-006: after a
+    /// per-document failure, detaches the doc and any chunks added this
+    /// iteration so a later <see cref="DbContext.SaveChangesAsync"/> cannot
+    /// persist partial state or fail again on it.</summary>
+    private static void DetachPartialAsync(KnowledgeDocument? doc, KnowledgeHubDbContext db)
+    {
+        if (doc is null)
+            return;
+        foreach (var entry in db.ChangeTracker.Entries()
+            .Where(e => ReferenceEquals(e.Entity, doc)
+                || (e.Entity is DocumentChunk c && c.KnowledgeDocumentId == doc.Id))
+            .ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     /// <summary>
