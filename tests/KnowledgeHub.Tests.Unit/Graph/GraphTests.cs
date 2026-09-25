@@ -118,6 +118,46 @@ public sealed class GraphTests
         Assert.Equal(2, conflicts.Count); // both sides recorded
     }
 
+    /// <summary>SPEC-20260926-kg-alias-conflict-dedup: an entity gaining a third
+    /// type must not re-insert conflict aliases that already exist — production
+    /// incident: 465 docs failed on 'UNIQUE constraint failed: KgAliases'.</summary>
+    [Fact]
+    public async Task ResolveNode_ThirdType_DoesNotDuplicateConflictAliases()
+    {
+        var (conn, db, store) = await SeedAsync();
+        await using var _ = conn;
+        var sourceId = Guid.NewGuid();
+
+        await store.ResolveNodeAsync("Atlas", "service", sourceId, default);
+        await store.ResolveNodeAsync("atlas", "database", sourceId, default);
+        var n3 = await store.ResolveNodeAsync("ATLAS", "team", sourceId, default);
+
+        var conflicts = await db.KgAliases
+            .Where(a => a.AliasNormalized == "atlas" && a.Reason == "conflict")
+            .ToListAsync();
+        // aliases exist for all 3 nodes but never duplicated per (name, node).
+        Assert.Equal(3, conflicts.Count);
+        Assert.Equal(3, conflicts.Select(a => a.KgNodeId).Distinct().Count());
+        Assert.NotNull(n3);
+    }
+
+    /// <summary>Same scenario but the repeated variant spelling path — the
+    /// merge-alias branch must also dedupe against pending adds.</summary>
+    [Fact]
+    public async Task ResolveNode_RepeatedVariantSpelling_SingleMergeAlias()
+    {
+        var (conn, db, store) = await SeedAsync();
+        await using var _ = conn;
+        var sourceId = Guid.NewGuid();
+
+        var a = await store.ResolveNodeAsync("DB-Y", "database", sourceId, default);
+        await store.ResolveNodeAsync("db y", "database", sourceId, default);
+        var c = await store.ResolveNodeAsync("db y", "database", sourceId, default);
+
+        Assert.Equal(a.Id, c.Id);
+        Assert.Single(await db.KgAliases.Where(x => x.KgNodeId == a.Id).ToListAsync());
+    }
+
     [Fact]
     public async Task FindNode_ResolvesThroughAlias()
     {

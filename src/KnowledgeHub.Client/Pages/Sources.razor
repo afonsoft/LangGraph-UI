@@ -160,9 +160,10 @@
                         <dd class="col-sm-9">@_statusJob.Status</dd>
                         <dt class="col-sm-3">Docs</dt>
                         <dd class="col-sm-9">
-                            @_statusJob.DocsProcessed processados,
-                            @_statusJob.DocsSkipped pulados,
-                            @_statusJob.DocsFailed com falha — @_statusJob.ChunksCreated chunks
+                            <Badge Color="Color.Success">@_statusJob.DocsProcessed ok</Badge>
+                            <Badge Color="Color.Secondary">@_statusJob.DocsSkipped pulados</Badge>
+                            <Badge Color="Color.Danger">@_statusJob.DocsFailed falhas</Badge>
+                            <span class="text-muted"> — @_statusJob.ChunksCreated chunks</span>
                         </dd>
                         <dt class="col-sm-3">Início/Fim</dt>
                         <dd class="col-sm-9">
@@ -175,6 +176,33 @@
                             <dd class="col-sm-9 text-danger">@_statusJob.Error</dd>
                         }
                     </dl>
+
+                    @* SPEC-20260926-job-error-details RF-005: warnings agrupados
+                       por causa raiz — 465 docs com a mesma exceção viram um grupo. *@
+                    @if (_statusJob.Warnings is { Count: > 0 } warnings)
+                    {
+                        <h6 class="mt-3">Falhas / avisos (@warnings.Count)</h6>
+                        <div style="max-height:240px;overflow-y:auto">
+                            @foreach (var group in GroupWarnings(warnings))
+                            {
+                                <div class="border rounded p-2 mb-2">
+                                    <div class="text-danger small mb-1">
+                                        <strong>@group.Docs.Count×</strong> @group.Message
+                                    </div>
+                                    <ul class="mb-0 small text-muted">
+                                        @foreach (var docName in group.Docs.Take(5))
+                                        {
+                                            <li><code>@docName</code></li>
+                                        }
+                                        @if (group.Docs.Count > 5)
+                                        {
+                                            <li>… e mais @(group.Docs.Count - 5) documento(s)</li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        </div>
+                    }
                 }
             }
         </BodyTemplate>
@@ -432,6 +460,39 @@
         {
             _statusJobLoading = false;
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>SPEC-20260926-job-error-details RF-005: agrupa warnings pelo
+    /// texto do erro. Formatos emitidos pelo server: "{doc}: {erro}",
+    /// "graph extraction failed for '{doc}': {erro}" e flags livres
+    /// ("{doc}: N chunk(s) flagged (...)").</summary>
+    private static List<(string Message, List<string> Docs)> GroupWarnings(IReadOnlyList<string> warnings)
+    {
+        var groups = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var w in warnings)
+        {
+            var idx = w.IndexOf(": ", StringComparison.Ordinal);
+            if (idx < 0)
+            {
+                AddGroup(w, "aviso");
+                continue;
+            }
+            var doc = w[..idx];
+            var msg = w[(idx + 2)..];
+            if (doc.StartsWith("graph extraction failed for '", StringComparison.Ordinal)
+                && doc.EndsWith('\''))
+                doc = $"grafo: {doc["graph extraction failed for '".Length..^1]}";
+            AddGroup(msg, doc);
+        }
+        return groups.Select(kv => (kv.Key, kv.Value))
+            .OrderByDescending(g => g.Value.Count).ToList();
+
+        void AddGroup(string msg, string doc)
+        {
+            if (!groups.TryGetValue(msg, out var list))
+                groups[msg] = list = [];
+            list.Add(doc);
         }
     }
 

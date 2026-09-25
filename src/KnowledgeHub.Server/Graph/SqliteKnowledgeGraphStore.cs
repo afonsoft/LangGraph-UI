@@ -33,7 +33,14 @@ public sealed class SqliteKnowledgeGraphStore(
             var siblings = await db.KgNodes
                 .Where(n => n.NormalizedName == normalized && n.Type != nodeType)
                 .ToListAsync(ct);
+            // SPEC-20260926-kg-alias-conflict-dedup RF-001: siblings may already
+            // carry a conflict/merge alias for this normalized name (entity
+            // gaining a 3rd+ type, or pending adds in the same batch) — the
+            // (AliasNormalized, KgNodeId) unique index would blow the save.
             foreach (var sibling in siblings)
+            {
+                if (await AliasExistsOrPendingAsync(normalized, sibling.Id, ct))
+                    continue;
                 db.KgAliases.Add(new KgAlias
                 {
                     AliasNormalized = normalized,
@@ -41,23 +48,24 @@ public sealed class SqliteKnowledgeGraphStore(
                     KnowledgeSourceId = sourceId,
                     Reason = "conflict"
                 });
+            }
             if (siblings.Count > 0)
             {
                 logger.LogInformation(
                     "entity '{Name}' now exists under {Count}+1 types — conflict aliases recorded",
                     normalized, siblings.Count);
-                db.KgAliases.Add(new KgAlias
-                {
-                    AliasNormalized = normalized,
-                    KgNodeId = node.Id,
-                    KnowledgeSourceId = sourceId,
-                    Reason = "conflict"
-                });
+                if (!await AliasExistsOrPendingAsync(normalized, node.Id, ct))
+                    db.KgAliases.Add(new KgAlias
+                    {
+                        AliasNormalized = normalized,
+                        KgNodeId = node.Id,
+                        KnowledgeSourceId = sourceId,
+                        Reason = "conflict"
+                    });
             }
         }
         else if (node.Name != name.Trim()
-            && !await db.KgAliases.AnyAsync(
-                a => a.AliasNormalized == normalized && a.KgNodeId == node.Id, ct))
+            && !await AliasExistsOrPendingAsync(normalized, node.Id, ct))
         {
             // Variant spelling merged into the canonical node — recorded.
             db.KgAliases.Add(new KgAlias
@@ -70,6 +78,20 @@ public sealed class SqliteKnowledgeGraphStore(
         }
         await db.SaveChangesAsync(ct);
         return node;
+    }
+
+    /// <summary>RF-001: the AnyAsync check alone misses rows still pending in the
+    /// change tracker (Added but not yet flushed) — both must be consulted.</summary>
+    private async Task<bool> AliasExistsOrPendingAsync(string normalized, Guid nodeId, CancellationToken ct)
+    {
+        var pending = db.ChangeTracker.Entries<KgAlias>()
+            .Any(e => e.State == EntityState.Added
+                && e.Entity.AliasNormalized == normalized
+                && e.Entity.KgNodeId == nodeId);
+        if (pending)
+            return true;
+        return await db.KgAliases.AnyAsync(
+            a => a.AliasNormalized == normalized && a.KgNodeId == nodeId, ct);
     }
 
     /// <inheritdoc />
