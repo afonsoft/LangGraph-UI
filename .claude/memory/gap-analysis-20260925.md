@@ -98,3 +98,13 @@ Suite: 613 unit + 229 integration green.
 - Pós-deploy: autosync em curso com 0 failed (8 proc/355 skip) — bug morto.
 - Lição: qualquer catch que engole DbUpdateException num contexto
   compartilhado deve detachar os Added pendentes — ou isolar o scope.
+
+## UI work (2026-09-26): login split + monitor client order + spec approvals
+
+- PR #192 (bafa6bb): /login split — instruções MCP esquerda, login direita;
+  mobile login-em-cima; ordem Claude Code→Devin→opencode→agy; sem Claude Desktop.
+- PR #193 (49ba1ad): McpMonitor "Como conectar um client" mesma ordem + bloco
+  Genérico (SSE/mcp-remote); 12 infra specs Draft→Approved (approval only).
+- Branches: locais mergeadas limpas; remotas mergeadas deletadas; 5 remotas
+  com trabalho não-mergeado preservadas.
+- Verificação deploy: strings novas presentes no WASM publicado (UTF-16).
