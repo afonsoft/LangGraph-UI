@@ -7,7 +7,7 @@
 | Autor | Devin |
 | Stack | `KnowledgeHub.Client` (Settings.razor, app.css), `KnowledgeHub.Server` (Settings endpoints, Embeddings, Caching), `KnowledgeHub.Shared` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Approved` — aprovada pelo owner 2026-09-26 |
+| Status | `Done` |
 | Ticket | UX-requests 2026-09-26 (owner) |
 | Origem | pedido direto do usuário |
 
