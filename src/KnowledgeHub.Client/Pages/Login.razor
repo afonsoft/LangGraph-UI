@@ -4,32 +4,72 @@
 @inject AuthApiClient Auth
 @inject NavigationManager Nav
 @inject KhAuthenticationStateProvider AuthState
+@inject IJSRuntime JS
 
 <PageTitle>Login — Knowledge</PageTitle>
 
-<div class="d-flex justify-content-center" style="padding-top: 12vh;">
-    <div class="card" style="width: 360px;">
-        <div class="card-body">
-            <h4 class="card-title mb-1">Knowledge</h4>
-            <p class="text-muted mb-4">Entre para administrar a plataforma.</p>
+@* SPEC-20260926-login-split-layout: split panel — MCP client instructions on the
+   left, login card on the right; mobile stacks login first. *@
+<div class="row min-vh-100 align-items-center g-4 py-4">
+    <div class="col-12 col-lg-5 order-1 order-lg-2">
+        <div class="card shadow-sm mx-auto" style="max-width: 380px;">
+            <div class="card-body">
+                <h4 class="card-title mb-1">Knowledge</h4>
+                <p class="text-muted mb-4">Entre para administrar a plataforma.</p>
 
-            @if (_error is not null)
+                @if (_error is not null)
+                {
+                    <div class="alert alert-danger py-2">@_error</div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label">Usuário</label>
+                    <input class="form-control" @bind="_username" @bind:event="oninput" autocomplete="username" />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Senha</label>
+                    <input class="form-control" type="password" @bind="_password" @bind:event="oninput"
+                           autocomplete="current-password" @onkeydown="OnEnter" />
+                </div>
+
+                <Button Color="Color.Primary" Text="Entrar" IsAsync="true" IsBlock="true"
+                        OnClick="DoLogin" IsDisabled="_busy" />
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-7 order-2 order-lg-1">
+        <div class="mx-auto" style="max-width: 640px;">
+            <h5 class="mb-1">Como conectar um client</h5>
+            <p class="text-muted small mb-3">
+                O KnowledgeHub é um servidor MCP nativo. Gere uma API key
+                <code>aft_*</code> em <strong>API Keys</strong> após o login e
+                aponte o seu client para:
+            </p>
+            <div class="border rounded bg-body-tertiary p-2 mb-3 small">
+                <div><strong>Streamable HTTP</strong> (recomendado): <code>@_mcpUrl</code></div>
+                <div class="mt-1"><strong>Legacy SSE</strong>: <code>@_sseUrl</code>
+                    <span class="text-muted"> — sem suporte a header? use <code>?access_token=aft_...</code></span></div>
+            </div>
+
+            @foreach (var c in _clients)
             {
-                <div class="alert alert-danger py-2">@_error</div>
+                <div class="border rounded p-2 mb-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong class="small">@c.Name</strong>
+                        <Button Size="Size.ExtraSmall" Color="Color.Secondary" IsOutline="true"
+                                Icon="fa-solid fa-copy" TooltipText="Copiar"
+                                TooltipPlacement="Placement.Left"
+                                OnClick="() => CopySnippet(c.Snippet)" />
+                    </div>
+                    <pre class="small mb-0 mt-1 text-muted" style="white-space:pre-wrap;word-break:break-all">@c.Snippet</pre>
+                </div>
             }
 
-            <div class="mb-3">
-                <label class="form-label">Usuário</label>
-                <input class="form-control" @bind="_username" @bind:event="oninput" autocomplete="username" />
-            </div>
-            <div class="mb-4">
-                <label class="form-label">Senha</label>
-                <input class="form-control" type="password" @bind="_password" @bind:event="oninput"
-                       autocomplete="current-password" @onkeydown="OnEnter" />
-            </div>
-
-            <Button Color="Color.Primary" Text="Entrar" IsAsync="true" IsBlock="true"
-                    OnClick="DoLogin" IsDisabled="_busy" />
+            <p class="text-muted small mt-3 mb-0">
+                Clients que só falam SSE legado usam <code>@_sseUrl</code>; o token pode ir no
+                query param <code>?access_token=</code> quando o client não envia headers.
+            </p>
         </div>
     </div>
 </div>
@@ -41,6 +81,42 @@
     private string _password = "";
     private string? _error;
     private bool _busy;
+    private string _mcpUrl = "";
+    private string _sseUrl = "";
+    private List<(string Name, string Snippet)> _clients = [];
+
+    protected override void OnInitialized()
+    {
+        var baseUri = Nav.BaseUri.TrimEnd('/');
+        _mcpUrl = $"{baseUri}/mcp";
+        _sseUrl = $"{baseUri}/mcp/sse";
+
+        // SPEC-20260926-login-split-layout RF-003: ordered Claude Code → Devin →
+        // opencode → agy (Claude Desktop intentionally omitted).
+        _clients =
+        [
+            ("Claude Code",
+             $"claude mcp add --transport http knowledgehub {_mcpUrl} \\\n  --header \"Authorization: Bearer aft_...\""),
+            ("Devin",
+             $"Org/user settings → MCP servers → add custom server:\n" +
+             $"  URL: {_mcpUrl}\n  Header: Authorization: Bearer aft_...\n" +
+             $"(SSE-only flows: {_sseUrl}?access_token=aft_...)"),
+            ("opencode",
+             "// opencode.json\n{\n  \"mcp\": {\n    \"knowledgehub\": {\n" +
+             $"      \"type\": \"remote\",\n      \"url\": \"{_mcpUrl}\",\n" +
+             "      \"headers\": { \"Authorization\": \"Bearer aft_...\" }\n    }\n  }\n}"),
+            ("agy (Antigravity)",
+             "// ~/.gemini/antigravity/mcp_config.json\n{\n  \"mcpServers\": {\n" +
+             $"    \"knowledgehub\": {{\n      \"url\": \"{_mcpUrl}\",\n" +
+             "      \"headers\": { \"Authorization\": \"Bearer aft_...\" }\n    }\n  }\n}"),
+        ];
+    }
+
+    private async Task CopySnippet(string snippet)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", snippet); }
+        catch { /* clipboard API may be unavailable (non-secure context) */ }
+    }
 
     private async Task OnEnter(KeyboardEventArgs e)
     {
