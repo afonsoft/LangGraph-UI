@@ -1,8 +1,8 @@
 # Short-term memory — session state (overwritten each session, ≤100 lines)
 
-- **Last verified commit on `main`**: `48f1edc` (PR #247 — ingestion orphan-job fix).
-- **Baseline**: build 0 warnings · 719 unit + 6/6 IngestionJobsApiTests integration green (local) · prod container healthy :5550 pós-#247 redeploy.
-- **Done hoje (2026-09-26, sessão ingestion-deflake)**: root cause real do flake `Jobs_List_FiltersBySource` encontrado e corrigido (#247); 6 branches locais mergeadas deletadas; redeploy via compose healthy.
+- **Last verified commit on `main`**: `db1bc55` (PR #250 — mobile nav toggler).
+- **Baseline**: build 0 warnings · 719 unit verdes (local) · prod container healthy :5550 pós-#250 redeploy.
+- **Done hoje (2026-09-26, sessões ingestion-deflake + mobile)**: root cause do flake `Jobs_List_FiltersBySource` corrigido (#247); 6 branches locais deletadas; mobile UX — settings tabs alcançáveis (#249) e hambúrguer visível (#250); redeploys healthy.
 - **Blockers**: nenhum.
 - **Next**: enforce_admins decisão pendente; teste shutdown gracioso×abrupto em aberto; watchdog de jobs `queued` stale continua como follow-up opcional.
 
