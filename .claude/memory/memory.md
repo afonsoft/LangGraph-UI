@@ -1,64 +1,18 @@
 # Short-term memory — session state (overwritten each session, ≤100 lines)
 
-- **Last verified commit on `main`**: `05571ea` (PR #206 — memory log).
-- **Baseline**: build 0 warnings · 665 unit + 243 integration green (última sessão) · prod container healthy :5550 pós-#205 redeploy.
-- **Done hoje (2026-09-25, sessão 4)**: triage completo devin-review (~90 findings em #184–#206 + #9–#43) → ~45 CONFIRMADOS abertos, relatório em `.claude/memory/devin-review-triage-20260925.md`; 4 branches obsoletas deletadas; redeploy pós-#205 healthy.
-- **Blockers**: agrupamento dos findings em SPECs aguarda aprovação do owner.
-- **Next**: owner aprova SPEC grouping → write-specs → execute; `enforce_admins` decisão pendente; teste shutdown gracioso×abrupto em aberto.
+- **Last verified commit on `main`**: `48f1edc` (PR #247 — ingestion orphan-job fix).
+- **Baseline**: build 0 warnings · 719 unit + 6/6 IngestionJobsApiTests integration green (local) · prod container healthy :5550 pós-#247 redeploy.
+- **Done hoje (2026-09-26, sessão ingestion-deflake)**: root cause real do flake `Jobs_List_FiltersBySource` encontrado e corrigido (#247); 6 branches locais mergeadas deletadas; redeploy via compose healthy.
+- **Blockers**: nenhum.
+- **Next**: enforce_admins decisão pendente; teste shutdown gracioso×abrupto em aberto; watchdog de jobs `queued` stale continua como follow-up opcional.
 
-## Session summary (2026-09-25 — devin-review triage + housekeeping)
+## Session summary (2026-09-26 — ingestion orphan-job root cause + fix)
 
-- Análise dos comentários devin-ai-integration em todos os PRs com findings (155 comments, #184–#206 + era antiga): cada finding verificado contra main — clusters A (ingestão/conectores, 9), B (cache, 6), C (embeddings/settings, 5), D (search/RAG, 4), E (pgvector, 3), F (log-level, 4), G (UI/monitor, 10), H (era antiga: backup.sh vault-collision válido), I (bookkeeping).
-- Cluster mais severo: integridade de ingestão (wipe de docs no reindex por texto vazio; falha transitória → delete; fila-cheia deadlock) e CacheTtlPolicy morta (nunca resolvida no DI).
-- Housekeeping: 4 branches locais deletadas (Antigravity×2, flagged-chunk-badge, quality-test — conteúdo em main); redeploy pós-#205 (healthz+ready 200).
-- Aguardando: aprovação do agrupamento em SPECs; enforce_admins; shutdown test.
-
-## 2026-09-26 — Epic E22 completo (6 SPECs → 6 PRs)
-
-PRs #215-#220 abertos (issues #209-#214 → in_pullrequest). Checks verdes/rodando.
-Sessão executou as 6 SPECs aprovadas em branches independentes off main@9b52213.
-Decisões/notas de implementação no log datado (20260926-memory.md).
-
-Pendente: revisão/merge dos PRs, redeploy, enforce_admins, shutdown test.
-
-## 2026-09-26 — Postgres vector store ativado (host PG18)
-
-- Prompt: conectar no Postgres (rag_db/rag_user no host :5432, aaPanel `/www/server/pgsql`), credenciais em `.env`, compose lendo env — padrão proxyLLM-AI.
-- Instalado pgvector 0.8.6 no PG18 do host (build /tmp/pgvector, PG_CONFIG=/www/server/pgsql/bin/pg_config); `CREATE EXTENSION vector` em rag_db via postgres@127.0.0.1 (trust).
-- pg_hba.conf: adicionado `host rag_db rag_user 172.22.0.0/16 md5` (subnet langgraph-ui_default; host-gateway resolve 172.17.0.1 mas client_ip é do container).
-- Branch `feature/Devin-20260925-postgres-vectorstore` (commit 3d072c3): compose `env_file: .env` (required:false) + `VectorStore__ConnectionString` composta de POSTGRES_*; install.sh idem; .env.example documenta.
-- **Bug real achado**: `PostgresVectorStore.SearchAsync` commitava tx com reader aberto → Npgsql 10 `OperationInProgress` em TODA busca. Fix: `await using` no reader antes do Commit. `/health/ready` Healthy pós-redeploy.
-- Resolvido: 2136 embeddings migrados do SQLite (`Chunks`, float32 LE) para `kh_embeddings` via TSV — model `deterministic:hash384`, dims 384, metadata no formato do IngestionService. HNSW auto-criado (2136 > threshold 1000, `vector_cosine_ops` m=16/ef=64). PR #227 squash-merged (`2edd0ae`).
-- Pós-verificado (sessão seguinte): `/health/ready` Healthy, "Embedding store OK (2136 chunks)", 961 testes verdes, counts rag_db == SQLite (2136/2136), 7 índices presentes.
-
-## 2026-09-26 — Docs refresh bilíngue (EN+PT)
-
-- Continuação da sessão adaptable-candytuft: verificado .env (rag_db/rag_user, gitignored), 961 testes verdes, container healthy, rag_db com 2136 chunks == SQLite, pgvector 0.8.6 + 7 índices (HNSW cosine m=16/ef=64).
-- memory.md fechou o loop da sessão pgvector (PR #228).
-- Docs refresh: README EN+PT (conectores cloud, fila de ingestão, endpoints faltantes, "Redis security" — seção que o warning de startup citava e não existia), docs/{en,pt} (API.md +endpoints: embeddings/database/cache-keys/mcp-capabilities/agent-resume/threads/apikey usage+secret; INSTALL.md +checklist pgvector POSTGRES_*), ARCHITECTURE.md pipeline atualizada, CONTRIBUTING.md +paridade bilíngue, CHANGELOG.md reorganizado ([0.0.3]).
-
-## 2026-09-26 — Architecture docs refresh (skill /architecture)
-
-- system-architecture.md: +IngestionQueue/Worker, HybridCache L1→L2, Serilog, cloud connectors no diagrama/tabela; deployment +./logs +serviços host (pgvector/Redis via POSTGRES_*/host.docker.internal); config +seção Ingestion.
-- .mmd espelhados (context_container + deployment); .drawio regenerado via script (estava stale — faltavam MCP/Search/Graph/Emb).
-- ADRs novos: AD-0011 async ingestion queue, AD-0012 hybrid cache L1/L2+pub/sub, AD-0013 env-composed postgres vector store.
-- runtime-architecture.json: +queue/cache/cloud/redis components; archify validate+deliver 9/9 (layout ajustado p/ não cruzar edge→ingest).
-
-## Gap-analysis 2026-09-26 (post-docs #229 + #230)
-
-Auditoria fresca — 4 candidatos → 2 CONFIRMADOS + 2 housekeeping, 1 INCONCLUSIVO carregado (enforce_admins ×4).
-
-- `GAP-tests-pgvector-live-integration` CONFIRMADO → `SPEC-20260926-pgvector-live-tests` (Draft): 14 tests do PostgresVectorStore cobrem só seams sem conexão; bug OperationInProgress (4aa88d4) escapou p/ prod. Fix: Testcontainers `pgvector/pgvector` + skip-sem-Docker.
-- `GAP-tests-ingestion-jobs-flaky` CONFIRMADO → `SPEC-20260926-ingestion-jobs-test-deflake` (Draft): run 36192973074 falhou 2 testes distintos da classe (61s e 116s); budget já foi 30s→60s. Causa provável: worker/fila compartilhada entre classes paralelas.
-- Housekeeping executado: deletados locals `feature/Devin-20260926-memory-225-deploy` + `feature/Devin-20260926-review-backlog-remediation`; `SPEC-20260926-review-backlog-remediation` Status Approved→Done.
-- `enforce_admins` INCONCLUSIVO — decisão do owner, carregado pela 4ª vez.
-- Branches remotas: todas limpas após prune (squash merges já haviam deletado).
-- 0 issues/PRs abertos. Nenhum TODO/FIXME/NotImplementedException em src/.
-
-## Unified database provider (SPEC-20260926-unified-database-provider, #240, PR #242)
-
-Implementado provider único: `Database:Provider` auto|postgres|sqlite resolve um backend para catálogo EF + vector store. Subclass `PostgresKnowledgeHubDbContext` possui `Migrations/Postgres` (EF resolve por tipo concreto); `Embedding` bytea vs BLOB via `ProviderAwareModelCacheKeyFactory`. Lexical PG = `search_vector` tsvector generated + GIN + `websearch_to_tsquery` (auto-sync, sem reconcile). `SqliteToPostgresMigrator` one-shot preserva GUIDs (kh_embeddings segue íntegro). VectorStore:Provider vazio segue o catálogo; divergente loga warning. 6 live tests Testcontainers verdes (migrations, copy, tsvector, resolution).
-
-## Deflake round 3 (PR #241)
-
-Polling budget falhou 3× (bumps #205, drain #235, serialização #239). Fix definitivo: `WaitTerminalJobAsync` assina `IIngestionProgressFeed.Published` (evento terminal publicado APÓS persistir) + backstop 120s só para hang real.
+- Erro CI: `Jobs_List_FiltersBySource` timeout 300s — `last status: queued, running: [], queued count: 1`.
+- Análise: `eb` (enfileirado depois de `ea`) completou → canal FIFO single-reader implica que `ea` FOI dequeued mas descartado antes da transição `running` persistir — crash no gap entre dequeue e `SaveChangesAsync` (fora do try/finally de terminal). Provável SQLITE_BUSY (sem WAL/busy_timeout na connstring).
+- Por que fixes anteriores (#235/#239/#241/#244) não bastaram: atacavam o mecanismo de espera e a race de canal duplo — nunca o stranding de job dequeued.
+- Fix `48f1edc`: `FailStrandedJobAsync` no catch do ExecuteAsync persiste `failed` + publica evento terminal; warning no early-return silencioso (exceto `cancelled`); `PRAGMA journal_mode=WAL` no startup SQLite.
+- Testes: `IngestionWorkerTests` (crash determinístico via IIngestionService ausente → failed+evento; cancelled-skip com sentinel FIFO). 719 unit verdes.
+- CI #247 todos os checks verdes; squash-merge; branch remota deletada.
+- Redeploy: rebuild compose, container healthy, healthz 200, autosync ok (Postgres catalog).
+- Detalhe aprendido: `FailOrphanedJobsAsync` varre queued/running no start — jobs enfileirados antes do worker subir morrem como "interrupted by restart" sem evento terminal (edge case, não corrigido).
