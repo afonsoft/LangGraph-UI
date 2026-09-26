@@ -38,6 +38,7 @@ public sealed class IngestionWorker(
             catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Ingestion job {JobId} crashed — continuing with next job", jobId);
+                await FailStrandedJobAsync(jobId, ex);
             }
             finally
             {
@@ -83,7 +84,15 @@ public sealed class IngestionWorker(
 
         var job = await db.IngestionJobs.FirstOrDefaultAsync(j => j.Id == jobId, stoppingToken);
         if (job is null || job.Status != "queued")
+        {
+            // "cancelled" is expected (cancel endpoint fires before dequeue);
+            // anything else drops the job with no trace — log it.
+            if (job?.Status != "cancelled")
+                logger.LogWarning(
+                    "Ingestion job {JobId} dequeued with status {Status} — skipping",
+                    jobId, job?.Status ?? "missing");
             return;
+        }
 
         job.Status = "running";
         job.StartedAt = DateTimeOffset.UtcNow;
@@ -171,6 +180,36 @@ public sealed class IngestionWorker(
             logger.LogInformation(
                 "Ingestion job {JobId} finished: status={Status} docs={DocsProcessed} skipped={DocsSkipped} failed={DocsFailed} chunks={ChunksCreated}",
                 jobId, job.Status, job.DocsProcessed, job.DocsSkipped, job.DocsFailed, job.ChunksCreated);
+        }
+    }
+
+    /// <summary>SPEC-20260926-ingestion-jobs-test-deflake: a crash between
+    /// dequeue and the persisted "running" transition strands the row as
+    /// "queued" — the channel write is consumed, dedup pins it as Existing
+    /// forever, and subscribers never see a terminal event. Repair: if the row
+    /// is still queued/running, persist failed + publish the terminal event.</summary>
+    private async Task FailStrandedJobAsync(Guid jobId, Exception crash)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
+            var job = await db.IngestionJobs.FirstOrDefaultAsync(
+                j => j.Id == jobId, CancellationToken.None);
+            if (job is null || job.Status is not ("queued" or "running"))
+                return;
+            job.Status = "failed";
+            job.Error = $"worker error before terminal state — {ExceptionDigest.Describe(crash)}";
+            job.FinishedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(CancellationToken.None);
+            progressFeed.Publish(new IngestionProgressEvent(
+                jobId, job.SourceId, "failed",
+                job.DocsProcessed, job.DocsSkipped, job.DocsFailed, job.ChunksCreated,
+                DateTimeOffset.UtcNow));
+        }
+        catch (Exception rex)
+        {
+            logger.LogWarning(rex, "Could not repair stranded ingestion job {JobId}", jobId);
         }
     }
 
