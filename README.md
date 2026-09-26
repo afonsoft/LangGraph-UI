@@ -3,6 +3,8 @@
 [![CI Build & Test](https://github.com/afonsoft/LangGraph-UI/actions/workflows/ci-build-test.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/ci-build-test.yml)
 [![Code Quality](https://github.com/afonsoft/LangGraph-UI/actions/workflows/code-quality.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/code-quality.yml)
 [![Security Scan](https://github.com/afonsoft/LangGraph-UI/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/security-scan.yml)
+[![SonarCloud](https://sonarcloud.io/api/project_badges/measure?project=afonsoft_LangGraph-UI&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=afonsoft_LangGraph-UI)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=afonsoft_LangGraph-UI&metric=coverage)](https://sonarcloud.io/summary/new_code?id=afonsoft_LangGraph-UI)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Blazor WASM](https://img.shields.io/badge/Blazor-WASM%20PWA-512BD4)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -54,10 +56,6 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
 
 > **Breaking change for external MCP clients** (Cursor, Claude Desktop, …): they must now send `Authorization: Bearer aft_...`. Generate the key in the admin UI first.
 
-## MCP tools
-
-`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (per-key chat and integration settings), `query_{source_slug}` per active source, GraphRAG traversal (`find_dependencies`, `find_dependents`, `find_path`, `analyze_impact` — when `Graph:Enabled`, default on), plus upstream proxies — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`), Context7 (`resolve-library-id`, `query-docs`) and arbitrary `McpProxy` sources.
-
 ## Knowledge sources & ingestion
 
 | Connector | `SourceType` | Notes |
@@ -74,6 +72,33 @@ Accepted on `/mcp`, `/mcp/sse`, `/api/*` and `/hubs/mcp` (SignalR clients that c
 | MCP proxy | `McpProxy` | Catalog-only — upstream `tools/list` passthrough, not ingestible |
 
 Sync runs on a **persisted async queue**: `POST /sources/{id}/sync` returns `202 + jobId` (per-document counters, `cancel`, `?wait=true` for the legacy synchronous contract); `POST /sources/{id}/reindex` forces re-chunk/re-embed, optionally selective by chunker version. Cloud connectors stage objects locally and diff by ETag; their secrets live in the integration-secret store. Chunking is structure-aware (markdown/code/config) and each source can opt into **semantic chunking** (embedding-breakpoint boundaries) via `{"chunking":"semantic"}` in the source dialog.
+
+
+## MCP tools
+
+The catalog is dynamic — `tools/list` rebuilds whenever sources, keys or
+integrations change, and live sessions get `tools/list_changed`.
+
+| Tool | Description |
+|---|---|
+| `search_knowledge` | Unified semantic search across all active sources — ranked passages with source, title, score and URI |
+| `ask_knowledge` | Answers a question over the indexed base; with a chat provider returns a synthesized answer with `[n]` citations, otherwise raw context |
+| `agent_chat` | Multi-step agent loop (model → tools → model) over the live catalog; read-only by default, `allowWrite` unlocks write tools |
+| `write_knowledge` | Persists content into the base — `.md` file for vault sources, indexed document otherwise |
+| `read_document` | Reads a full markdown document from an active vault by vault-relative path |
+| `write_note` | Writes a markdown note into an active vault and re-indexes it |
+| `set_api_key_settings` | Per-API-key overrides: chat endpoint/model and integration keys |
+| `query_{source_slug}` | Scoped semantic search — one tool per active source |
+| `find_dependencies` / `find_dependents` | GraphRAG outbound/inbound traversal with evidence per edge (chunk + doc + source) |
+| `find_path` / `analyze_impact` | Shortest entity path; 1-hop blast radius with backing documents |
+| `ask_question`, `read_wiki_structure`, `read_wiki_contents` | DeepWiki upstream proxy |
+| `firecrawl_*` | Firecrawl upstream (scrape, search, crawl, map…) |
+| `tavily_*` | Tavily upstream (search, extract, map, crawl, research) |
+| `resolve-library-id`, `query-docs` | Context7 upstream — library docs lookup |
+| `McpProxy` source tools | Passthrough `tools/list` of arbitrary MCP servers registered as sources |
+
+Integrations can be toggled at **Settings → Integrações** — a disabled
+provider drops its tools from the catalog without a restart.
 
 ## Configuration
 

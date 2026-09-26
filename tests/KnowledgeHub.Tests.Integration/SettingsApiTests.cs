@@ -38,6 +38,47 @@ public class SettingsApiTests : IClassFixture<SettingsApiTests.Fixture>
             (await anon.GetAsync("/api/settings/integrations")).StatusCode);
     }
 
+    // SPEC-20260926-integration-toggle: disabled provider drops out of the
+    // shared tools catalog (/api/tools = same DynamicToolCatalog as MCP).
+    [Fact]
+    public async Task Toggle_DisableProvider_RemovesItsTools()
+    {
+        var http = await TestAuth.LoginAsync(_factory);
+        try
+        {
+            // baseline: enabled provider contributes tools
+            using var before = JsonDocument.Parse(await http.GetStringAsync("/api/tools"));
+            Assert.Contains(before.RootElement.GetProperty("tools").EnumerateArray(),
+                t => t.GetProperty("name").GetString()!.StartsWith("firecrawl_"));
+
+            var put = await http.PutAsJsonAsync(
+                "/api/settings/integrations/firecrawl/enabled", new { enabled = false });
+            Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
+
+            using var list = JsonDocument.Parse(
+                await http.GetStringAsync("/api/settings/integrations"));
+            Assert.False(Provider(list.RootElement, "firecrawl").GetProperty("enabled").GetBoolean());
+
+            using var after = JsonDocument.Parse(await http.GetStringAsync("/api/tools"));
+            Assert.DoesNotContain(after.RootElement.GetProperty("tools").EnumerateArray(),
+                t => t.GetProperty("name").GetString()!.StartsWith("firecrawl_"));
+        }
+        finally
+        {
+            await http.PutAsJsonAsync(
+                "/api/settings/integrations/firecrawl/enabled", new { enabled = true });
+        }
+    }
+
+    [Fact]
+    public async Task Toggle_UnknownProvider_Returns404()
+    {
+        var http = await TestAuth.LoginAsync(_factory);
+        var put = await http.PutAsJsonAsync(
+            "/api/settings/integrations/nope/enabled", new { enabled = false });
+        Assert.Equal(HttpStatusCode.NotFound, put.StatusCode);
+    }
+
     [Fact]
     public async Task List_BothProviders_KeylessAfterRemoval()
     {

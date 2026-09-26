@@ -16,6 +16,9 @@ public sealed record IntegrationSettingsDto
     public required string Source { get; init; }
     /// <summary>Optional guidance shown in the UI (e.g. what the key enables).</summary>
     public string? Note { get; init; }
+    /// <summary>Runtime toggle — disabled integrations drop out of the MCP
+    /// tools catalog entirely (SPEC-20260926-integration-toggle).</summary>
+    public bool Enabled { get; init; } = true;
 }
 
 public sealed record IntegrationSettingsResponse
@@ -27,4 +30,10 @@ public sealed record IntegrationSettingsResponse
 public sealed record SetIntegrationKeyRequest
 {
     public required string ApiKey { get; init; }
+}
+
+/// <summary>PUT /api/settings/integrations/{provider}/enabled body.</summary>
+public sealed record SetIntegrationEnabledRequest
+{
+    public required bool Enabled { get; init; }
 }

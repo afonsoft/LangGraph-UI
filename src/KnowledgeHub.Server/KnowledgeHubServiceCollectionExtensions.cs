@@ -312,6 +312,7 @@ public static class KnowledgeHubServiceCollectionExtensions
                     Path.GetDirectoryName(DatabasePath.Resolve(configuration))!,
                     "dataprotection-keys")));
         services.AddSingleton<Settings.IIntegrationSecretStore, Settings.IntegrationSecretStore>();
+        services.AddSingleton<Settings.IIntegrationStateService, Settings.IntegrationStateService>();
 
         // SPEC-07: DeepWiki proxy tools (ask_question / read_wiki_structure / read_wiki_contents).
         services.AddOptions<KnowledgeHub.Server.Mcp.Upstream.DeepWikiOptions>()

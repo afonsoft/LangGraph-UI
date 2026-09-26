@@ -109,7 +109,12 @@ public sealed class TavilyToolsProvider(
 
     public async Task<IReadOnlyList<CatalogTool>> GetToolsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        if (!_options.Enabled
+            // Runtime toggle (Settings → Integrações): disabled providers
+            // contribute nothing to tools/list; stale tools/call hits the
+            // generic unknown-tool error.
+            || (services.GetService<Settings.IIntegrationStateService>() is { } state
+                && !await state.IsEnabledAsync(Settings.IntegrationProviders.Tavily, cancellationToken)))
             return [];
 
         var tools = new Dictionary<string, CatalogTool>(StringComparer.Ordinal);

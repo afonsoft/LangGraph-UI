@@ -19,6 +19,15 @@ public sealed class SettingsApiClient(HttpClient http)
         return await ReadAsync<object>(response, ct);
     }
 
+    /// <summary>Liga/desliga a integração — desligada some do catálogo MCP.</summary>
+    public async Task<ApiResult<object>> SetEnabledAsync(string provider, bool enabled, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync(
+            $"api/settings/integrations/{Uri.EscapeDataString(provider)}/enabled",
+            new SetIntegrationEnabledRequest { Enabled = enabled }, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     /// <summary>Remove a key armazenada de uma integração.</summary>
     public async Task<ApiResult<object>> RemoveKeyAsync(string provider, CancellationToken ct = default)
     {

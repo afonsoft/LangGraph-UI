@@ -19,13 +19,34 @@ public static class SettingsEndpoints
 
         group.MapGet("/integrations", async (
             IIntegrationSecretStore store,
+            IIntegrationStateService state,
             IConfiguration cfg,
             CancellationToken ct) =>
         {
             var items = new List<IntegrationSettingsDto>();
             foreach (var provider in IntegrationProviders.All)
-                items.Add(await DescribeAsync(provider, store, cfg, ct));
+                items.Add(await DescribeAsync(provider, store, state, cfg, ct));
             return Results.Ok(new IntegrationSettingsResponse { Integrations = items });
+        });
+
+        // SPEC-20260926-integration-toggle: runtime on/off per integration —
+        // disabled providers contribute no tools to the MCP catalog and their
+        // upstream session is reset.
+        group.MapPut("/integrations/{provider}/enabled", async (
+            string provider,
+            SetIntegrationEnabledRequest? body,
+            IIntegrationStateService state,
+            IServiceProvider services,
+            CancellationToken ct) =>
+        {
+            if (!IntegrationProviders.All.Contains(provider))
+                return Results.NotFound(new { error = $"unknown provider '{provider}'" });
+            if (body is null)
+                return Results.BadRequest(new { error = "enabled is required" });
+
+            await state.SetEnabledAsync(provider, body.Enabled, ct);
+            await ResetProviderAsync(provider, services, ct);
+            return Results.NoContent();
         });
 
         group.MapPut("/integrations/{provider}", async (
@@ -363,7 +384,8 @@ public static class SettingsEndpoints
 
     /// <summary>Monta o DTO mascarado da integração (key do store → env), sem expor o segredo.</summary>
     private static async Task<IntegrationSettingsDto> DescribeAsync(
-        string provider, IIntegrationSecretStore store, IConfiguration cfg, CancellationToken ct)
+        string provider, IIntegrationSecretStore store, IIntegrationStateService state,
+        IConfiguration cfg, CancellationToken ct)
     {
         var info = await store.GetInfoAsync(provider, ct);
         var envKey = cfg[$"{ConfigSection(provider)}:ApiKey"];
@@ -386,6 +408,7 @@ public static class SettingsEndpoints
                 _ => provider
             },
             HasKey = hasKey,
+            Enabled = await state.IsEnabledAsync(provider, ct),
             KeyHint = hint,
             Source = source,
             Note = provider switch
