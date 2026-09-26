@@ -32,6 +32,31 @@ main {
         text-overflow: ellipsis;
     }
 
+/* Mobile menu toggler — 44px touch target, visible border/icon
+   (substitui .navbar-toggler, que só herda cores dentro de .navbar). */
+.kh-nav-toggler {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem 0.65rem;
+    font-size: 1.15rem;
+    color: var(--kh-text, #1e293b);
+    background: transparent;
+    border: 1px solid var(--kh-border, #e2e8f0);
+    border-radius: 0.5rem;
+}
+
+    .kh-nav-toggler:hover {
+        background: var(--kh-accent-soft, rgba(27, 110, 194, 0.25));
+    }
+
+    .kh-nav-toggler:focus-visible {
+        outline: 2px solid var(--kh-accent, #1b6ec2);
+        outline-offset: 2px;
+    }
+
 @media (max-width: 767.98px) {
     .top-row ::deep a, .top-row ::deep .btn-link {
         margin-left: 0;
