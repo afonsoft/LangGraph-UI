@@ -27,6 +27,7 @@ public static class ConfigurationValidator
     public static void Validate(IConfiguration configuration)
     {
         var problems = new List<string>();
+        ValidateDatabase(configuration, problems);
         ValidateEmbeddings(configuration, problems);
         ValidateVectorStore(configuration, problems);
         ValidateDeepWiki(configuration, problems);
@@ -61,6 +62,21 @@ public static class ConfigurationValidator
         }
 
         return warnings;
+    }
+
+    // SPEC-20260926-unified-database-provider RF-001: Database:Provider selects
+    // the single backend for catalog + (by default) vector store.
+    private static readonly HashSet<string> DatabaseProviders = new(StringComparer.OrdinalIgnoreCase)
+        { "auto", "postgres", "sqlite" };
+
+    private static void ValidateDatabase(IConfiguration cfg, List<string> problems)
+    {
+        var provider = cfg.GetSection("Database")["Provider"];
+        if (!string.IsNullOrWhiteSpace(provider) && !DatabaseProviders.Contains(provider))
+            problems.Add($"Database:Provider '{provider}' is invalid (expected: auto | postgres | sqlite)");
+        if (provider?.Equals("postgres", StringComparison.OrdinalIgnoreCase) == true
+            && string.IsNullOrWhiteSpace(KnowledgeHub.Server.Data.CatalogDatabase.ResolvePostgresConnectionString(cfg)))
+            problems.Add("Database:Provider=postgres requires Database:ConnectionString or POSTGRES_* env vars");
     }
 
     private static void ValidateEmbeddings(IConfiguration cfg, List<string> problems)

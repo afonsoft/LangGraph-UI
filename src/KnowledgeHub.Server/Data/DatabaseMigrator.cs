@@ -18,7 +18,9 @@ public static class DatabaseMigrator
     {
         var applied = await db.Database.GetAppliedMigrationsAsync(cancellationToken);
 
-        if (!applied.Any() && await HasTableAsync(db, "Sources", cancellationToken))
+        // The EnsureCreated-era guard only applies to SQLite — that era never
+        // produced Postgres databases, and sqlite_master doesn't exist there.
+        if (db.Database.IsSqlite() && !applied.Any() && await HasTableAsync(db, "Sources", cancellationToken))
         {
             // EnsureCreated-era database: tables exist but there is no history
             // table, so Migrate() would try to re-create them. Record

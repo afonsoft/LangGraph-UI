@@ -51,6 +51,17 @@ Produz um binário autocontido de ~120 MB — sem runtime .NET. O instalador cri
 | Tuning de cache | `Cache:RegionTtlMinutes`, `Cache:L1*` | TTLs por região + L1 em processo à frente do Redis (invalidação via pub/sub `kh:invalidate`) — ver README §Configuração |
 | Nível de log em runtime | `GET/PUT /api/settings/log-level` | `LoggingLevelSwitch` com `minutes` opcional (0–120) |
 
+## Provider de banco unificado (catálogo + vector store)
+
+`Database:Provider` escolhe um único backend para o catálogo EF Core e o vector
+store: `auto` (padrão — faz probe em `POSTGRES_*`/`Database:ConnectionString` e
+cai em SQLite quando o Postgres está inalcançável, com log de erro),
+`postgres` (exige connection string — erro no startup caso contrário) ou
+`sqlite`. No primeiro boot em Postgres, um catálogo vazio é preenchido a partir
+do arquivo SQLite existente (one-shot, IDs preservados, marcador `.migrated`).
+A busca lexical usa coluna `tsvector` gerada + índice GIN no Postgres e FTS5 no
+SQLite. `VectorStore:Provider` continua como override explícito para modo misto.
+
 ## PostgreSQL + pgvector (host ou externo)
 
 O `docker-compose.yml` lê o `.env` (`env_file`, `required: false`) e compõe

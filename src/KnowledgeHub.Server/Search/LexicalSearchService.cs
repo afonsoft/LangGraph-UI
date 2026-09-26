@@ -32,14 +32,13 @@ public interface ILexicalSearchService
 public sealed class LexicalSearchService(
     KnowledgeHubDbContext db,
     IConfiguration configuration,
+    CatalogDatabase catalog,
     ILogger<LexicalSearchService> logger) : ILexicalSearchService
 {
     private const string TableName = "chunks_fts";
 
     public bool Enabled { get; } =
-        configuration.GetValue("Search:Lexical:Enabled", true)
-        && !configuration.GetValue("VectorStore:Provider", "sqlite")
-            .Equals("postgres", StringComparison.OrdinalIgnoreCase);
+        configuration.GetValue("Search:Lexical:Enabled", true);
 
     public async Task<IReadOnlyList<LexicalHit>> SearchAsync(
         string query, int topK, IReadOnlyCollection<Guid>? sourceIds, CancellationToken cancellationToken = default)
@@ -47,6 +46,12 @@ public sealed class LexicalSearchService(
         var match = FtsQuerySanitizer.ToMatchExpression(query);
         if (match is null || !Enabled)
             return [];
+
+        // SPEC-20260926-unified-database-provider RF-003: Postgres catalog uses
+        // the generated search_vector tsvector column (GIN-indexed, self-synced)
+        // instead of the chunks_fts virtual table.
+        if (catalog.IsPostgres)
+            return await SearchPostgresAsync(query, topK, sourceIds, cancellationToken);
 
         // SPEC-20260926-search-correctness-and-stream RF-001: expansion issues
         // N concurrent calls; the scoped DbContext shares ONE SqliteConnection
@@ -153,8 +158,66 @@ public sealed class LexicalSearchService(
         }
     }
 
+    /// <summary>
+    /// Postgres path (SPEC-20260926-unified-database-provider RF-003):
+    /// <c>websearch_to_tsquery</c> over the generated <c>search_vector</c> column,
+    /// ranked by <c>ts_rank</c>. The column is a stored generated column over
+    /// <c>COALESCE(EnrichedText, TextContent)</c> — always in sync, no reconcile.
+    /// Fails soft to an empty result set, never a 500.
+    /// </summary>
+    private async Task<IReadOnlyList<LexicalHit>> SearchPostgresAsync(
+        string query, int topK, IReadOnlyCollection<Guid>? sourceIds, CancellationToken ct)
+    {
+        if (sourceIds is { Count: 0 })
+            return [];
+        if (catalog.PostgresConnectionString is not { } cs)
+            return [];
+
+        try
+        {
+            await using var conn = new Npgsql.NpgsqlConnection(cs);
+            await conn.OpenAsync(ct);
+            await using var cmd = conn.CreateCommand();
+            var sourceFilter = sourceIds is { Count: > 0 }
+                ? "AND d.\"KnowledgeSourceId\" = ANY($3) "
+                : "";
+            cmd.CommandText = $"""
+                SELECT c."Id", ts_rank(c."search_vector", q) AS rank
+                FROM "Chunks" c
+                JOIN "Documents" d ON c."KnowledgeDocumentId" = d."Id",
+                     websearch_to_tsquery('simple', $1) q
+                WHERE c."search_vector" @@ q {sourceFilter}
+                ORDER BY rank DESC
+                LIMIT $2
+                """;
+            cmd.Parameters.AddWithValue(query);
+            cmd.Parameters.AddWithValue(topK);
+            if (sourceIds is { Count: > 0 })
+                cmd.Parameters.AddWithValue(sourceIds.ToArray());
+
+            var hits = new List<LexicalHit>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                hits.Add(new LexicalHit(
+                    reader.GetGuid(0),
+                    hits.Count + 1,
+                    reader.GetDouble(1)));
+            }
+            return hits;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Postgres lexical search failed — falling back to empty result set");
+            return [];
+        }
+    }
+
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
     {
+        // Postgres search_vector is a stored generated column — always in sync.
+        if (catalog.IsPostgres)
+            return;
         if (!Enabled || !await IsAvailableAsync(cancellationToken))
             return;
 

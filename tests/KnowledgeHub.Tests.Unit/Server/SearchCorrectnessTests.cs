@@ -64,7 +64,9 @@ public sealed class SearchCorrectnessTests
         await using var _c = conn; await using var _d = db;
         await SeedFtsAsync(db);
         var lexical = new LexicalSearchService(db,
-            new ConfigurationBuilder().Build(), NullLogger<LexicalSearchService>.Instance);
+            new ConfigurationBuilder().Build(),
+            new CatalogDatabase(CatalogProvider.Sqlite, null),
+            NullLogger<LexicalSearchService>.Instance);
 
         var results = await Task.WhenAll(Enumerable.Range(0, 8)
             .Select(_ => lexical.SearchAsync("persistent", 5, null)));

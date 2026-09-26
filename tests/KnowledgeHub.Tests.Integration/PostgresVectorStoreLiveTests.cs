@@ -10,6 +10,9 @@ namespace KnowledgeHub.Tests.Integration;
 /// <see cref="PgVectorFixture.Available"/>=false and every test returns early (same
 /// convention as the env-gated <see cref="PostgresVectorStoreTests"/>).
 /// </summary>
+[CollectionDefinition(nameof(PgVectorCollection))]
+public sealed class PgVectorCollection : ICollectionFixture<PgVectorFixture>;
+
 public sealed class PgVectorFixture : IAsyncLifetime
 {
     private PostgreSqlContainer? _container;
@@ -40,7 +43,8 @@ public sealed class PgVectorFixture : IAsyncLifetime
     }
 }
 
-public sealed class PostgresVectorStoreLiveTests : IClassFixture<PgVectorFixture>
+[Collection(nameof(PgVectorCollection))]
+public sealed class PostgresVectorStoreLiveTests
 {
     private const int Dims = 4;
     private readonly PgVectorFixture _fixture;

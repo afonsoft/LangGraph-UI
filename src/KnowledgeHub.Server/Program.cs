@@ -230,13 +230,23 @@ foreach (var warning in ConfigurationValidator.CollectWarnings(app.Configuration
 // SPEC-06 RF-002: default location is beside the executable; overridable via
 // KnowledgeHub:DatabasePath / Database:Path. Clear error on read-only dirs.
 // SPEC-20260914-efcore-migrations: Migrate() + baseline for EnsureCreated-era DBs.
-DatabasePath.EnsureDirectory(app.Configuration);
+// SPEC-20260926-unified-database-provider: catalog provider resolved once in DI;
+// postgres skips the sqlite dir and may receive a one-shot data copy.
 using (var scope = app.Services.CreateScope())
 {
+    var catalog = scope.ServiceProvider.GetRequiredService<KnowledgeHub.Server.Data.CatalogDatabase>();
+    if (catalog.FallbackReason is { } fb)
+        app.Logger.LogError("Catalog provider fallback — {Reason}", fb);
+    app.Logger.LogInformation("Catalog provider: {Provider}", catalog.Provider);
+    if (!catalog.IsPostgres)
+        DatabasePath.EnsureDirectory(app.Configuration);
     var db = scope.ServiceProvider.GetRequiredService<KnowledgeHubDbContext>();
     await DatabaseMigrator.MigrateAsync(db, app.Logger);
-    app.Logger.LogInformation("KnowledgeHub database ready at {Path}",
-        DatabasePath.Resolve(app.Configuration));
+    if (catalog.IsPostgres)
+        await KnowledgeHub.Server.Data.SqliteToPostgresMigrator.RunAsync(db, app.Configuration, app.Logger);
+    else
+        app.Logger.LogInformation("KnowledgeHub database ready at {Path}",
+            DatabasePath.Resolve(app.Configuration));
 
     // SPEC-20260914-auth-login RF-001: seed admin on empty Users table.
     await AuthSeeder.SeedAsync(

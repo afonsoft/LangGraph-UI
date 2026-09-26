@@ -9,6 +9,7 @@ using KnowledgeHub.Server.Mcp;
 using KnowledgeHub.Server.Services;
 using KnowledgeHub.Server.VectorStore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
@@ -30,12 +31,30 @@ public static class KnowledgeHubServiceCollectionExtensions
         // silently disabled every per-key code path.
         services.AddHttpContextAccessor();
 
-        // Resolve Database:Path lazily so test hosts can override it via ConfigureWebHost
-        // (Program.cs runs before the factory's ConfigureAppConfiguration callbacks).
+        // SPEC-20260926-unified-database-provider RF-001: one backend for the
+        // catalog — Postgres when Database:Provider=auto/postgres resolves and
+        // probes OK, SQLite otherwise. Resolved once here (env vars are already
+        // visible to the builder config; late ConfigureWebHost overrides — the
+        // test path — resolve to sqlite anyway since they never set POSTGRES_*).
+        var catalog = CatalogDatabase.Resolve(configuration);
+        services.AddSingleton(catalog);
+
         // SPEC-20260916-performance-memory-cache RF-006: pooled contexts — one
         // DbContext allocation per request instead of a fresh graph each time.
-        services.AddDbContextPool<KnowledgeHubDbContext>((sp, o) =>
-            o.UseSqlite($"Data Source={DatabasePath.Resolve(sp.GetRequiredService<IConfiguration>())}"));
+        if (catalog.IsPostgres)
+        {
+            // Postgres migrations annotate the subclass — EF resolves the right
+            // set from the concrete type at Migrate() time.
+            services.AddDbContextPool<KnowledgeHubDbContext, PostgresKnowledgeHubDbContext>(
+                (sp, o) => o.UseNpgsql(catalog.PostgresConnectionString)
+                    .ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>());
+        }
+        else
+        {
+            services.AddDbContextPool<KnowledgeHubDbContext>((sp, o) =>
+                o.UseSqlite($"Data Source={DatabasePath.Resolve(sp.GetRequiredService<IConfiguration>())}")
+                    .ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>());
+        }
 
         services.AddOptions<EmbeddingOptions>()
             .Configure<IConfiguration>((options, cfg) =>
@@ -189,10 +208,25 @@ public static class KnowledgeHubServiceCollectionExtensions
         services.AddScoped<IVectorStore>(sp =>
         {
             var cfg = sp.GetRequiredService<IConfiguration>();
-            var provider = cfg.GetValue("VectorStore:Provider", "sqlite");
+            var cat = sp.GetRequiredService<CatalogDatabase>();
+            var provider = cfg.GetValue<string>("VectorStore:Provider");
+            if (string.IsNullOrWhiteSpace(provider))
+                // SPEC-20260926-unified-database-provider RF-004: the vector
+                // store follows the effective catalog provider unless an
+                // explicit VectorStore:Provider override is set.
+                provider = cat.IsPostgres ? "postgres" : "sqlite";
+            else if (cat.IsPostgres != provider.Equals("postgres", StringComparison.OrdinalIgnoreCase))
+                sp.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("VectorStore")
+                    .LogWarning(
+                        "VectorStore:Provider='{VectorProvider}' diverges from the effective catalog provider " +
+                        "('{CatalogProvider}') — mixed mode is an advanced configuration.",
+                        provider, cat.Provider);
+
             if (provider.Equals("postgres", StringComparison.OrdinalIgnoreCase))
                 return new PostgresVectorStore(
                     cfg.GetValue<string>("VectorStore:ConnectionString")
+                        ?? cat.PostgresConnectionString
                         ?? throw new InvalidOperationException("VectorStore:ConnectionString is required when VectorStore:Provider=postgres"),
                     cfg.GetValue("Embeddings:Dimensions", 384),
                     cfg.GetSection(PostgresOptions.SectionName).Get<PostgresOptions>() ?? new PostgresOptions());
