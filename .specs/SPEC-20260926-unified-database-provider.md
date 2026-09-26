@@ -8,7 +8,7 @@
 | Tipo | `Infra` |
 | Stack | `.NET 10`, `EF Core 10`, `Npgsql.EntityFrameworkCore.PostgreSQL`, `Microsoft.EntityFrameworkCore.Sqlite` |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `In implementation` |
+| Status | `Done` — entregue via PR #242 |
 | Ticket | `#240` — https://github.com/afonsoft/LangGraph-UI/issues/240 |
 | Origem | pedido do usuário — "quero que seja o postgre para tudo; se indisponível ou não configurado, sqlite; os dois Providers unificados" |
 
