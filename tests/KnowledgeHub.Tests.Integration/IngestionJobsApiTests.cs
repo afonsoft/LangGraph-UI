@@ -98,14 +98,28 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
             }
             catch (TimeoutException)
             {
-                // Report the row's last persisted state — queued means the
-                // worker never dequeued it (dead worker / channel stall),
-                // running means the ingest pipeline itself is stuck.
+                // Report the row's last persisted state plus the whole queue —
+                // a sibling job stuck "running" means the single-worker channel
+                // is wedged behind it; nothing running at all means the worker
+                // died or never dequeued (channel stall / host fault).
                 var probe = await _client.GetFromJsonAsync<JsonElement>(
                     $"/api/ingestion/jobs/{jobId}");
+                var all = await _client.GetFromJsonAsync<JsonElement>(
+                    "/api/ingestion/jobs");
+                var running = new List<string>();
+                var queued = 0;
+                foreach (var j in all.EnumerateArray())
+                {
+                    var st = j.GetProperty("status").GetString();
+                    if (st == "running")
+                        running.Add($"{j.GetProperty("id")} ({j.GetProperty("kind").GetString()})");
+                    else if (st == "queued")
+                        queued++;
+                }
                 throw new TimeoutException(
                     $"job {jobId} did not reach terminal state in 300s — " +
-                    $"last status: {probe.GetProperty("status").GetString()}");
+                    $"last status: {probe.GetProperty("status").GetString()}, " +
+                    $"running: [{string.Join(", ", running)}], queued count: {queued}");
             }
             return (await GetJobAsync(jobId))!.Value;
         }

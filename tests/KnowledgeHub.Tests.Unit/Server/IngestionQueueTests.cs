@@ -60,6 +60,19 @@ public sealed class IngestionQueueTests : IDisposable
         Assert.Equal(job.Id, delivered);
     }
 
+    // Regression for the lazy-channel race (SPEC-20260926-ingestion-jobs-test-
+    // deflake): a worker touching Reader before the first enqueue must share
+    // the same channel instance — a `??=` on the channel loses writes.
+    [Fact]
+    public async Task ReaderTouchedBeforeFirstEnqueue_StillDelivers()
+    {
+        var sourceId = await SeedSourceAsync();
+        _ = _queue.Reader; // worker start — must not fork the channel
+        var (job, _) = await _queue.EnqueueAsync(sourceId, "sync", CancellationToken.None);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.Equal(job.Id, await _queue.Reader.ReadAsync(cts.Token));
+    }
+
     [Fact]
     public async Task Enqueue_SecondWhileQueued_ReturnsExistingJob()
     {
