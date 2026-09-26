@@ -54,8 +54,11 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
 
     private async Task<JsonElement> WaitTerminalJobAsync(Guid jobId)
     {
-        // CI flake (PR #205): under parallel load a reindex exceeded the old
-        // 30s budget — 120×500ms gives headroom without masking real hangs.
+        // Root cause of the PR #205/#228 CI flakes: the class shares a single
+        // IngestionWorker, so a job enqueued by a previous test serializes ahead
+        // of the job under test. Every test must drain the queue before returning
+        // (SPEC-20260926-ingestion-jobs-test-deflake); the 60s budget covers a
+        // single cold-start ingest under CPU contention, not a backlog.
         for (var i = 0; i < 120; i++)
         {
             var job = await _client.GetFromJsonAsync<JsonElement>($"/api/ingestion/jobs/{jobId}");
@@ -102,13 +105,20 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
     {
         var a = await SeedSource();
         var b = await SeedSource();
-        await _client.PostAsync($"/api/sources/{a.Id}/sync", null);
-        await _client.PostAsync($"/api/sources/{b.Id}/sync", null);
+        var ea = await (await _client.PostAsync($"/api/sources/{a.Id}/sync", null))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var eb = await (await _client.PostAsync($"/api/sources/{b.Id}/sync", null))
+            .Content.ReadFromJsonAsync<JsonElement>();
 
         var jobs = await _client.GetFromJsonAsync<List<JsonElement>>(
             $"/api/ingestion/jobs?sourceId={a.Id}&limit=10");
         Assert.NotEmpty(jobs!);
         Assert.All(jobs!, j => Assert.Equal(a.Id, j.GetProperty("sourceId").GetGuid()));
+
+        // Drain the shared single-worker queue so the next test does not wait
+        // behind these jobs (SPEC-20260926-ingestion-jobs-test-deflake).
+        await WaitTerminalJobAsync(ea.GetProperty("jobId").GetGuid());
+        await WaitTerminalJobAsync(eb.GetProperty("jobId").GetGuid());
     }
 
     [Fact]
