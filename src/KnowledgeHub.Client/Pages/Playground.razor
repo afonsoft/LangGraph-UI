@@ -14,7 +14,7 @@
     <div class="col-12 col-lg-4">
         <Card>
             <HeaderTemplate>
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between gap-2 align-items-center">
                     <span>Tools (@(_tools?.Count ?? 0))</span>
                     <Button Size="Size.Small" Icon="fa-solid fa-rotate" IsAsync="true"
                             OnClick="LoadToolsAsync" IsDisabled="_loading" />
@@ -33,7 +33,7 @@
                         @foreach (var t in _tools)
                         {
                             <button type="button"
-                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(t.Name == _selected?.Name ? "active" : "")"
+                                    class="list-group-item list-group-item-action d-flex justify-content-between gap-2 align-items-center @(t.Name == _selected?.Name ? "active" : "")"
                                     @onclick="() => SelectTool(t)">
                                 <code>@t.Name</code>
                                 @if (!t.ReadOnly)
@@ -60,7 +60,7 @@
         {
             <Card class="mb-3">
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between gap-2 align-items-center">
                         <span><code>@_selected.Name</code></span>
                         @if (_selected.ReadOnly)
                         {
@@ -150,7 +150,7 @@
             {
                 <Card>
                     <HeaderTemplate>
-                        <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex justify-content-between gap-2 align-items-center">
                             <span>Resultado</span>
                             <div>
                                 @if (_isError)

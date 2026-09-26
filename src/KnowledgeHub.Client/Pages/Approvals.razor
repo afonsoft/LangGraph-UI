@@ -8,7 +8,7 @@
 
 <PageTitle>Aprovações — Knowledge</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between gap-2 align-items-center mb-3">
     <h3 class="mb-0">Aprovações de tools</h3>
     <Button Size="Size.Small" Icon="fa-solid fa-rotate" Text="Atualizar" IsAsync="true"
             OnClick="LoadAsync" IsDisabled="_loading" />
@@ -28,7 +28,7 @@ else
         @foreach (var a in _items)
         {
             <div class="list-group-item">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between gap-2 align-items-center">
                     <div>
                         <code>@a.ToolName</code>
                         <Badge Color="Color.Info" class="ms-2">@a.RequestedBy</Badge>

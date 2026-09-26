@@ -12,7 +12,7 @@
 <div class="row g-3">
     <div class="col-12 col-lg-7">
         <div class="border rounded p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex justify-content-between gap-2 align-items-center mb-2">
                 <strong>Runs recentes</strong>
                 <Button Size="Size.ExtraSmall" Icon="fa-solid fa-rotate" TooltipText="Recarregar"
                         OnClick="ReloadAsync" />
@@ -67,7 +67,7 @@
         @if (_selected is { } report)
         {
             <div class="border rounded p-3 mt-3">
-                <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex justify-content-between gap-2 align-items-center mb-2">
                     <strong>Run @report.RunId.ToString("N")[..8]</strong>
                     @if (report.Gate is { } rg)
                     {
