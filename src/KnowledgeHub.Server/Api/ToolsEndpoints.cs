@@ -25,9 +25,15 @@ public static class ToolsEndpoints
                 Tools = tools.Select(t => new ToolDescriptorDto
                 {
                     Name = t.Name,
+                    Title = t.Title,
                     Description = t.Description,
                     InputSchema = JsonSerializer.SerializeToElement(t.InputSchema),
-                    ReadOnly = t.ReadOnly
+                    OutputSchema = t.OutputSchema is { } os
+                        ? JsonSerializer.SerializeToElement(os) : null,
+                    ReadOnly = t.ReadOnly,
+                    DestructiveHint = t.DestructiveHint,
+                    IdempotentHint = t.IdempotentHint,
+                    OpenWorldHint = t.OpenWorldHint
                 }).ToList()
             });
         });

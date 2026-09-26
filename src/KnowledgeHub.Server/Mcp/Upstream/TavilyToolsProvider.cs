@@ -229,41 +229,54 @@ public sealed class TavilyToolsProvider(
         new CatalogTool
         {
             Name = "tavily_search",
+            Title = "Web search (Tavily)",
             Description = "Search the web (proxied to Tavily).",
             InputSchema = SearchSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("tavily_search", ctx, ct)
         },
         new CatalogTool
         {
             Name = "tavily_extract",
+            Title = "Extract content (Tavily)",
             Description = "Extract clean content from one or more URLs (proxied to Tavily).",
             InputSchema = ExtractSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("tavily_extract", ctx, ct)
         },
         new CatalogTool
         {
             Name = "tavily_map",
+            Title = "Map site (Tavily)",
             Description = "Discover site URLs before extraction (proxied to Tavily).",
             InputSchema = MapSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("tavily_map", ctx, ct)
         },
         new CatalogTool
         {
             Name = "tavily_crawl",
+            Title = "Crawl site (Tavily)",
             Description = "Crawl a site/section (proxied to Tavily — billable/long-running).",
             InputSchema = CrawlSchema,
             ReadOnly = false,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("tavily_crawl", ctx, ct)
         },
         new CatalogTool
         {
             Name = "tavily_research",
+            Title = "Deep research (Tavily)",
             Description = "Deep research on a question (proxied to Tavily — billable/long-running).",
             InputSchema = ResearchSchema,
             ReadOnly = false,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("tavily_research", ctx, ct)
         }
     ];

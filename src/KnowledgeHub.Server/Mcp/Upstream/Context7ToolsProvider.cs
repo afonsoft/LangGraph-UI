@@ -154,6 +154,10 @@ public sealed class Context7ToolsProvider(
             // Context7 exposes no write tools — absent upstream hints default
             // to read-only.
             ReadOnly = proto.Annotations?.ReadOnlyHint ?? true,
+            DestructiveHint = proto.Annotations?.DestructiveHint,
+            IdempotentHint = proto.Annotations?.IdempotentHint,
+            OpenWorldHint = true,
+            Title = proto.Annotations?.Title,
             Handler = (ctx, ct) => DispatchAsync(name, ctx, ct)
         };
     }
@@ -190,17 +194,23 @@ public sealed class Context7ToolsProvider(
         new CatalogTool
         {
             Name = "resolve-library-id",
+            Title = "Resolve library ID (Context7)",
             Description = "Resolve a library/package name to a Context7 library ID (proxied to Context7).",
             InputSchema = ResolveLibraryIdSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("resolve-library-id", ctx, ct)
         },
         new CatalogTool
         {
             Name = "query-docs",
+            Title = "Query docs (Context7)",
             Description = "Fetch up-to-date, version-specific documentation for a Context7 library ID (proxied to Context7).",
             InputSchema = QueryDocsSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("query-docs", ctx, ct)
         }
     ];

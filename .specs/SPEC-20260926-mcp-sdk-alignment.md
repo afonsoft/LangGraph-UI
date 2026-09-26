@@ -8,7 +8,7 @@
 | Tipo | `Feature` / `Interop` |
 | Stack | `.NET 10`, `ModelContextProtocol` + `ModelContextProtocol.AspNetCore` 2.2.0 |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Draft` |
+| Status | `Done` |
 | Origem | análise solicitada pelo usuário sobre `csharp-sdk`, spec `2026-07-28` e docs da SDK v2 — "veja o que podemos melhorar" |
 
 ## 1. User Story

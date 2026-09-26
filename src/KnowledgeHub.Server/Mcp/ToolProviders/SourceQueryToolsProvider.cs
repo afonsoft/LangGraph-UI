@@ -33,10 +33,12 @@ public sealed class SourceQueryToolsProvider : IToolProvider
         return active.Select(source => new CatalogTool
         {
             Name = $"query_{slugs[source.Id]}",
+            Title = $"Query {source.Name}",
             Description = $"Semantic search scoped exclusively to the '{source.Name}' source" +
                           (string.IsNullOrWhiteSpace(source.Description) ? "." : $" — {source.Description}"),
             InputSchema = Schema,
             ReadOnly = true,
+            IdempotentHint = true,
             SourceId = source.Id,
             Handler = async (ctx, ct) =>
             {

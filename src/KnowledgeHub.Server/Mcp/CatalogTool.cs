@@ -14,6 +14,18 @@ public sealed record CatalogTool
     public required string Description { get; init; }
     public required JsonObject InputSchema { get; init; }
     public bool ReadOnly { get; init; }
+    /// <summary>SPEC-20260926-mcp-sdk-alignment RF-001: human-readable display
+    /// name surfaced as <c>Tool.Title</c>/<c>annotations.title</c>.</summary>
+    public string? Title { get; init; }
+    /// <summary>RF-001: remaining <c>ToolAnnotations</c> hints (null = omitted).</summary>
+    public bool? DestructiveHint { get; init; }
+    public bool? IdempotentHint { get; init; }
+    /// <summary>RF-001: the tool reaches out to the open world (upstream MCP,
+    /// HTTP crawl, external API).</summary>
+    public bool? OpenWorldHint { get; init; }
+    /// <summary>RF-002: JSON Schema of <c>structuredContent</c> when the tool
+    /// emits it.</summary>
+    public JsonObject? OutputSchema { get; init; }
     /// <summary>SPEC-20260923-source-authorization RF-004: owning source for
     /// per-source tools (<c>query_*</c>, MCP-proxy re-exports) — null for
     /// source-independent tools. Drives per-key source scoping.</summary>

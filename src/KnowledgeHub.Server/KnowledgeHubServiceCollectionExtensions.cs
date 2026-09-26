@@ -458,12 +458,27 @@ public static class KnowledgeHubServiceCollectionExtensions
                 var tools = await catalog.GetToolsAsync(ctx.Services!, ct);
                 return new ListToolsResult
                 {
+                    // RF-005 (SPEC-20260926-mcp-sdk-alignment): the catalog is
+                    // per-credential — private scope, short TTL so scope or
+                    // integration changes propagate quickly.
+                    CacheScope = CacheScope.Private,
+                    TimeToLive = TimeSpan.FromMinutes(5),
                     Tools = tools.Select(t => new Tool
                     {
                         Name = t.Name,
+                        Title = t.Title,
                         Description = t.Description,
                         InputSchema = JsonSerializer.SerializeToElement(t.InputSchema),
-                        Annotations = new ToolAnnotations { ReadOnlyHint = t.ReadOnly }
+                        OutputSchema = t.OutputSchema is { } os
+                            ? JsonSerializer.SerializeToElement(os) : null,
+                        Annotations = new ToolAnnotations
+                        {
+                            Title = t.Title,
+                            ReadOnlyHint = t.ReadOnly,
+                            DestructiveHint = t.DestructiveHint,
+                            IdempotentHint = t.IdempotentHint,
+                            OpenWorldHint = t.OpenWorldHint
+                        }
                     }).ToList()
                 };
             };
@@ -513,6 +528,18 @@ public static class KnowledgeHubServiceCollectionExtensions
                         }]
                     };
                 }
+
+                // RF-003 (SPEC-20260926-mcp-sdk-alignment): MRTR — a retry
+                // carrying requestState+inputResponses resolves the pending
+                // approval (and executes the stored call on accept). A gated
+                // write tool under an elicitation-capable client is answered
+                // with resultType:"input_required" instead of running blind.
+                if (Mcp.MrtrApproval.IsRetry(ctx))
+                    return await Mcp.MrtrApproval.ResumeAsync(ctx, tool, ct);
+
+                if (Mcp.MrtrApproval.RequiresApproval(ctx.Services!, tool)
+                    && Mcp.MrtrApproval.ClientSupportsElicitation(ctx))
+                    throw await Mcp.MrtrApproval.CreateAsync(ctx, tool, ct);
 
                 // SPEC-20260923-rate-limiting RF-003: LLM-spending / write tools
                 // are charged per caller — over-limit yields a friendly isError

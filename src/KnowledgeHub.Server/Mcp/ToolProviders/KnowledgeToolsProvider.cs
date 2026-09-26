@@ -63,6 +63,25 @@ public sealed class KnowledgeToolsProvider : IToolProvider
         "examples":[{"prompt":"Summarize this week's notes","tools":["search_knowledge","ask_knowledge"],"maxIterations":10,"persist":true}]}
         """)!.AsObject();
 
+    // RF-002 (SPEC-20260926-mcp-sdk-alignment): outputSchema for structuredContent.
+    private static readonly JsonObject SearchOutputSchema = JsonNode.Parse("""
+        {"type":"object","properties":{
+          "results":{"type":"array","items":{"type":"object","properties":{
+            "chunkText":{"type":"string"},"documentTitle":{"type":"string"},
+            "sourceName":{"type":"string"},"sourceId":{"type":"string"},
+            "score":{"type":"number"},"uriReference":{"type":"string"},
+            "sourceType":{"type":"string"}},"required":["chunkText","documentTitle","sourceName","score","uriReference"]}},
+          "grade":{"type":"string"},"retried":{"type":"boolean"}},
+         "required":["results"]}
+        """)!.AsObject();
+
+    private static readonly JsonObject AskOutputSchema = JsonNode.Parse("""
+        {"type":"object","properties":{
+          "answer":{"type":"string"},
+          "citations":{"type":"array","items":{"type":"object"}},
+          "retrievalGrade":{"type":"string"},"retried":{"type":"boolean"}}}
+        """)!.AsObject();
+
     private static readonly JsonObject WriteSchema = JsonNode.Parse("""
         {"type":"object","properties":{
           "title":{"type":"string","description":"Document title (becomes the file name in vault sources)","examples":["Example note"]},
@@ -80,9 +99,12 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "search_knowledge",
+                Title = "Search knowledge",
                 Description = "Unified semantic search across all active knowledge sources. Returns ranked passages with source name, document title, score and URI. Use for exploratory lookups; use a scoped query_* tool to search a single source.",
                 InputSchema = SearchSchema,
+                OutputSchema = SearchOutputSchema,
                 ReadOnly = true,
+                IdempotentHint = true,
                 Handler = async (ctx, ct) =>
                 {
                     var query = ToolArgs.RequiredString(ctx, "query");
@@ -98,20 +120,32 @@ public sealed class KnowledgeToolsProvider : IToolProvider
                           (outcome.Grading.Grade == Search.RetrievalGrade.Weak ? " — suggestion: rephrase the query" : "") +
                           (outcome.Retried ? " — retried" : "") + "]\n"
                         : null;
-                    return await ToolResults.Text(grade + FormatHits(outcome.Results));
+                    return await ToolResults.Structured(
+                        grade + FormatHits(outcome.Results),
+                        new
+                        {
+                            results = outcome.Results,
+                            grade = retrieval.GradingEnabled
+                                ? outcome.Grading.Grade.ToString().ToLowerInvariant() : null,
+                            retried = outcome.Retried
+                        });
                 }
             },
             new CatalogTool
             {
                 Name = "ask_knowledge",
+                Title = "Ask knowledge",
                 Description = "Answers a natural-language question using the indexed knowledge base. When a chat provider is configured, returns a synthesized answer with [n] citations — each citation includes the document title, source name and file path, which can be passed to read_document to fetch the full document. Without a provider (or generate=false) returns the raw aggregated context.",
                 InputSchema = AskSchema,
+                OutputSchema = AskOutputSchema,
                 ReadOnly = true,
+                IdempotentHint = true,
                 Handler = AskKnowledgeAsync
             },
             new CatalogTool
             {
                 Name = "agent_chat",
+                Title = "Agent chat",
                 Description = "Multi-step agent: iterates model → tools → model over the live tool catalog until it can answer the prompt. Read-only tools are available by default; set allowWrite to expose write tools. Requires a configured chat provider.",
                 InputSchema = AgentSchema,
                 ReadOnly = true, // mutating tools still require allowWrite opt-in
@@ -120,8 +154,10 @@ public sealed class KnowledgeToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "write_knowledge",
+                Title = "Write knowledge",
                 Description = "Persists content into the knowledge base. For markdown-vault sources it creates a .md file; for other sources it stores a document that is indexed and immediately searchable.",
                 InputSchema = WriteSchema,
+                DestructiveHint = true,
                 Handler = WriteKnowledgeAsync
             }
         ];

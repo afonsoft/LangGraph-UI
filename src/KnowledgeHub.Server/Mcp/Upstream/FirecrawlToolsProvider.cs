@@ -218,6 +218,10 @@ public sealed class FirecrawlToolsProvider(
             InputSchema = schema,
             ReadOnly = proto.Annotations?.ReadOnlyHint
                 ?? !MutatingPrefixes.Any(p => name.StartsWith(p, StringComparison.Ordinal)),
+            DestructiveHint = proto.Annotations?.DestructiveHint,
+            IdempotentHint = proto.Annotations?.IdempotentHint,
+            OpenWorldHint = true,
+            Title = proto.Annotations?.Title,
             Handler = (ctx, ct) => DispatchAsync(name, ctx, ct)
         };
     }
@@ -254,49 +258,66 @@ public sealed class FirecrawlToolsProvider(
         new CatalogTool
         {
             Name = "firecrawl_scrape",
+            Title = "Scrape URL (Firecrawl)",
             Description = "Scrape a single URL — content or structured fields (proxied to Firecrawl).",
             InputSchema = ScrapeSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("firecrawl_scrape", ctx, ct)
         },
         new CatalogTool
         {
             Name = "firecrawl_search",
+            Title = "Web search (Firecrawl)",
             Description = "Search the web (proxied to Firecrawl).",
             InputSchema = SearchSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("firecrawl_search", ctx, ct)
         },
         new CatalogTool
         {
             Name = "firecrawl_map",
+            Title = "Map site (Firecrawl)",
             Description = "Discover site URLs before extraction (proxied to Firecrawl).",
             InputSchema = MapSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("firecrawl_map", ctx, ct)
         },
         new CatalogTool
         {
             Name = "firecrawl_crawl",
+            Title = "Crawl site (Firecrawl)",
             Description = "Crawl a site/section; polls the job to a terminal state (proxied to Firecrawl — billable).",
             InputSchema = CrawlSchema,
             ReadOnly = false,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("firecrawl_crawl", ctx, ct)
         },
         new CatalogTool
         {
             Name = "firecrawl_check_crawl_status",
+            Title = "Crawl status (Firecrawl)",
             Description = "Check/resume a running crawl job (proxied to Firecrawl).",
             InputSchema = CrawlStatusSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("firecrawl_check_crawl_status", ctx, ct)
         },
         new CatalogTool
         {
             Name = "firecrawl_parse",
+            Title = "Parse file (Firecrawl)",
             Description = "Parse a PDF/document/spreadsheet/HTML file (proxied to Firecrawl).",
             InputSchema = ParseSchema,
             ReadOnly = true,
+            IdempotentHint = true,
+            OpenWorldHint = true,
             Handler = (ctx, ct) => DispatchAsync("firecrawl_parse", ctx, ct)
         }
     ];

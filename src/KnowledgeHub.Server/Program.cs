@@ -1,5 +1,7 @@
 using KnowledgeHub.McpEngine;
 using KnowledgeHub.Server;
+using KnowledgeHub.Server.Mcp;
+using ModelContextProtocol.Extensions.Tasks;
 using KnowledgeHub.Server.Api;
 using KnowledgeHub.Server.Auth;
 using KnowledgeHub.Server.Configuration;
@@ -74,7 +76,20 @@ if (builder.Configuration.GetValue("Cache:Provider", "memory")
 }
 
 builder.Services.AddKnowledgeHubServer(builder.Configuration);
-builder.Services.AddKnowledgeHubMcp(builder.Configuration);
+// SPEC-20260926-mcp-sdk-alignment RF-004: MCP Tasks extension — durable EF
+// store; the selector marks long-running tools (agent_chat, billable upstream
+// crawls/research) as task-required so capable clients get a taskId instead of
+// blocking. Clients without the io.modelcontextprotocol/tasks extension keep
+// the synchronous behavior.
+builder.Services.AddKnowledgeHubMcp(builder.Configuration)
+    .WithTasks(
+        new EfMcpTaskStore(
+            CatalogDatabase.Resolve(builder.Configuration), builder.Configuration),
+        o => o.ExecutionModeSelector = ctx =>
+            ctx.Params?.Name is "agent_chat" or "firecrawl_crawl" or "tavily_crawl" or "tavily_research"
+                && MrtrApproval.ClientDeclaredExtension(ctx, TasksProtocol.ExtensionId)
+                ? McpTaskExecutionMode.Required
+                : McpTaskExecutionMode.Synchronous);
 builder.Services.AddSignalR();
 
 // SPEC-20260923-rate-limiting: partitioned policies — llm (sliding),

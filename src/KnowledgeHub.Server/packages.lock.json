@@ -129,6 +129,15 @@
         "resolved": "10.0.12",
         "contentHash": "x3DE+uneL/A1ZtF70QvDwI648zx58Xwwm0WG5havCPnJaBWOGFbzANgz09FVbXRlXwleGW/K3hs1sFjnCMrtaA=="
       },
+      "ModelContextProtocol.Extensions.Tasks": {
+        "type": "Direct",
+        "requested": "[2.2.0, )",
+        "resolved": "2.2.0",
+        "contentHash": "cIGGEIL/KVbPBxflSF6TRKmjNTGk668e8x/R+Jx9l8VPHH70BisCmjdtHdkDHbbBr9gGMbjBjJdiNMJecweCGw==",
+        "dependencies": {
+          "ModelContextProtocol": "[2.2.0]"
+        }
+      },
       "Npgsql": {
         "type": "Direct",
         "requested": "[10.0.3, )",

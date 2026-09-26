@@ -100,7 +100,7 @@ public class RateLimitTests : IClassFixture<RateLimitTests.Fixture>, IClassFixtu
             capabilities = new { },
             clientInfo = new { name = "rl-test", version = "1.0" }
         });
-        Assert.Equal("knowledge", init.GetProperty("serverInfo").GetProperty("name").GetString());
+        Assert.Equal("knowledge-mcp-hub", init.GetProperty("serverInfo").GetProperty("name").GetString());
         await mcp.NotifyAsync("notifications/initialized");
 
         async Task<bool> Call() =>

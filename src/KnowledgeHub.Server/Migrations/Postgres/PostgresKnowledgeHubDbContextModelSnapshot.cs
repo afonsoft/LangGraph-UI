@@ -795,6 +795,49 @@ namespace KnowledgeHub.Server.Migrations.Postgres
                     b.ToTable("Sources");
                 });
 
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.McpTask", b =>
+                {
+                    b.Property<string>("TaskId")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("InputRequestsJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("PollIntervalMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("StatusMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long?>("TtlMs")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TaskId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("McpTasks");
+                });
+
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.SecurityEvent", b =>
                 {
                     b.Property<Guid>("Id")

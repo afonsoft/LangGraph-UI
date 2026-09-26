@@ -845,6 +845,14 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.10"
         }
       },
+      "ModelContextProtocol.Extensions.Tasks": {
+        "type": "Transitive",
+        "resolved": "2.2.0",
+        "contentHash": "cIGGEIL/KVbPBxflSF6TRKmjNTGk668e8x/R+Jx9l8VPHH70BisCmjdtHdkDHbbBr9gGMbjBjJdiNMJecweCGw==",
+        "dependencies": {
+          "ModelContextProtocol": "[2.2.0]"
+        }
+      },
       "Newtonsoft.Json": {
         "type": "Transitive",
         "resolved": "13.0.3",
@@ -1238,6 +1246,7 @@
           "Microsoft.Extensions.Http.Resilience": "[10.9.0, )",
           "Microsoft.ML.OnnxRuntime": "[1.29.0, )",
           "Microsoft.ML.Tokenizers": "[2.0.0, )",
+          "ModelContextProtocol.Extensions.Tasks": "[2.2.0, )",
           "Npgsql": "[10.0.3, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.19.1, )",
