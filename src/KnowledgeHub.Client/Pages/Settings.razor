@@ -671,6 +671,12 @@ else
             <Card>
                 <HeaderTemplate><span>Vector store</span></HeaderTemplate>
                 <BodyTemplate>
+                    <p class="small text-muted mb-2">
+                        Guarda os <em>embeddings</em> — vetores numéricos que representam o significado de
+                        cada chunk indexado. Na busca, a pergunta é vetorizada e comparada por similaridade
+                        (cosseno): encontra conteúdo relacionado mesmo sem palavras-chave exatas. É o que
+                        alimenta o RAG; o índice HNSW torna essa busca rápida em bases grandes.
+                    </p>
                     @if (_dbStats.VectorStore is System.Text.Json.JsonElement vs && vs.ValueKind == System.Text.Json.JsonValueKind.Object)
                     {
                         <div class="row small">
