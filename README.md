@@ -3,6 +3,8 @@
 [![CI Build & Test](https://github.com/afonsoft/LangGraph-UI/actions/workflows/ci-build-test.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/ci-build-test.yml)
 [![Code Quality](https://github.com/afonsoft/LangGraph-UI/actions/workflows/code-quality.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/code-quality.yml)
 [![Security Scan](https://github.com/afonsoft/LangGraph-UI/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/security-scan.yml)
+[![SonarCloud](https://sonarcloud.io/api/project_badges/measure?project=afonsoft_LangGraph-UI&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=afonsoft_LangGraph-UI)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=afonsoft_LangGraph-UI&metric=coverage)](https://sonarcloud.io/summary/new_code?id=afonsoft_LangGraph-UI)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Blazor WASM](https://img.shields.io/badge/Blazor-WASM%20PWA-512BD4)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
