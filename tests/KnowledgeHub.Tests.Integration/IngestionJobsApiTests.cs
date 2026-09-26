@@ -8,8 +8,19 @@ using Xunit;
 
 namespace KnowledgeHub.Tests.Integration;
 
+/// <summary>
+/// SPEC-20260926-ingestion-jobs-test-deflake: this class depends on a shared
+/// single-worker ingestion queue, so it is timing-sensitive to CPU contention
+/// from sibling test classes (each parallel WebApplicationFactory hosts its own
+/// worker). DisableParallelization keeps it serialized against the whole suite —
+/// a single tiny-file ingest can exceed 60s when dozens of hosts fight for CPU.
+/// </summary>
+[CollectionDefinition(nameof(IngestionSerialCollection), DisableParallelization = true)]
+public sealed class IngestionSerialCollection;
+
 // Covers SPEC-20260925-new-endpoints-integration-tests: ingestion job endpoints,
 // reindex, cancel, and the async sync contract end-to-end over HTTP.
+[Collection(nameof(IngestionSerialCollection))]
 public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture>, IDisposable
 {
     public sealed class Fixture : WebApplicationFactory<Program>
