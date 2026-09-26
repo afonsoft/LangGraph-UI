@@ -32,6 +32,8 @@ public class KnowledgeHubDbContext(DbContextOptions options) : DbContext(options
     public DbSet<KgEdge> KgEdges => Set<KgEdge>();
     public DbSet<KgAlias> KgAliases => Set<KgAlias>();
     public DbSet<IngestionJob> IngestionJobs => Set<IngestionJob>();
+    /// <summary>SPEC-20260926-mcp-sdk-alignment RF-004: durable MCP task handles.</summary>
+    public DbSet<McpTask> McpTasks => Set<McpTask>();
 
     /// <summary>Configura as entidades do modelo: chaves, índices, tamanhos e relacionamentos.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -261,6 +263,15 @@ public class KnowledgeHubDbContext(DbContextOptions options) : DbContext(options
             e.HasIndex(a => a.AliasNormalized);
             e.HasOne(a => a.Node).WithMany().HasForeignKey(a => a.KgNodeId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<McpTask>(e =>
+        {
+            e.HasKey(t => t.TaskId);
+            e.Property(t => t.TaskId).HasMaxLength(80);
+            e.Property(t => t.Status).IsRequired().HasMaxLength(24);
+            e.Property(t => t.StatusMessage).HasMaxLength(500);
+            e.HasIndex(t => t.Status);
         });
     }
 }

@@ -45,16 +45,20 @@ public sealed class ObsidianToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "read_document",
+                Title = "Read document",
                 Description = "Reads the full content of a markdown document from an active vault source, addressed by its vault-relative path.",
                 InputSchema = ReadSchema,
                 ReadOnly = true,
+                IdempotentHint = true,
                 Handler = ReadDocumentAsync
             },
             new CatalogTool
             {
                 Name = "write_note",
+                Title = "Write note",
                 Description = "Writes a markdown note into an active vault source and re-indexes it. Appends .md when missing. Fails on read-only vaults.",
                 InputSchema = WriteSchema,
+                DestructiveHint = true,
                 Handler = WriteNoteAsync
             }
         ];

@@ -30,9 +30,11 @@ public sealed class SettingsToolsProvider : IToolProvider
             new CatalogTool
             {
                 Name = "set_api_key_settings",
+                Title = "Set API key settings",
                 Description = "Override settings (chat endpoint/model, or integration API keys for firecrawl/deepwiki/tavily/context7) for the current API key. Null fields inherit from global defaults. Only available to API-key-authenticated sessions.",
                 InputSchema = SetApiKeySettingsSchema,
                 ReadOnly = false,
+                IdempotentHint = true,
                 Handler = async (ctx, ct) =>
                 {
                     var http = ctx.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext;

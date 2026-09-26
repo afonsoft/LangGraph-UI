@@ -194,9 +194,12 @@ public sealed partial class DeepWikiToolsProvider(
             new CatalogTool
             {
                 Name = "ask_question",
+                Title = "Ask question (DeepWiki)",
                 Description = "Ask any question about a GitHub repository (proxied to DeepWiki).",
                 InputSchema = AskSchema,
                 ReadOnly = true,
+                IdempotentHint = true,
+                OpenWorldHint = true,
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
@@ -207,9 +210,12 @@ public sealed partial class DeepWikiToolsProvider(
             new CatalogTool
             {
                 Name = "read_wiki_structure",
+                Title = "Read wiki structure (DeepWiki)",
                 Description = "Get the documentation topic list for a GitHub repository (proxied to DeepWiki).",
                 InputSchema = RepoSchema,
                 ReadOnly = true,
+                IdempotentHint = true,
+                OpenWorldHint = true,
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
@@ -219,9 +225,12 @@ public sealed partial class DeepWikiToolsProvider(
             new CatalogTool
             {
                 Name = "read_wiki_contents",
+                Title = "Read wiki contents (DeepWiki)",
                 Description = "Read documentation contents for a GitHub repository (proxied to DeepWiki).",
                 InputSchema = RepoSchema,
                 ReadOnly = true,
+                IdempotentHint = true,
+                OpenWorldHint = true,
                 Handler = async (ctx, ct) =>
                 {
                     ValidateRepoArg(ctx, out _);
