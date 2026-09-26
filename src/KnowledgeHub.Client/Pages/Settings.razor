@@ -29,7 +29,7 @@ else
         <div class="col-12">
             <Card>
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between gap-2 align-items-center">
                         <span>Provider OpenAI-compatible</span>
                         @if (_chat.Source == "store")
                         {
@@ -153,7 +153,7 @@ else
         <div class="col-12">
             <Card>
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between gap-2 align-items-center">
                         <span>Provider de embeddings</span>
                         @* SPEC-20260926-embeddings-runtime-coherence RF-002:
                            provider build failures surface here — the editor
@@ -308,7 +308,7 @@ else
         <div class="col-12">
             <Card>
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between gap-2 align-items-center">
                         <span>Extração e travessia do grafo</span>
                         @if (_graph.Source == "store")
                         {
@@ -391,7 +391,7 @@ else
             <div class="col-12 col-lg-6">
                 <Card>
                     <HeaderTemplate>
-                        <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex justify-content-between gap-2 align-items-center">
                             <span>@item.DisplayName</span>
                             @if (item.HasKey)
                             {
@@ -476,7 +476,7 @@ else
         <div class="col-12 col-md-8">
             <Card>
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between gap-2 align-items-center">
                         <span>Provider: <code>@_cache.Provider</code></span>
                         @if (_cache.IsConnected)
                         {
@@ -641,7 +641,7 @@ else
         <div class="col-12 col-md-6">
             <Card>
                 <HeaderTemplate>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between gap-2 align-items-center">
                         <span>Provider: <code>@_dbStats.Provider</code></span>
                         <Button Size="Size.Small" Color="Color.Secondary" Icon="fa-solid fa-rotate"
                                 Text="Atualizar" IsAsync="true" OnClick="ReloadDatabaseAsync" />
@@ -671,6 +671,12 @@ else
             <Card>
                 <HeaderTemplate><span>Vector store</span></HeaderTemplate>
                 <BodyTemplate>
+                    <p class="small text-muted mb-2">
+                        Guarda os <em>embeddings</em> — vetores numéricos que representam o significado de
+                        cada chunk indexado. Na busca, a pergunta é vetorizada e comparada por similaridade
+                        (cosseno): encontra conteúdo relacionado mesmo sem palavras-chave exatas. É o que
+                        alimenta o RAG; o índice HNSW torna essa busca rápida em bases grandes.
+                    </p>
                     @if (_dbStats.VectorStore is System.Text.Json.JsonElement vs && vs.ValueKind == System.Text.Json.JsonValueKind.Object)
                     {
                         <div class="row small">

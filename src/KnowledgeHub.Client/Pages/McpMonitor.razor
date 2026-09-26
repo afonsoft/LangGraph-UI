@@ -24,7 +24,7 @@
    stays usable when the hub can't be reached. *@
 @if (Monitor.LastError is { } monitorError)
 {
-    <div class="alert alert-warning py-2 d-flex justify-content-between align-items-center">
+    <div class="alert alert-warning py-2 d-flex justify-content-between gap-2 align-items-center">
         <span>
             Falha na conexão em tempo real: @monitorError<br />
             <small class="text-muted">WebSocket pode estar bloqueado pela rede/proxy — a página continua funcional.</small>
@@ -169,7 +169,7 @@
         </p>
 
         <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between gap-2 align-items-center mb-1">
                 <strong>Claude Code</strong>
                 <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
                         Text="Copiar" OnClick="() => Copy(ClaudeCodeConfig)" />
@@ -178,7 +178,7 @@
         </div>
 
         <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between gap-2 align-items-center mb-1">
                 <strong>Devin</strong>
                 <small class="text-muted me-auto ms-2">Settings → MCP Servers</small>
                 <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
@@ -188,7 +188,7 @@
         </div>
 
         <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between gap-2 align-items-center mb-1">
                 <strong>opencode</strong>
                 <small class="text-muted me-auto ms-2">opencode.json</small>
                 <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
@@ -198,7 +198,7 @@
         </div>
 
         <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between gap-2 align-items-center mb-1">
                 <strong>agy (Antigravity)</strong>
                 <small class="text-muted me-auto ms-2">mcp_config.json</small>
                 <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
@@ -208,7 +208,7 @@
         </div>
 
         <div>
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between gap-2 align-items-center mb-1">
                 <strong>Genérico (qualquer client MCP)</strong>
                 <small class="text-muted me-auto ms-2">SSE / mcp-remote</small>
                 <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-copy"
