@@ -93,7 +93,7 @@ Todos os endpoints `/api/*` exigem autenticação (sessão por cookie ou `Author
 
 | Rota | Propósito |
 |---|---|
-| `GET /api/diagnostics/vectorstore` | diagnóstico do vector store — provider, dimensão, contagem de chunks, tipo de storage (`vector`\|`halfvec`), estado do índice |
+| `GET /api/diagnostics/vectorstore` | diagnóstico do vector store — provider, host, banco, dimensão, contagem de chunks, tipo de storage (`vector`\|`halfvec`), estado do índice |
 | `GET /api/mcp/capabilities` | modo de sessão MCP anunciado (`sessionMode`, `legacySse`) — anônimo |
 | `/mcp` (+ `/mcp/sse`, `/mcp/message`) | transportes MCP — ver README |
 | `/hubs/mcp` | feed de atividade SignalR |
