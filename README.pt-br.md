@@ -56,8 +56,6 @@ Aceito em `/mcp`, `/mcp/sse`, `/api/*` e `/hubs/mcp` (clients SignalR que não p
 
 ## Ferramentas MCP
 
-`search_knowledge`, `ask_knowledge`, `agent_chat`, `write_knowledge`, `read_document`, `write_note`, `set_api_key_settings` (configurações de chat e integração por chave), `query_{source_slug}` por fonte ativa, travessia GraphRAG (`find_dependencies`, `find_dependents`, `find_path`, `analyze_impact` — quando `Graph:Enabled`, default ligado), mais proxies upstream — DeepWiki (`ask_question`, `read_wiki_structure`, `read_wiki_contents`), Firecrawl (`firecrawl_*`), Tavily (`tavily_*`), Context7 (`resolve-library-id`, `query-docs`) e sources arbitrários `McpProxy`.
-
 ## Fontes de conhecimento & ingestão
 
 | Conector | `SourceType` | Notas |
@@ -74,6 +72,33 @@ Aceito em `/mcp`, `/mcp/sse`, `/api/*` e `/hubs/mcp` (clients SignalR que não p
 | Proxy MCP | `McpProxy` | Somente catálogo — passthrough de `tools/list` upstream, não ingerível |
 
 O sync roda numa **fila assíncrona persistida**: `POST /sources/{id}/sync` retorna `202 + jobId` (contadores por documento, `cancel`, `?wait=true` para o contrato síncrono legado); `POST /sources/{id}/reindex` força re-chunk/re-embed, opcionalmente seletivo por versão do chunker. Conectores de cloud fazem staging local dos objetos e fazem diff por ETag; seus secrets ficam no integration-secret store. O chunking é structure-aware (markdown/código/config) e cada fonte pode optar por **chunking semântico** (fronteiras por breakpoints de embeddings) via `{"chunking":"semantic"}` no dialog da fonte.
+
+
+## MCP tools
+
+O catálogo é dinâmico — `tools/list` reconstrói sempre que fontes, keys ou
+integrações mudam, e sessões ativas recebem `tools/list_changed`.
+
+| Tool | Descrição |
+|---|---|
+| `search_knowledge` | Busca semântica unificada em todas as fontes ativas — trechos ranqueados com fonte, título, score e URI |
+| `ask_knowledge` | Responde perguntas sobre a base indexada; com provider de chat retorna resposta sintetizada com citações `[n]`, senão contexto bruto |
+| `agent_chat` | Loop de agente multi-step (modelo → tools → modelo) sobre o catálogo ao vivo; read-only por padrão, `allowWrite` libera tools de escrita |
+| `write_knowledge` | Persiste conteúdo na base — arquivo `.md` para fontes vault, documento indexado nas demais |
+| `read_document` | Lê um documento markdown completo de um vault ativo pelo caminho relativo |
+| `write_note` | Escreve uma nota markdown num vault ativo e re-indexa |
+| `set_api_key_settings` | Overrides por API key: endpoint/modelo de chat e keys de integração |
+| `query_{source_slug}` | Busca semântica escopada — uma tool por fonte ativa |
+| `find_dependencies` / `find_dependents` | Travessia GraphRAG outbound/inbound com evidência por aresta (chunk + doc + fonte) |
+| `find_path` / `analyze_impact` | Caminho mais curto entre entidades; blast radius de 1 hop com documentos de suporte |
+| `ask_question`, `read_wiki_structure`, `read_wiki_contents` | Proxy upstream DeepWiki |
+| `firecrawl_*` | Upstream Firecrawl (scrape, search, crawl, map…) |
+| `tavily_*` | Upstream Tavily (search, extract, map, crawl, research) |
+| `resolve-library-id`, `query-docs` | Upstream Context7 — consulta de docs de bibliotecas |
+| Tools de `McpProxy` | Passthrough de `tools/list` de servidores MCP arbitrários registrados como fontes |
+
+Integrações podem ser ligadas/desligadas em **Settings → Integrações** —
+um provider desligado some do catálogo sem reiniciar.
 
 ## Configuração
 

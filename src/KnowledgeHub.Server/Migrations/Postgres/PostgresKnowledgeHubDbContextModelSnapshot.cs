@@ -555,6 +555,31 @@ namespace KnowledgeHub.Server.Migrations.Postgres
                     b.ToTable("IntegrationSecrets");
                 });
 
+            modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.IntegrationState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider")
+                        .IsUnique();
+
+                    b.ToTable("IntegrationStates");
+                });
+
             modelBuilder.Entity("KnowledgeHub.Server.Domain.Entities.KgAlias", b =>
                 {
                     b.Property<Guid>("Id")

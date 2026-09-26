@@ -19,6 +19,7 @@ public class KnowledgeHubDbContext(DbContextOptions options) : DbContext(options
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsageEvent> ApiKeyUsageEvents => Set<ApiKeyUsageEvent>();
     public DbSet<IntegrationSecret> IntegrationSecrets => Set<IntegrationSecret>();
+    public DbSet<IntegrationState> IntegrationStates => Set<IntegrationState>();
     public DbSet<ChatSettings> ChatSettings => Set<ChatSettings>();
 
     public DbSet<EmbeddingSettings> EmbeddingSettings => Set<EmbeddingSettings>();
@@ -161,6 +162,13 @@ public class KnowledgeHubDbContext(DbContextOptions options) : DbContext(options
             e.HasIndex(s => s.Provider).IsUnique();
             e.Property(s => s.ProtectedValue).IsRequired();
             e.Property(s => s.KeyHint).IsRequired().HasMaxLength(8);
+        });
+
+        modelBuilder.Entity<IntegrationState>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Provider).IsRequired().HasMaxLength(64);
+            e.HasIndex(s => s.Provider).IsUnique();
         });
 
         modelBuilder.Entity<ChatSettings>(e =>

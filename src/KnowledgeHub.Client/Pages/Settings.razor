@@ -393,14 +393,22 @@ else
                     <HeaderTemplate>
                         <div class="d-flex justify-content-between gap-2 align-items-center">
                             <span>@item.DisplayName</span>
-                            @if (item.HasKey)
-                            {
-                                <Badge Color="Color.Success">configurada</Badge>
-                            }
-                            else
-                            {
-                                <Badge Color="Color.Secondary">sem key</Badge>
-                            }
+                            <div class="d-flex align-items-center gap-2">
+                                <Switch Value="item.Enabled" OnValueChanged="v => ToggleAsync(item, v)"
+                                        ShowLabel="false" title="@(item.Enabled ? "Desativar integração" : "Ativar integração")" />
+                                @if (!item.Enabled)
+                                {
+                                    <Badge Color="Color.Warning">desativada</Badge>
+                                }
+                                else if (item.HasKey)
+                                {
+                                    <Badge Color="Color.Success">configurada</Badge>
+                                }
+                                else
+                                {
+                                    <Badge Color="Color.Secondary">sem key</Badge>
+                                }
+                            </div>
                         </div>
                     </HeaderTemplate>
                     <BodyTemplate>
@@ -1197,6 +1205,23 @@ else
         {
             state.Saving = false;
         }
+    }
+
+    /// <summary>Liga/desliga a integração — desligada sai do catálogo MCP de tools.</summary>
+    private async Task ToggleAsync(IntegrationSettingsDto item, bool enabled)
+    {
+        var result = await Api.SetEnabledAsync(item.Provider, enabled);
+        if (!result.IsSuccess)
+        {
+            await Toast.Error("Erro", result.Error ?? "Falha ao alternar a integração");
+            return;
+        }
+        await Toast.Success(
+            enabled ? "Ativada" : "Desativada",
+            enabled
+                ? $"Tools do {item.DisplayName} de volta ao catálogo MCP."
+                : $"Tools do {item.DisplayName} removidas do catálogo MCP.");
+        await ReloadAsync();
     }
 
     /// <summary>Remove a key armazenada da integração e recarrega a lista.</summary>
