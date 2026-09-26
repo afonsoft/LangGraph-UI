@@ -42,9 +42,11 @@ public sealed class IngestionQueue(
     IConfiguration configuration) : IIngestionQueue
 {
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancelTokens = new();
-    private Channel<Guid>? _channel;
-
-    private Channel<Guid> Channel => _channel ??= System.Threading.Channels.Channel
+    // Eager init — a lazy `??=` here is racy: a request's EnqueueAsync and the
+    // worker's first read can each create a channel; the write then lands on the
+    // losing instance and the persisted job sits "queued" forever (the CI flake
+    // signature diagnosed in run 36209732012: status=queued for 300s).
+    private readonly Channel<Guid> _channel = System.Threading.Channels.Channel
         .CreateBounded<Guid>(new BoundedChannelOptions(
             configuration.GetValue("Ingestion:QueueSize", 100))
         {
@@ -52,7 +54,7 @@ public sealed class IngestionQueue(
             FullMode = BoundedChannelFullMode.Wait
         });
 
-    public ChannelReader<Guid> Reader => Channel.Reader;
+    public ChannelReader<Guid> Reader => _channel.Reader;
 
     public async Task<IngestionJobEnqueueResult> EnqueueAsync(
         Guid sourceId, string kind, CancellationToken ct)
@@ -75,7 +77,7 @@ public sealed class IngestionQueue(
         db.IngestionJobs.Add(job);
         await db.SaveChangesAsync(ct);
 
-        if (!Channel.Writer.TryWrite(job.Id))
+        if (!_channel.Writer.TryWrite(job.Id))
         {
             // RF-007 (SPEC-20260926-ingestion-connector-integrity): a persisted
             // "queued" job that never reached the channel would deadlock dedup —
