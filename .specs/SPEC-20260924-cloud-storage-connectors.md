@@ -14,14 +14,14 @@
 
 ## 1. User Story
 
-**As a** administrador ou analista de dados utilizando o KnowledgeHub
+**As a** administrador ou analista de dados utilizando o Knowledge MCP Hub
 **I want** cadastrar e sincronizar fontes de dados armazenadas no AWS S3, Azure Files e OCI Storage na tela de Fontes
 **So that** os documentos da nuvem corporativa (.pdf, .docx, .md, .txt, código) sejam baixados para uma pasta temporária de staging local, tratados, vetorizados no banco de dados e utilizados para responder perguntas e buscas no RAG.
 
 **Problem context:**
-Atualmente, o KnowledgeHub suporta fontes locais (`ObsidianVault`, `DocumentFile`), páginas web (`WebPage`), APIs externas (`RestApi`), bancos SQL (`SqlDatabase`), proxies MCP (`McpProxy`) e workspaces Notion (`Notion`).
+Atualmente, o Knowledge MCP Hub suporta fontes locais (`ObsidianVault`, `DocumentFile`), páginas web (`WebPage`), APIs externas (`RestApi`), bancos SQL (`SqlDatabase`), proxies MCP (`McpProxy`) e workspaces Notion (`Notion`).
 Entretanto, a maior parte do acervo documental de empresas e equipes técnicas reside em serviços de armazenamento em nuvem: buckets S3 na AWS, compartilhamentos de arquivos no Azure Files e buckets/file storage na Oracle Cloud Infrastructure (OCI).
-Não havia até o momento conectores para esses serviços. É necessário que o KnowledgeHub sincronize esses arquivos para uma pasta temporária de staging local, realize a extração textual multiformato, faça o chunking semântico e persista os vetores no banco de dados para alimentar o pipeline de RAG com sincronização incremental eficiente.
+Não havia até o momento conectores para esses serviços. É necessário que o Knowledge MCP Hub sincronize esses arquivos para uma pasta temporária de staging local, realize a extração textual multiformato, faça o chunking semântico e persista os vetores no banco de dados para alimentar o pipeline de RAG com sincronização incremental eficiente.
 
 ## 2. Scope
 
@@ -261,7 +261,7 @@ tests/KnowledgeHub.Tests.Integration/CloudStorageIngestionTests.cs           (cr
 ## 6. Acceptance Criteria
 
 - [ ] **Given** uma fonte `AwsS3` configurada com credenciais válidas **when** o sync é executado **then** os arquivos do bucket correspondentes ao filtro glob são baixados para `data/staging/{sourceId}/`, o texto é extraído, os chunks são vetorizados no banco e indexados para RAG.
-- [ ] **Given** uma fonte `AzureFiles` com connection string **when** o sync é disparado **then** o conector navega a árvore de diretórios, baixa arquivos alterados para o staging e os vetoriza no KnowledgeHub.
+- [ ] **Given** uma fonte `AzureFiles` com connection string **when** o sync é disparado **then** o conector navega a árvore de diretórios, baixa arquivos alterados para o staging e os vetoriza no Knowledge MCP Hub.
 - [ ] **Given** uma fonte `OciStorage` configurada com a S3-Compatible API da OCI **when** o sync é iniciado **then** os arquivos do bucket da OCI são sincronizados localmente e inseridos no índice vetorial.
 - [ ] **Given** arquivos já sincronizados que não sofreram alteração no storage remoto (mesmo ETag/LastModified) **when** novo sync roda **then** o download é pulado e os chunks existentes são preservados (sync incremental rápido).
 - [ ] **Given** um arquivo apagado ou renomeado no storage remoto **when** novo sync roda **then** o documento correspondente é removido do índice vetorial e do staging local.

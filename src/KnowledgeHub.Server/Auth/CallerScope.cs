@@ -12,7 +12,8 @@ namespace KnowledgeHub.Server.Auth;
 public sealed record CallerScope(
     Guid? ApiKeyId,
     IReadOnlySet<Guid>? AllowedSourceIds,
-    IReadOnlySet<string>? AllowedTools)
+    IReadOnlySet<string>? AllowedTools,
+    bool AllowWrite = true)
 {
     public static readonly CallerScope Unrestricted = new(null, null, null);
 
@@ -32,9 +33,11 @@ public sealed record CallerScope(
         AllowedTools is null || AllowedTools.Contains(name);
 
     /// <summary>Parses the stored JSON columns; malformed payloads fall back to
-    /// unrestricted rather than locking the key out silently.</summary>
-    public static CallerScope FromJson(Guid apiKeyId, string? sourceIdsJson, string? toolsJson) =>
-        new(apiKeyId, ParseGuidSet(sourceIdsJson), ParseStringSet(toolsJson));
+    /// unrestricted rather than locking the key out silently.
+    /// <paramref name="allowWrite"/> gates non-readonly tools at call time —
+    /// denied calls answer a friendly isError instead of executing.</summary>
+    public static CallerScope FromJson(Guid apiKeyId, string? sourceIdsJson, string? toolsJson, bool allowWrite = true) =>
+        new(apiKeyId, ParseGuidSet(sourceIdsJson), ParseStringSet(toolsJson), allowWrite);
 
     private static IReadOnlySet<Guid>? ParseGuidSet(string? json)
     {

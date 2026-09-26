@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** user deploying KnowledgeHub with `./install.sh --docker`
+**As a** user deploying Knowledge MCP Hub with `./install.sh --docker`
 **I want** the documented environment overrides (`EMBEDDINGS_*`, `VECTORSTORE_*`, `DEEPWIKI_*`, `FIRECRAWL_*`, `TAVILY_*`, `CHAT_*`, `CACHE_*`, `AUTH_*`) to actually reach the container
 **So that** the deployed instance honors my `.env`/shell configuration instead of silently running with defaults.
 

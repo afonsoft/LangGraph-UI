@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** engenheiro de software e operador do KnowledgeHub
+**As a** engenheiro de software e operador do Knowledge MCP Hub
 **I want** background jobs estruturados como HostedServices dedicados com logs ricos e o sistema de logging aprimorado com Serilog (estruturado, sinks para Console e Arquivo com rotação e enriquecimento de contexto)
 **So that** as operações em segundo plano (sincronizações automáticas de fontes de nuvem, limpeza de dados órfãos, recálculo de métricas) sejam confiáveis, observáveis e rastreáveis sem sobrecarregar o host, com logs detalhados e fáceis de depurar em produção.
 

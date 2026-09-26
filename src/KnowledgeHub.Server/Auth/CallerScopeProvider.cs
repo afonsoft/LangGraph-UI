@@ -42,9 +42,9 @@ public sealed class CallerScopeProvider(
             entry.AbsoluteExpirationRelativeToNow = Ttl;
             var row = await db.ApiKeys.AsNoTracking()
                 .Where(k => k.Id == keyId)
-                .Select(k => new { k.AllowedSourceIdsJson, k.AllowedToolsJson })
+                .Select(k => new { k.AllowedSourceIdsJson, k.AllowedToolsJson, k.AllowWrite })
                 .FirstOrDefaultAsync(ct);
-            return CallerScope.FromJson(keyId, row?.AllowedSourceIdsJson, row?.AllowedToolsJson);
+            return CallerScope.FromJson(keyId, row?.AllowedSourceIdsJson, row?.AllowedToolsJson, row?.AllowWrite ?? true);
         });
         return _resolved = scope ?? CallerScope.Unrestricted;
     }

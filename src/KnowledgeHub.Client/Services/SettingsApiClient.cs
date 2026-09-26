@@ -111,6 +111,24 @@ public sealed class SettingsApiClient(HttpClient http)
         return await ReadAsync<object>(response, ct);
     }
 
+    /// <summary>Salva/substitui a key de uma integração para uma API key específica
+    /// (override por chave — em branco a chave usa a key global da integração).</summary>
+    public async Task<ApiResult<object>> SetApiKeyIntegrationKeyAsync(Guid apiKeyId, string provider, string apiKey, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync(
+            $"api/api-keys/{apiKeyId}/settings/integrations/{Uri.EscapeDataString(provider)}",
+            new SetIntegrationKeyRequest { ApiKey = apiKey }, ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
+    /// <summary>Remove a key de integração sobreposta de uma API key — volta à global.</summary>
+    public async Task<ApiResult<object>> RemoveApiKeyIntegrationKeyAsync(Guid apiKeyId, string provider, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync(
+            $"api/api-keys/{apiKeyId}/settings/integrations/{Uri.EscapeDataString(provider)}", ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     // SPEC-20260924-redis-cache-and-tool-caching: cache inspection and clear.
 
     /// <summary>Obtém estatísticas e chaves ativas do cache.</summary>

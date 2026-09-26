@@ -14,7 +14,7 @@
 ## 1. User Story
 
 **As a** platform administrator
-**I want** the KnowledgeHub admin UI to work properly on mobile devices (phones and tablets)
+**I want** the Knowledge MCP Hub admin UI to work properly on mobile devices (phones and tablets)
 **So that** I can manage sources, API keys, settings, and use the chat interface from any device without horizontal scrolling or broken layouts.
 
 **Problem context:** The current Blazor WASM admin UI is desktop-first. On mobile (viewport < 768px): the sidebar navigation is always visible and consumes screen space, BootstrapBlazor tables overflow horizontally, the chat layout stacks poorly with the thread list consuming full height, form layouts use multi-column grids that become unreadable, and touch targets are too small. This makes the admin UI practically unusable on phones.

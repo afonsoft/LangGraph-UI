@@ -19,7 +19,7 @@
 **So that** o deploy saiba exatamente qual exposição existe hoje e como fechá-la sem quebrar o cache.
 
 **Problem context:**
-O Redis do host (`/www/server/redis`) escuta em `0.0.0.0:6379` com `protected-mode no` e sem `requirepass` (evidência: `redis-cli config get bind/protected-mode`, `ss -tlnp`). O KnowledgeHub usa db3 via `host.docker.internal:6379` — funcional, mas qualquer processo na máquina ou na rede (se a porta estiver aberta no firewall/security group) pode ler e escrever o cache de busca/embeddings. Decisão do operador (2026-09-16): **documentar o risco agora; não alterar a infra nesta entrega**.
+O Redis do host (`/www/server/redis`) escuta em `0.0.0.0:6379` com `protected-mode no` e sem `requirepass` (evidência: `redis-cli config get bind/protected-mode`, `ss -tlnp`). O Knowledge MCP Hub usa db3 via `host.docker.internal:6379` — funcional, mas qualquer processo na máquina ou na rede (se a porta estiver aberta no firewall/security group) pode ler e escrever o cache de busca/embeddings. Decisão do operador (2026-09-16): **documentar o risco agora; não alterar a infra nesta entrega**.
 
 ## 2. Scope
 

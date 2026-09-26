@@ -15,7 +15,7 @@
 
 ## 1. User Story
 
-**As a** KnowledgeHub platform user
+**As a** Knowledge MCP Hub platform user
 **I want** the Context7 key (stored via Settings or `Context7__ApiKey` env) to power the official Context7 tools through the internal MCP server — testable in the Playground with ready-made examples
 **So that** agent sessions can resolve library IDs and pull up-to-date, version-specific documentation (`resolve-library-id`, `query-docs`) alongside Firecrawl, Tavily and DeepWiki.
 

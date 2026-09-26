@@ -55,6 +55,22 @@ public static class ToolsEndpoints
                 });
             }
 
+            // Per-key write gate: read-only credentials get an informative
+            // isError instead of the write executing — the tool stays visible
+            // in the list so clients can discover it.
+            var callScope = http.RequestServices.GetService<ICallerScopeProvider>() is { } scopeProvider
+                ? await scopeProvider.GetAsync(ct)
+                : CallerScope.Unrestricted;
+            if (!tool.ReadOnly && !callScope.AllowWrite)
+            {
+                await ScopeAudit.RecordToolDeniedAsync(http.RequestServices, name, ct);
+                return Results.Ok(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"tool '{name}' requires write access — this credential is read-only" }],
+                    IsError = true
+                });
+            }
+
             var arguments = await ReadArgumentsAsync(http, ct);
             var context = new ToolCallContext
             {

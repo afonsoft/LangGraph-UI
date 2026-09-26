@@ -39,6 +39,10 @@ public static class ApiKeyEndpoints
         app.MapDelete("/api/api-keys/{id:guid}/rate-limit", ClearRateLimitAsync)
             .RequireAuthorization(AuthPolicies.CookieSession);
 
+        // Per-key write permission — cookie-only like the rest of key admin.
+        app.MapPut("/api/api-keys/{id:guid}/write-access", SetWriteAccessAsync)
+            .RequireAuthorization(AuthPolicies.CookieSession);
+
         return group;
     }
 
@@ -61,7 +65,8 @@ public static class ApiKeyEndpoints
                 k.LlmRateLimitPermits,
                 k.LlmRateLimitWindowSeconds,
                 k.SyncRateLimitPermits,
-                k.SyncRateLimitWindowSeconds
+                k.SyncRateLimitWindowSeconds,
+                k.AllowWrite
             })
             .ToListAsync(ct);
         // SQLite cannot ORDER BY DateTimeOffset — sort client-side.
@@ -69,12 +74,13 @@ public static class ApiKeyEndpoints
             .OrderByDescending(k => k.CreatedAt)
             .Select(k =>
             {
-                var scope = CallerScope.FromJson(k.Id, k.AllowedSourceIdsJson, k.AllowedToolsJson);
+                var scope = CallerScope.FromJson(k.Id, k.AllowedSourceIdsJson, k.AllowedToolsJson, k.AllowWrite);
                 return new ApiKeyDto(
                     k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt, k.RevokedAt,
                     scope.AllowedSourceIds?.ToList(), scope.AllowedTools?.ToList(),
                     k.LlmRateLimitPermits, k.LlmRateLimitWindowSeconds,
-                    k.SyncRateLimitPermits, k.SyncRateLimitWindowSeconds);
+                    k.SyncRateLimitPermits, k.SyncRateLimitWindowSeconds,
+                    k.AllowWrite);
             })
             .ToList());
     }
@@ -268,6 +274,29 @@ public static class ApiKeyEndpoints
         await db.SaveChangesAsync(ct);
 
         resolver.Invalidate();
+        return Results.NoContent();
+    }
+
+    /// <summary>Per-key write gate: desligada a chave vira somente-leitura —
+    /// tools não-readonly respondem um isError informativo. O scope cache é
+    /// evictado para o próximo request já ver a mudança.</summary>
+    private static async Task<IResult> SetWriteAccessAsync(
+        Guid id,
+        SetApiKeyWriteAccessRequest? body,
+        HttpContext http,
+        KnowledgeHubDbContext db,
+        IMemoryCache memory,
+        CancellationToken ct)
+    {
+        var key = await db.ApiKeys
+            .FirstOrDefaultAsync(k => k.Id == id && k.UserId == CurrentUserId(http), ct);
+        if (key is null)
+            return Results.NotFound(new { error = "api key não encontrada" });
+
+        key.AllowWrite = body?.AllowWrite ?? true;
+        await db.SaveChangesAsync(ct);
+
+        memory.Remove(CallerScopeProvider.CacheKey(id));
         return Results.NoContent();
     }
 

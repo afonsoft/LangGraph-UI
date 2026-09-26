@@ -15,7 +15,7 @@
 
 ## 1. User Story
 
-**As a** KnowledgeHub platform user
+**As a** Knowledge MCP Hub platform user
 **I want** the Tavily key (already stored via Settings) to power all official Tavily tools through the internal MCP server — testable in the Playground with ready-made examples
 **So that** I can consume web search, extraction, mapping, crawling and research capabilities alongside Firecrawl and DeepWiki.
 

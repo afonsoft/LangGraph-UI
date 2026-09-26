@@ -23,6 +23,9 @@ namespace KnowledgeHub.Server.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AllowWrite")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AllowedSourceIdsJson")
                         .HasColumnType("TEXT");
 

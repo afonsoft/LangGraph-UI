@@ -428,11 +428,16 @@ public sealed class AgentService(
             : options.MaxIterations;
         var allowlist = request.Tools is { Count: > 0 } t ? t.ToHashSet(StringComparer.OrdinalIgnoreCase) : null;
 
+        var callerScope = services.GetService<Auth.ICallerScopeProvider>() is { } scopeProvider
+            ? await scopeProvider.GetAsync(ct)
+            : Auth.CallerScope.Unrestricted;
         var catalogTools = await catalog.GetToolsAsync(services, ct);
         var visible = catalogTools
             .Where(t => t.Name != "agent_chat") // no recursion
             .Where(t => allowlist is null || allowlist.Contains(t.Name))
-            .Where(t => request.AllowWrite || t.ReadOnly)
+            // request opt-in AND credential permission — a read-only key
+            // never offers write tools to the model.
+            .Where(t => t.ReadOnly || (request.AllowWrite && callerScope.AllowWrite))
             .ToList();
 
         // SPEC-20260924-conversational-query-context: compact snapshot of the

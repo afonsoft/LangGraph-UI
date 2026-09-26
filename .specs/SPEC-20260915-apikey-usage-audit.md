@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** administrador do KnowledgeHub
+**As a** administrador do Knowledge MCP Hub
 **I want** ver os detalhes de cada API key e um resumo de uso com auditoria das chamadas feitas por ela
 **So that** eu saiba qual client está usando qual chave, detecte uso anômalo e possa revogar com segurança.
 

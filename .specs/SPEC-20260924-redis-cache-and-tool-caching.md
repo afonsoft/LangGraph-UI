@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** operador ou cliente conectado às ferramentas (MCP) e RAG do KnowledgeHub
+**As a** operador ou cliente conectado às ferramentas (MCP) e RAG do Knowledge MCP Hub
 **I want** cache distribuído resiliente com Redis, cache automático de ferramentas de leitura/perguntas com TTL mínimo de 1 hora, e uma aba de gerenciamento na tela Settings para visualizar chaves, tamanho e botão de limpeza total
 **So that** perguntas ou chamadas repetidas sejam respondidas instantaneamente (< 5ms) sem gastar tokens nem latência de LLM/busca vetorial, com controle operacional transparente do cache pela interface.
 
@@ -48,7 +48,7 @@ Atualmente:
 
 **Out of scope:**
 - Cache de ferramentas com efeitos colaterais (`readOnly: false` como `write_obsidian_note`, etc.).
-- Persistência permanente em disco do Redis gerenciada pelo KnowledgeHub (o Redis é considerado volátil/cache).
+- Persistência permanente em disco do Redis gerenciada pelo Knowledge MCP Hub (o Redis é considerado volátil/cache).
 
 ## 3. Technical Context
 

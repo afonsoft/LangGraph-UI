@@ -1,4 +1,6 @@
-# KnowledgeHub
+# Knowledge MCP Hub
+
+**[English](README.md) · [Português (pt-BR)](README.pt-br.md)**
 
 [![CI Build & Test](https://github.com/afonsoft/LangGraph-UI/actions/workflows/ci-build-test.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/ci-build-test.yml)
 [![Code Quality](https://github.com/afonsoft/LangGraph-UI/actions/workflows/code-quality.yml/badge.svg?branch=main)](https://github.com/afonsoft/LangGraph-UI/actions/workflows/code-quality.yml)
@@ -326,7 +328,7 @@ CI gates: Build (0 warnings), Unit Tests, Integration Tests (SQLite), Blazor WAS
 
 ## Architecture
 
-KnowledgeHub follows a clean architecture pattern with four layers:
+Knowledge MCP Hub follows a clean architecture pattern with four layers:
 
 - **Shared**: DTOs, MCP contracts, enums — consumed by all projects
 - **Client**: Blazor WASM SPA with BootstrapBlazor components, PWA support, SignalR for real-time updates
@@ -356,7 +358,7 @@ See [docs/architecture/](docs/architecture/README.md) for ADRs, the editable sys
 
 ### Business Value
 
-KnowledgeHub solves the problem of fragmented organizational knowledge by providing a unified platform that:
+Knowledge MCP Hub solves the problem of fragmented organizational knowledge by providing a unified platform that:
 
 - Ingests knowledge from multiple sources (Obsidian vaults, web pages, documents, Notion, APIs, SQL databases, AWS S3, Azure Files, OCI Object Storage, Google Drive)
 - Enables natural language queries with hybrid retrieval (full-text search + vector similarity with RRF reranking)

@@ -13,7 +13,7 @@
 
 ## 1. User Story
 
-**As a** administrador do KnowledgeHub
+**As a** administrador do Knowledge MCP Hub
 **I want** a página Settings organizada em abas temáticas e uma aba "Banco de Dados" com provider e métricas
 **So that** eu navego rápido entre áreas e enxergo saúde/tamanho/contagens do armazenamento sem abrir o SQLite na mão.
 

@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** KnowledgeHub operator and MCP client user
+**As a** Knowledge MCP Hub operator and MCP client user
 **I want** the MCP server to serve the `2026-07-28` protocol revision natively while keeping legacy `initialize`/SSE clients fully functional
 **So that** new-generation clients (v2 SDK, `server/discover`, `MCP-Protocol-Version` header) are not forced to downgrade, and nothing breaks for existing clients.
 

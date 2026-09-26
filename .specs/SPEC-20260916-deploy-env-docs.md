@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** operador fazendo deploy do KnowledgeHub
+**As a** operador fazendo deploy do Knowledge MCP Hub
 **I want** uma referência completa das variáveis de ambiente do `docker-compose.yml` e um `.env.example` commitado
 **So that** eu configure Firecrawl/Tavily/Redis/auth sem ler o compose nem adivinhar nomes.
 

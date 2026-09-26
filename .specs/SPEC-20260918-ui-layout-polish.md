@@ -99,7 +99,7 @@ create  src/KnowledgeHub.Client/wwwroot/icon-maskable-192.png / icon-maskable-51
 
 ### RF-007: PWA installability + offline shell
 - **Rules:**
-  - `manifest.webmanifest`: `name` "KnowledgeHub", `short_name` "KnowledgeHub", `start_url` "/", `display` "standalone", `background_color`/`theme_color` matching light theme + sidebar accent, icons `icon-192.png`, `icon-512.png`, maskable variants (`purpose: "maskable"`).
+  - `manifest.webmanifest`: `name` "Knowledge MCP Hub", `short_name` "Knowledge MCP Hub", `start_url` "/", `display` "standalone", `background_color`/`theme_color` matching light theme + sidebar accent, icons `icon-192.png`, `icon-512.png`, maskable variants (`purpose: "maskable"`).
   - `service-worker.js`: dev no-op fetch listener (no caching in dev).
   - `service-worker.published.js`: precache everything in `service-worker-assets.js`; cache-first for fingerprinted/GET static assets; navigation requests (`mode === 'navigate'`) → cached `index.html` fallback.
   - **Network-only (never cached/intercepted):** `/api/*`, `/hubs/*`, `/mcp*`, `/health/*`, `/framework-assets/*` — pass straight through to `fetch`.

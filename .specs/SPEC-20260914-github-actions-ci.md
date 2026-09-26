@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** maintainer do KnowledgeHub
+**As a** maintainer do Knowledge MCP Hub
 **I want** CI/CD automatizada via GitHub Actions com build, testes, code quality e security scanning
 **So that** cada PR/merge seja validado consistentemente e deploys sejam confiáveis.
 
@@ -150,7 +150,7 @@ README.md (CI section)
 
 ### T1 — Research & Baseline
 - [ ] Analisar workflows EAF e QRCoder.Core
-- [ ] Documentar diferenças para KnowledgeHub
+- [ ] Documentar diferenças para Knowledge MCP Hub
 - [ ] Definir matrix de jobs
 
 ### T2 — Implement CI Build & Test

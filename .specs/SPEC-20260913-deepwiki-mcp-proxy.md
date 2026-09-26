@@ -15,10 +15,10 @@
 ## 1. User Story
 
 **As a** connected MCP agent
-**I want** the KnowledgeHub MCP server to re-expose DeepWiki tools (`ask_question`, `read_wiki_structure`, `read_wiki_contents`) as proxy tools
+**I want** the Knowledge MCP Hub MCP server to re-expose DeepWiki tools (`ask_question`, `read_wiki_structure`, `read_wiki_contents`) as proxy tools
 **So that** a single MCP endpoint gives me local knowledge-hub search AND AI-powered GitHub repository documentation.
 
-**Problem context:** Agents today must register `https://mcp.deepwiki.com/mcp` as a second MCP server. A built-in proxy turns KnowledgeHub into a single aggregation point. **Decision (revised after SDK analysis):** the upstream client uses the official SDK `McpClient` + `HttpClientTransport` (`AutoDetect` → Streamable HTTP, SSE fallback) instead of a hand-rolled SSE parser — the SDK manages handshake, `Mcp-Session-Id`, framing and reconnects.
+**Problem context:** Agents today must register `https://mcp.deepwiki.com/mcp` as a second MCP server. A built-in proxy turns Knowledge MCP Hub into a single aggregation point. **Decision (revised after SDK analysis):** the upstream client uses the official SDK `McpClient` + `HttpClientTransport` (`AutoDetect` → Streamable HTTP, SSE fallback) instead of a hand-rolled SSE parser — the SDK manages handshake, `Mcp-Session-Id`, framing and reconnects.
 
 ## 2. Scope
 

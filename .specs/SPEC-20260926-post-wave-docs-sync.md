@@ -13,7 +13,7 @@
 
 ## 1. User Story
 
-**As a** operador/integrador do KnowledgeHub
+**As a** operador/integrador do Knowledge MCP Hub
 **I want** que a documentação reflita os endpoints, knobs de config e operação de logs entregues nas waves de infra
 **So that** eu descubra e configure log-level em runtime, cache L1/L2+TTLs, pgvector halfvec/iterative scan e o volume de logs sem ler o código — e sem repetir o incidente de permissão do `./logs`.
 

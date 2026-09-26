@@ -15,7 +15,7 @@
 
 ## 1. User Story
 
-**As a** MCP client/LLM consuming the KnowledgeHub tool catalog
+**As a** MCP client/LLM consuming the Knowledge MCP Hub tool catalog
 **I want** tool names, descriptions and input schemas in English, self-explanatory and free of implementation-specific references (product names, config keys)
 **So that** any agent can pick and use the right tool without knowing the host system internals.
 
