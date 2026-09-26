@@ -12,7 +12,7 @@ namespace KnowledgeHub.Server.Data;
 /// Registered via <c>AddDbContextPool&lt;KnowledgeHubDbContext,
 /// PostgresKnowledgeHubDbContext&gt;</c> — consumers still inject the base type.
 /// </summary>
-public class PostgresKnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext> options)
+public class PostgresKnowledgeHubDbContext(DbContextOptions<PostgresKnowledgeHubDbContext> options)
     : KnowledgeHubDbContext(options);
 
 /// <summary>
