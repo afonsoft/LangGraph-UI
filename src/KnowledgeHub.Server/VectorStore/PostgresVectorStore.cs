@@ -339,6 +339,12 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
                 await ext.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            // SPEC-20260926-pgvector-live-tests RF-002: on a fresh database this
+            // connection's type map was loaded before the extension existed —
+            // pooled reuse then fails with "Cannot resolve 'vector'". Reload so
+            // the pgvector handlers resolve on this and future physical conns.
+            await conn.ReloadTypesAsync(cancellationToken);
+
             // SPEC-20260925-pgvector-halfvec RF-002: resolve the effective
             // storage type BEFORE the DDL — halfvec needs pgvector ≥0.7 and
             // dims ≤2000; otherwise fall back to vector with a warning.
