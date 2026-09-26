@@ -8,8 +8,10 @@
 <h3 class="mb-3">Settings</h3>
 
 @* SPEC-20260926-settings-tabs-database-metrics RF-001: seções em abas —
-   Chat (LLM) / GraphRAG / Integrações / Cache / Banco de Dados. *@
-<Tab TabStyle="TabStyle.Chrome">
+   Chat (LLM) / GraphRAG / Integrações / Cache / Banco de Dados.
+   ShowNavigatorButtons: sem os botões ‹ › o header chrome clampa o overflow
+   e as abas fora da tela ficam inalcançáveis em janelas estreitas/mobile. *@
+<Tab TabStyle="TabStyle.Chrome" ShowNavigatorButtons="true">
     <TabItem Text="Chat (LLM)" Icon="fa-solid fa-comments">
 
 <p class="text-muted">
@@ -565,7 +567,7 @@ else
                                     @(((resetAt - DateTimeOffset.UtcNow).TotalMinutes).ToString("F0"))min</span>
                             }
                         </div>
-                        <div class="d-flex gap-2 align-items-center">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
                             <select class="form-select form-select-sm" style="width:auto" @bind="_logLevelChoice">
                                 @foreach (var lvl in new[] { "Verbose", "Debug", "Information", "Warning", "Error" })
                                 {

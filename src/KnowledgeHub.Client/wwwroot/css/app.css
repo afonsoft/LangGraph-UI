@@ -240,7 +240,9 @@ img, table, pre, code, .table-responsive {
         }
 
     main {
-        width: 100vw;
+        /* 100vw inclui a largura da scrollbar vertical → overflow horizontal.
+           100% do flex parent resolve sem a barra extra. */
+        width: 100%;
         padding-left: 0.5rem;
         padding-right: 0.5rem;
     }
@@ -286,6 +288,30 @@ img, table, pre, code, .table-responsive {
 @media (max-width: 767.98px) {
     .settings-form-group .row > [class*="col-"] {
         margin-bottom: 0.75rem;
+    }
+
+    /* BB Tab chrome clips overflow (.tabs-nav-scroll overflow:hidden) — on
+       touch screens the clipped tabs are unreachable. overflow-x:auto turns
+       the strip into a native swipe-scroller; the scrollbar stays hidden.
+       ShowNavigatorButtons covers click-scroll on narrow desktop windows. */
+    .tabs > .tabs-header .tabs-nav-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+        .tabs > .tabs-header .tabs-nav-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+    /* Slimmer chrome items → mais abas visíveis por tela. */
+    .tabs-chrome > .tabs-header {
+        --bb-tabs-item-wrap-padding-x: 0.6rem;
+    }
+
+    /* Título + badges longos quebram linha em vez de transbordar o card. */
+    .tabs .card-header .d-flex.justify-content-between {
+        flex-wrap: wrap;
     }
 }
 
