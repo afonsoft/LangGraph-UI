@@ -2,7 +2,9 @@ using KnowledgeHub.Server.Data;
 using KnowledgeHub.Server.Domain.Entities;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -21,7 +23,7 @@ public sealed class UnifiedDatabaseProviderTests
     public UnifiedDatabaseProviderTests(PgVectorFixture fixture) => _fixture = fixture;
 
     private PostgresKnowledgeHubDbContext NewPgContext() =>
-        new(new DbContextOptionsBuilder<KnowledgeHubDbContext>()
+        new(new DbContextOptionsBuilder<PostgresKnowledgeHubDbContext>()
             .UseNpgsql(_fixture.ConnectionString!)
             .Options);
 
@@ -44,7 +46,7 @@ public sealed class UnifiedDatabaseProviderTests
         }
 
         await using var db = new PostgresKnowledgeHubDbContext(
-            new DbContextOptionsBuilder<KnowledgeHubDbContext>().UseNpgsql(csb.ConnectionString).Options);
+            new DbContextOptionsBuilder<PostgresKnowledgeHubDbContext>().UseNpgsql(csb.ConnectionString).Options);
         await db.Database.MigrateAsync();
 
         await using var conn = new Npgsql.NpgsqlConnection(csb.ConnectionString);
@@ -122,7 +124,7 @@ public sealed class UnifiedDatabaseProviderTests
                 .Build();
 
             await using var pg = new PostgresKnowledgeHubDbContext(
-                new DbContextOptionsBuilder<KnowledgeHubDbContext>()
+                new DbContextOptionsBuilder<PostgresKnowledgeHubDbContext>()
                     .UseNpgsql(csb.ConnectionString).Options);
             await pg.Database.MigrateAsync();
             await SqliteToPostgresMigrator.RunAsync(pg, cfg, NullLogger.Instance);
@@ -163,7 +165,7 @@ public sealed class UnifiedDatabaseProviderTests
         { SearchPath = schema };
 
         await using var pg = new PostgresKnowledgeHubDbContext(
-            new DbContextOptionsBuilder<KnowledgeHubDbContext>()
+            new DbContextOptionsBuilder<PostgresKnowledgeHubDbContext>()
                 .UseNpgsql(csb.ConnectionString).Options);
         await pg.Database.MigrateAsync();
 
@@ -190,6 +192,37 @@ public sealed class UnifiedDatabaseProviderTests
         var hits = await lexical.SearchAsync("unifies vector", 5, null);
         Assert.Single(hits);
         Assert.Equal(chunk.Id, hits[0].ChunkId);
+    }
+
+    // RF-002 regression: the DbContextPool requires a ctor taking
+    // DbContextOptions<TImpl> — a base-typed options ctor crashes the host at
+    // first resolution (hit once in deploy: "cannot be pooled").
+    [Fact]
+    public async Task PostgresContext_PooledRegistration_ResolvesAndMigrates()
+    {
+        if (!_fixture.Available) return;
+
+        var schema = $"u{Guid.NewGuid():N}";
+        await using (var create = new Npgsql.NpgsqlConnection(_fixture.ConnectionString))
+        {
+            await create.OpenAsync();
+            await using var cmd = create.CreateCommand();
+            cmd.CommandText = $"CREATE SCHEMA {schema}";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder(_fixture.ConnectionString!)
+        { SearchPath = schema };
+
+        var services = new ServiceCollection();
+        services.AddDbContextPool<KnowledgeHubDbContext, PostgresKnowledgeHubDbContext>(
+            o => o.UseNpgsql(csb.ConnectionString)
+                  .ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>());
+        await using var sp = services.BuildServiceProvider();
+
+        await using var db = sp.GetRequiredService<KnowledgeHubDbContext>();
+        Assert.IsType<PostgresKnowledgeHubDbContext>(db);
+        await db.Database.MigrateAsync();
+        Assert.True(await db.Sources.CountAsync() >= 0);
     }
 
     // RF-001: provider resolution — auto falls back to sqlite without config,

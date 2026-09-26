@@ -5,8 +5,9 @@ namespace KnowledgeHub.Server.Data;
 
 // SPEC-20260926-unified-database-provider: unsealed so PostgresKnowledgeHubDbContext
 // can own the second migration set in the same assembly (EF resolves migrations
-// by the concrete context type annotated on each migration class).
-public class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext> options) : DbContext(options)
+// by the concrete context type annotated on each migration class). The ctor takes
+// untyped DbContextOptions so the pooled subclass can pass DbContextOptions<TImpl>.
+public class KnowledgeHubDbContext(DbContextOptions options) : DbContext(options)
 {
     public DbSet<KnowledgeSource> Sources => Set<KnowledgeSource>();
     public DbSet<KnowledgeDocument> Documents => Set<KnowledgeDocument>();
