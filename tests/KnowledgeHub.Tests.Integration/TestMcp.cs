@@ -6,6 +6,49 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace KnowledgeHub.Tests.Integration;
 
+/// <summary>Shared JSON-RPC/Streamable-HTTP plumbing for the MCP test clients.</summary>
+internal static class McpJsonRpc
+{
+    public static string RequestBody(int id, string method, object? parameters) =>
+        parameters is null
+            ? $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}"}"""
+            : $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}","params":{{JsonSerializer.Serialize(parameters)}}}""";
+
+    public static HttpRequestMessage BuildPost(string body, Action<HttpRequestMessage>? configure = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        configure?.Invoke(request);
+        return request;
+    }
+
+    /// <summary>Extracts the JSON-RPC result from a plain or SSE payload;
+    /// throws on a JSON-RPC error frame.</summary>
+    public static JsonElement ExtractResult(string payload)
+    {
+        var data = ExtractLastMessage(payload);
+        using var doc = JsonDocument.Parse(data);
+        if (doc.RootElement.TryGetProperty("error", out var err))
+            throw new InvalidOperationException($"JSON-RPC error: {err.GetRawText()}");
+        return doc.RootElement.GetProperty("result").Clone();
+    }
+
+    public static string ExtractLastMessage(string payload)
+    {
+        if (!payload.Contains("data:"))
+            return payload;
+        string? last = null;
+        foreach (var line in payload.Split('\n'))
+            if (line.StartsWith("data:"))
+                last = line[5..].Trim();
+        return last ?? payload;
+    }
+}
+
 /// <summary>Minimal MCP client over Streamable HTTP (/mcp) shared by integration tests.</summary>
 public sealed class TestMcp : IAsyncDisposable
 {
@@ -32,7 +75,7 @@ public sealed class TestMcp : IAsyncDisposable
             capabilities,
             clientInfo = new { name = "test", version = "1.0" }
         });
-        Assert.Equal("knowledge-mcp-hub", init.GetProperty("serverInfo").GetProperty("name").GetString());
+        Assert.Equal("knowledge", init.GetProperty("serverInfo").GetProperty("name").GetString());
         await client.NotifyAsync("notifications/initialized");
         return client;
     }
@@ -44,33 +87,14 @@ public sealed class TestMcp : IAsyncDisposable
     public async Task<JsonElement> SendAsync(string method, object? parameters = null)
     {
         var id = _nextId++;
-        var body = parameters is null
-            ? $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}"}"""
-            : $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}","params":{{JsonSerializer.Serialize(parameters)}}}""";
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        if (_sessionId is not null)
-        {
-            request.Headers.Add("Mcp-Session-Id", _sessionId);
-            request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
-        }
+        using var request = McpJsonRpc.BuildPost(McpJsonRpc.RequestBody(id, method, parameters), WithSessionHeaders);
 
         using var response = await _http.SendAsync(request);
         if (response.Headers.TryGetValues("Mcp-Session-Id", out var ids))
             _sessionId = ids.First();
         response.EnsureSuccessStatusCode();
 
-        var payload = await response.Content.ReadAsStringAsync();
-        var data = ExtractLastMessage(payload);
-        using var doc = JsonDocument.Parse(data);
-        if (doc.RootElement.TryGetProperty("error", out var err))
-            throw new InvalidOperationException($"JSON-RPC error: {err.GetRawText()}");
-        return doc.RootElement.GetProperty("result").Clone();
+        return McpJsonRpc.ExtractResult(await response.Content.ReadAsStringAsync());
     }
 
     /// <summary>
@@ -84,21 +108,7 @@ public sealed class TestMcp : IAsyncDisposable
         Func<string, JsonElement, object?> answer)
     {
         var id = _nextId++;
-        var body = parameters is null
-            ? $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}"}"""
-            : $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}","params":{{JsonSerializer.Serialize(parameters)}}}""";
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        if (_sessionId is not null)
-        {
-            request.Headers.Add("Mcp-Session-Id", _sessionId);
-            request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
-        }
+        using var request = McpJsonRpc.BuildPost(McpJsonRpc.RequestBody(id, method, parameters), WithSessionHeaders);
 
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -108,8 +118,7 @@ public sealed class TestMcp : IAsyncDisposable
         {
             if (!line.StartsWith("data:"))
                 continue;
-            var data = line[5..].Trim();
-            using var doc = JsonDocument.Parse(data);
+            using var doc = JsonDocument.Parse(line[5..].Trim());
             var root = doc.RootElement;
 
             // Server→client request (has method + id): answer it and keep reading.
@@ -135,48 +144,25 @@ public sealed class TestMcp : IAsyncDisposable
     private async Task RespondAsync(string rawId, object result)
     {
         var body = $$"""{"jsonrpc":"2.0","id":{{rawId}},"result":{{JsonSerializer.Serialize(result)}}}""";
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        if (_sessionId is not null)
-        {
-            request.Headers.Add("Mcp-Session-Id", _sessionId);
-            request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
-        }
+        using var request = McpJsonRpc.BuildPost(body, WithSessionHeaders);
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
     }
 
     public async Task NotifyAsync(string method)
     {
-        var body = $$"""{"jsonrpc":"2.0","method":"{{method}}"}""";
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        if (_sessionId is not null)
-        {
-            request.Headers.Add("Mcp-Session-Id", _sessionId);
-            request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
-        }
+        using var request = McpJsonRpc.BuildPost(
+            $$"""{"jsonrpc":"2.0","method":"{{method}}"}""", WithSessionHeaders);
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
     }
 
-    private static string ExtractLastMessage(string payload)
+    private void WithSessionHeaders(HttpRequestMessage request)
     {
-        if (!payload.Contains("data:"))
-            return payload;
-        string? last = null;
-        foreach (var line in payload.Split('\n'))
-            if (line.StartsWith("data:"))
-                last = line[5..].Trim();
-        return last ?? payload;
+        if (_sessionId is null)
+            return;
+        request.Headers.Add("Mcp-Session-Id", _sessionId);
+        request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -219,37 +205,19 @@ public sealed class TestMcp2026 : IAsyncDisposable
             ["io.modelcontextprotocol/protocolVersion"] = "2026-07-28",
             ["io.modelcontextprotocol/clientCapabilities"] = _caps.DeepClone()
         };
-        var body = $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}","params":{{p.ToJsonString()}}}""";
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
-        request.Headers.Add("Mcp-Method", method);
-        request.Headers.Add("Mcp-Name", name);
+        using var request = McpJsonRpc.BuildPost(
+            $$"""{"jsonrpc":"2.0","id":{{id}},"method":"{{method}}","params":{{p.ToJsonString()}}}""",
+            r =>
+            {
+                r.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+                r.Headers.Add("Mcp-Method", method);
+                r.Headers.Add("Mcp-Name", name);
+            });
 
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        var payload = await response.Content.ReadAsStringAsync();
-        var data = ExtractLastMessage(payload);
-        using var doc = JsonDocument.Parse(data);
-        if (doc.RootElement.TryGetProperty("error", out var err))
-            throw new InvalidOperationException($"JSON-RPC error: {err.GetRawText()}");
-        return doc.RootElement.GetProperty("result").Clone();
-    }
-
-    private static string ExtractLastMessage(string payload)
-    {
-        if (!payload.Contains("data:"))
-            return payload;
-        string? last = null;
-        foreach (var line in payload.Split('\n'))
-            if (line.StartsWith("data:"))
-                last = line[5..].Trim();
-        return last ?? payload;
+        return McpJsonRpc.ExtractResult(await response.Content.ReadAsStringAsync());
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

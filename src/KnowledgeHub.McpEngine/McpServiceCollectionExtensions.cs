@@ -59,7 +59,7 @@ public static class McpServiceCollectionExtensions
             .Configure<IMcpActivityFeed, SessionCallGate, McpSessionRegistry, IMcpRequestMetrics>(
                 (options, feed, gate, registry, metrics) =>
             {
-                options.ServerInfo = new Implementation { Name = "knowledge-mcp-hub", Version = "0.1.0" };
+                options.ServerInfo = new Implementation { Name = "knowledge", Version = "0.1.1" };
                 options.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability { ListChanged = true },
