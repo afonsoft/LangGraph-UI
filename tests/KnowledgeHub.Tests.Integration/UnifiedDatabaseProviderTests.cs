@@ -116,6 +116,29 @@ public sealed class UnifiedDatabaseProviderTests
                 await sqlite.SaveChangesAsync();
             }
 
+            // Orphan row — real catalogs were written with PRAGMA
+            // foreign_keys=OFF historically, so children can reference deleted
+            // parents; Postgres rejects them (23503, hit in deploy). The
+            // migrator must skip them, not crash. Seed via raw ADO since EF
+            // enforces FKs on its own connections.
+            await using (var raw = new Microsoft.Data.Sqlite.SqliteConnection(
+                $"Data Source={sqlitePath}"))
+            {
+                await raw.OpenAsync();
+                await using var pragma = raw.CreateCommand();
+                pragma.CommandText = "PRAGMA foreign_keys=OFF";
+                await pragma.ExecuteNonQueryAsync();
+                await using var ins = raw.CreateCommand();
+                ins.CommandText = """
+                    INSERT INTO ApiKeyUsageEvents (Id, ApiKeyId, Timestamp, HttpMethod, Path, StatusCode, DurationMs)
+                    VALUES ($id, $fk, $ts, 'GET', '/api/x', 200, 1.0)
+                    """;
+                ins.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
+                ins.Parameters.AddWithValue("$fk", Guid.NewGuid().ToString());
+                ins.Parameters.AddWithValue("$ts", DateTimeOffset.UtcNow.ToString("O"));
+                await ins.ExecuteNonQueryAsync();
+            }
+
             var cfg = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
