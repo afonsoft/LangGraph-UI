@@ -26,7 +26,8 @@ public sealed record ApiKeyDto(
     int? LlmRateLimitPermits = null,
     int? LlmRateLimitWindowSeconds = null,
     int? SyncRateLimitPermits = null,
-    int? SyncRateLimitWindowSeconds = null);
+    int? SyncRateLimitWindowSeconds = null,
+    bool AllowWrite = true);
 
 /// <summary>SPEC-20260923-per-key-rate-limits RF-004: per-key rate-limit
 /// override. Every field nullable — null inherits the global
@@ -42,6 +43,11 @@ public sealed record SetApiKeyRateLimitRequest(
 public sealed record SetApiKeyScopesRequest(
     IReadOnlyList<Guid>? AllowedSourceIds,
     IReadOnlyList<string>? AllowedTools);
+
+/// <summary>PUT /api/api-keys/{id}/write-access — liga/desliga o uso de tools
+/// de escrita pela chave. Desligada, a chave fica somente-leitura: tools
+/// não-readonly respondem um isError informativo em vez de executar.</summary>
+public sealed record SetApiKeyWriteAccessRequest(bool AllowWrite);
 
 /// <summary>Creation response — the only place the full `aft_*` secret appears.</summary>
 public sealed record ApiKeyCreatedDto(Guid Id, string Name, string Prefix, string Key);

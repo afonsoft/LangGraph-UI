@@ -88,6 +88,15 @@ public sealed class AuthApiClient(HttpClient http)
         return await ReadAsync<object>(response, ct);
     }
 
+    /// <summary>Liga/desliga tools de escrita para a chave — desligada ela fica
+    /// somente-leitura (tools não-readonly respondem "sem permissão").</summary>
+    public async Task<ApiResult<object>> SetKeyWriteAccessAsync(Guid id, bool allowWrite, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/api-keys/{id}/write-access",
+            new SetApiKeyWriteAccessRequest(allowWrite), ct);
+        return await ReadAsync<object>(response, ct);
+    }
+
     private static async Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)

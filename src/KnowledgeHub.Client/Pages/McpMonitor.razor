@@ -10,14 +10,16 @@
 
 <h3 class="mb-3">Monitor MCP</h3>
 
-<div class="mb-3">
+<div class="mb-3 d-flex align-items-center flex-wrap">
     <Badge Color="@StateColor">@StateLabel</Badge>
     <span class="ms-2 text-muted">hub: /hubs/mcp</span>
     <span class="ms-3">
         @* SPEC-20260914-health-checks: aggregated readiness shown in the monitor. *@
         saúde: <Badge Color="@HealthColor">@HealthLabel</Badge>
-        <Button Size="Size.ExtraSmall" Color="Color.Secondary" Text="atualizar" OnClick="RefreshHealthAsync" />
     </span>
+    <Button Size="Size.ExtraSmall" Color="Color.Secondary" Icon="fa-solid fa-rotate"
+            TooltipText="Atualizar" TooltipPlacement="Placement.Left"
+            IsAsync="true" OnClick="RefreshHealthAsync" class="ms-auto" />
 </div>
 
 @* SPEC-20260914-signalr-hub-resilience RF-004: degraded, not fatal — the page

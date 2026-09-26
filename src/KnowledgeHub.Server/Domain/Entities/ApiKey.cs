@@ -27,6 +27,10 @@ public sealed class ApiKey
     /// <summary>JSON array of tool names the key may call. Null = unrestricted;
     /// empty array = deny all.</summary>
     public string? AllowedToolsJson { get; set; }
+    /// <summary>Write permission — false makes the key read-only: tools marked
+    /// non-readonly answer with an informative "no write permission" isError
+    /// instead of executing. True by default so existing keys keep working.</summary>
+    public bool AllowWrite { get; set; } = true;
     /// <summary>SPEC-20260923-per-key-rate-limits RF-001: optional per-key
     /// overrides. NULL = inherit the global RateLimiting:* values.</summary>
     public int? LlmRateLimitPermits { get; set; }

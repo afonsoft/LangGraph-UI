@@ -86,7 +86,7 @@ else
                            placeholder="@(_chat.HasApiKey ? "deixe em branco para manter" : "sk-…")"
                            autocomplete="off" />
 
-                    <div class="d-flex gap-2 flex-wrap">
+                    <div class="d-flex gap-2 flex-wrap kh-icon-btns">
                         <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
                                 IsAsync="true" IsDisabled="_chatForm.Saving"
                                 OnClick="SaveChatAsync" />
@@ -266,7 +266,7 @@ else
                         </div>
                     }
 
-                    <div class="d-flex gap-2 flex-wrap">
+                    <div class="d-flex gap-2 flex-wrap kh-icon-btns">
                         <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
                                 IsAsync="true" IsDisabled="_embForm.Saving"
                                 OnClick="SaveEmbeddingsAsync" />
@@ -354,7 +354,7 @@ else
                         </div>
                     </div>
 
-                    <div class="d-flex gap-2 flex-wrap">
+                    <div class="d-flex gap-2 flex-wrap kh-icon-btns">
                         <Button Color="Color.Primary" Icon="fa-solid fa-floppy-disk" Text="Salvar"
                                 IsAsync="true" IsDisabled="_graphForm.Saving"
                                 OnClick="SaveGraphAsync" />
@@ -430,7 +430,7 @@ else
                         <label class="form-label">
                             @(item.HasKey ? "Substituir API key" : "API key")
                         </label>
-                        <div class="input-group">
+                        <div class="input-group kh-icon-btns">
                             <input type="password" class="form-control font-monospace"
                                    @bind="state.Input"
                                    placeholder="@(item.Provider == "firecrawl" ? "fc-…" : item.Provider == "tavily" ? "tvly-…" : item.Provider == "context7" ? "ctx7sk-…" : "API key")"
@@ -542,13 +542,15 @@ else
             <Card>
                 <HeaderTemplate><span>Ações</span></HeaderTemplate>
                 <BodyTemplate>
-                    <Button Color="Color.Secondary" Icon="fa-solid fa-rotate" Text="Atualizar"
-                            IsAsync="true" OnClick="ReloadCacheAsync" class="mb-2" />
-                    <PopConfirmButton Color="Color.Danger" Icon="fa-solid fa-trash"
-                                      Text="Limpar todo o cache"
-                                      Title="Limpar cache"
-                                      Content="Todas as keys de busca, embeddings e tools serão removidas. Continuar?"
-                                      OnConfirm="ClearCacheAsync" />
+                    <div class="d-flex gap-2 flex-wrap kh-icon-btns">
+                        <Button Color="Color.Secondary" Icon="fa-solid fa-rotate" Text="Atualizar"
+                                IsAsync="true" OnClick="ReloadCacheAsync" />
+                        <PopConfirmButton Color="Color.Danger" Icon="fa-solid fa-trash"
+                                          Text="Limpar todo o cache"
+                                          Title="Limpar cache"
+                                          Content="Todas as keys de busca, embeddings e tools serão removidas. Continuar?"
+                                          OnConfirm="ClearCacheAsync" />
+                    </div>
                 </BodyTemplate>
             </Card>
 
@@ -652,7 +654,7 @@ else
             <Card>
                 <HeaderTemplate>
                     <div class="d-flex justify-content-between gap-2 align-items-center">
-                        <span>Provider: <code>@_dbStats.Provider</code></span>
+                        <span>Provider: <code>@ShortProvider(_dbStats.Provider)</code></span>
                         <Button Size="Size.Small" Color="Color.Secondary" Icon="fa-solid fa-rotate"
                                 Text="Atualizar" IsAsync="true" OnClick="ReloadDatabaseAsync" />
                     </div>
@@ -905,6 +907,11 @@ else
             await Toast.Error("Erro", $"Falha ao carregar métricas do banco: {ex.Message}");
         }
     }
+
+    /// <summary>Nome curto do provider EF — último segmento do nome completo
+    /// (Npgsql.EntityFrameworkCore.PostgreSQL → PostgreSQL).</summary>
+    private static string ShortProvider(string? provider) =>
+        string.IsNullOrEmpty(provider) ? "—" : provider[(provider.LastIndexOf('.') + 1)..];
 
     private static string FreelistPct(DatabaseStatsDto d) =>
         d.PageCount is > 0 && d.FreelistCount is { } free

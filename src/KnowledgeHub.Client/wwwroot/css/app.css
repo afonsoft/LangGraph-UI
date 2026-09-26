@@ -351,6 +351,21 @@ img, table, pre, code, .table-responsive {
     margin: 0;
 }
 
+/* PopConfirmButton wraps its trigger in a div.popover-confirm — inside
+   .input-group that wrapper swallows Bootstrap's :not(:first-child) join
+   styles, leaving the inner .btn glued to the previous control with doubled
+   borders and stray rounded corners. Reset the wrapper margin and join the
+   inner button manually. */
+.input-group > .popover-confirm {
+    margin-left: 0 !important;
+}
+
+.input-group > .popover-confirm > .btn {
+    margin-left: -1px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
 .kh-actions .btn {
     display: inline-flex;
     align-items: center;
@@ -359,9 +374,12 @@ img, table, pre, code, .table-responsive {
 
 /* <576px: cramped rows collapse to icon-only buttons — the text node is
    shrunk to zero (still exposed to screen readers), the FA icon keeps its
-   own size. Min width/height 44px still applies. */
+   own size. .kh-icon-btns marks button groups outside grids (form footers,
+   input-groups). :has(> i) limits the collapse to buttons with an icon —
+   text-only buttons keep their label. Min width/height 44px still applies. */
 @media (max-width: 575.98px) {
-    .kh-actions .btn {
+    .kh-actions .btn:has(> i),
+    .kh-icon-btns .btn:has(> i) {
         font-size: 0;
         min-width: 44px;
         min-height: 44px;
@@ -369,7 +387,7 @@ img, table, pre, code, .table-responsive {
     }
 
         .kh-actions .btn i,
-        .kh-actions .btn .fa-solid {
+        .kh-icon-btns .btn i {
             font-size: 0.875rem;
         }
 }

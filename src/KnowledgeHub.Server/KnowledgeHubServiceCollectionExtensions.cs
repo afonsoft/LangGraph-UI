@@ -495,6 +495,25 @@ public static class KnowledgeHubServiceCollectionExtensions
                     };
                 }
 
+                // Per-key write gate: read-only credentials get an informative
+                // isError instead of the write executing — the tool stays
+                // visible in tools/list so clients can discover it.
+                var callScope = ctx.Services!.GetService<Auth.ICallerScopeProvider>() is { } scopeProvider
+                    ? await scopeProvider.GetAsync(ct)
+                    : Auth.CallerScope.Unrestricted;
+                if (!tool.ReadOnly && !callScope.AllowWrite)
+                {
+                    await Auth.ScopeAudit.RecordToolDeniedAsync(ctx.Services!, name!, ct);
+                    return new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new ModelContextProtocol.Protocol.TextContentBlock
+                        {
+                            Text = $"tool '{name}' requires write access — this credential is read-only"
+                        }]
+                    };
+                }
+
                 // SPEC-20260923-rate-limiting RF-003: LLM-spending / write tools
                 // are charged per caller — over-limit yields a friendly isError
                 // result (JSON-RPC has no 429).

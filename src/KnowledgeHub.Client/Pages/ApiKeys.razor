@@ -168,7 +168,7 @@
                                    @bind="_rl.SyncWindowSeconds" placeholder="global" />
                         </div>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 kh-icon-btns">
                         <Button Size="Size.ExtraSmall" Color="Color.Primary" Icon="fa-solid fa-floppy-disk"
                                 Text="Salvar limites" IsAsync="true" IsDisabled="_rl.Saving"
                                 OnClick="SaveRateLimitAsync" />
@@ -237,8 +237,9 @@
 </Modal>
 
 <Modal @ref="_settingsModal">
-    <ModalDialog Title="@(_settingsKey is not null ? $"Configurar chat — {_settingsKey.Name}" : "Configurar chat")"
+    <ModalDialog Title="@(_settingsKey is not null ? $"Configurações — {_settingsKey.Name}" : "Configurações da chave")"
                  Size="Size.Large" ShowSaveButton="true" SaveButtonText="Salvar"
+                 SaveButtonIcon="fa-solid fa-floppy-disk"
                  CloseButtonText="Cancelar" OnSaveAsync="SaveSettingsAsync">
         <BodyTemplate>
             @if (_settings is null)
@@ -247,6 +248,16 @@
             }
             else
             {
+                <h6 class="text-muted mb-2"><i class="fa-solid fa-shield-halved me-1"></i>Permissões</h6>
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <Switch Value="_keyAllowWrite" OnValueChanged="SetWriteAccessAsync" ShowLabel="false" />
+                    <div class="small">
+                        <span class="fw-semibold">Tools de escrita (write)</span><br />
+                        <small class="text-muted">Desligado a chave fica somente-leitura — tools que alteram dados respondem "sem permissão".</small>
+                    </div>
+                </div>
+
+                <h6 class="text-muted mb-2"><i class="fa-solid fa-comments me-1"></i>Chat (LLM)</h6>
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="useGlobal"
                            @bind="_useGlobal" @bind:after="OnUseGlobalChanged" />
@@ -258,22 +269,22 @@
                 @if (_useGlobal)
                 {
                     <div class="alert alert-info">
-                        <div><strong>Endpoint (global):</strong> <code>@_settings.Endpoint</code></div>
-                        <div><strong>Model (global):</strong> <code>@_settings.Model</code></div>
-                        <div><strong>Key:</strong> @(_settings.HasApiKey ? _settings.ApiKeyHint : "não configurada")</div>
+                        <div><i class="fa-solid fa-link me-1"></i><strong>Endpoint (global):</strong> <code>@_settings.Endpoint</code></div>
+                        <div><i class="fa-solid fa-microchip me-1"></i><strong>Model (global):</strong> <code>@_settings.Model</code></div>
+                        <div><i class="fa-solid fa-key me-1"></i><strong>Key:</strong> @(_settings.HasApiKey ? _settings.ApiKeyHint : "não configurada")</div>
                     </div>
                 }
                 else
                 {
                     <div class="row g-2 mb-2">
                         <div class="col-12 col-md-7">
-                            <label class="form-label">Endpoint</label>
+                            <label class="form-label"><i class="fa-solid fa-link me-1"></i>Endpoint</label>
                             <input type="text" class="form-control font-monospace"
                                    @bind="_settingsForm.Endpoint"
                                    placeholder="https://api.exemplo.com" autocomplete="off" />
                         </div>
                         <div class="col-12 col-md-5">
-                            <label class="form-label">Model</label>
+                            <label class="form-label"><i class="fa-solid fa-microchip me-1"></i>Model</label>
                             <input type="text" class="form-control font-monospace"
                                    @bind="_settingsForm.Model"
                                    placeholder="nome do modelo" autocomplete="off" />
@@ -289,11 +300,56 @@
                     }
 
                     <label class="form-label">
-                        @(_settings.HasOverride && _settings.OverrideFields.Contains("apiKey") ? "Substituir API key" : "API key")
+                        <i class="fa-solid fa-key me-1"></i>@(_settings.HasOverride && _settings.OverrideFields.Contains("apiKey") ? "Substituir API key" : "API key")
                     </label>
                     <input type="password" class="form-control font-monospace mb-2"
                            @bind="_settingsForm.ApiKey"
                            placeholder="deixe em branco para manter" autocomplete="off" />
+                }
+
+                @* Per-key integration key overrides — only integrations enabled
+                   in Settings are listed (disabled ones leave the MCP catalog). *@
+                @if (_keyIntegrations.Count > 0)
+                {
+                    <h6 class="text-muted mb-1 mt-3"><i class="fa-solid fa-plug me-1"></i>Integrações</h6>
+                    <p class="small text-muted mb-2">
+                        Key própria por integração — em branco a chave usa a key global de Settings.
+                    </p>
+                    @foreach (var item in _keyIntegrations)
+                    {
+                        var st = _intForms[item.Provider];
+                        var pk = _settings.IntegrationKeys?.GetValueOrDefault(item.Provider);
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small fw-semibold">@item.DisplayName</span>
+                                @if (pk?.HasKey == true)
+                                {
+                                    <span class="small"><Badge Color="Color.Success">key própria</Badge> <code>@pk.Hint</code></span>
+                                }
+                                else
+                                {
+                                    <small class="text-muted">usa a key global</small>
+                                }
+                            </div>
+                            <div class="input-group input-group-sm kh-icon-btns">
+                                <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
+                                <input type="password" class="form-control font-monospace"
+                                       @bind="st.Input"
+                                       placeholder="@(pk?.HasKey == true ? "substituir key própria" : "deixe em branco para usar a global")"
+                                       autocomplete="off" />
+                                <Button Size="Size.Small" Color="Color.Primary" Icon="fa-solid fa-floppy-disk"
+                                        Text="Salvar" IsAsync="true" IsDisabled="st.Saving"
+                                        OnClick="() => SaveIntegrationKeyAsync(item)" />
+                                @if (pk?.HasKey == true)
+                                {
+                                    <PopConfirmButton Size="Size.Small" Color="Color.Danger" Icon="fa-solid fa-trash"
+                                                      Text="Remover" Title="Remover key da chave"
+                                                      Content="A key própria será removida; a integração volta a usar a key global."
+                                                      OnConfirm="() => RemoveIntegrationKeyAsync(item)" />
+                                }
+                            </div>
+                        </div>
+                    }
                 }
 
                 @if (_settingsError is not null)
@@ -345,6 +401,21 @@
     private bool _useGlobal = true;
     private string? _settingsError;
     private readonly SaveApiKeyChatSettingsRequest _settingsForm = new();
+
+    // Per-key integration key overrides — only integrations enabled in
+    // Settings are listed (a disabled integration drops out of the MCP
+    // tools catalog entirely, so overriding its key would be dead config).
+    private List<IntegrationSettingsDto> _keyIntegrations = [];
+    private readonly Dictionary<string, IntegrationKeyForm> _intForms = new();
+
+    private sealed class IntegrationKeyForm
+    {
+        public string Input { get; set; } = "";
+        public bool Saving { get; set; }
+    }
+
+    // Per-key write gate — read from the listed ApiKeyDto (no extra fetch).
+    private bool _keyAllowWrite = true;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -520,9 +591,12 @@
         _settings = null;
         _settingsError = null;
         _useGlobal = true;
+        _keyAllowWrite = key.AllowWrite;
         _settingsForm.Endpoint = null;
         _settingsForm.Model = null;
         _settingsForm.ApiKey = null;
+        _keyIntegrations = [];
+        _intForms.Clear();
 
         await _settingsModal!.Toggle();
 
@@ -540,6 +614,16 @@
         {
             _settingsError = $"Falha ao carregar configuração: {ex.Message}";
         }
+
+        // Integrations list fails soft — the chat section stays usable.
+        try
+        {
+            var ints = await SettingsApi.ListIntegrationsAsync();
+            _keyIntegrations = ints?.Integrations.Where(i => i.Enabled).ToList() ?? [];
+            foreach (var i in _keyIntegrations)
+                _intForms.TryAdd(i.Provider, new IntegrationKeyForm());
+        }
+        catch { _keyIntegrations = []; }
 
         StateHasChanged();
     }
@@ -585,6 +669,89 @@
         {
             _settingsError = $"Falha ao salvar: {ex.Message}";
             return false;
+        }
+    }
+
+    /// <summary>PUT /api/api-keys/{id}/write-access — toggle imediato (não
+    /// depende do Salvar do modal, igual aos toggles de integração).</summary>
+    private async Task SetWriteAccessAsync(bool allowWrite)
+    {
+        if (_settingsKey is null) return;
+
+        var result = await Api.SetKeyWriteAccessAsync(_settingsKey.Id, allowWrite);
+        if (!result.IsSuccess)
+        {
+            _settingsError = result.Error ?? "Falha ao atualizar a permissão";
+            return;
+        }
+
+        _keyAllowWrite = allowWrite;
+        await Toast.Success("Permissões",
+            allowWrite
+                ? "Tools de escrita habilitadas para esta chave."
+                : "Chave agora é somente-leitura — write retorna 'sem permissão'.");
+        await ReloadAsync();
+        _settingsKey = _keys?.FirstOrDefault(k => k.Id == _settingsKey.Id) ?? _settingsKey;
+    }
+
+    // Per-key integration key overrides — PUT/DELETE
+    // /api/api-keys/{id}/settings/integrations/{provider}.
+
+    private async Task SaveIntegrationKeyAsync(IntegrationSettingsDto item)
+    {
+        if (_settingsKey is null || !_intForms.TryGetValue(item.Provider, out var st))
+            return;
+        if (string.IsNullOrWhiteSpace(st.Input))
+        {
+            await Toast.Warning("Key vazia", $"Informe a key de {item.DisplayName} antes de salvar.");
+            return;
+        }
+
+        _settingsError = null;
+        st.Saving = true;
+        try
+        {
+            var result = await SettingsApi.SetApiKeyIntegrationKeyAsync(_settingsKey.Id, item.Provider, st.Input);
+            if (!result.IsSuccess)
+            {
+                _settingsError = result.Error ?? "Falha ao salvar a key";
+                return;
+            }
+
+            st.Input = "";
+            await Toast.Success("Salvo", $"Key de {item.DisplayName} gravada para esta chave.");
+            _settings = await SettingsApi.GetApiKeyChatAsync(_settingsKey.Id);
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Falha ao salvar: {ex.Message}";
+        }
+        finally
+        {
+            st.Saving = false;
+        }
+    }
+
+    private async Task RemoveIntegrationKeyAsync(IntegrationSettingsDto item)
+    {
+        if (_settingsKey is null) return;
+
+        _settingsError = null;
+        try
+        {
+            var result = await SettingsApi.RemoveApiKeyIntegrationKeyAsync(_settingsKey.Id, item.Provider);
+            if (!result.IsSuccess)
+            {
+                _settingsError = result.Error ?? "Falha ao remover a key";
+                return;
+            }
+
+            await Toast.Success("Removido", $"{item.DisplayName} voltou a usar a key global.");
+            _settings = await SettingsApi.GetApiKeyChatAsync(_settingsKey.Id);
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Falha ao remover: {ex.Message}";
         }
     }
 
