@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KnowledgeHub.Server.Ingestion;
 using KnowledgeHub.Shared.Contracts;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Xunit;
 
@@ -37,11 +39,13 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
         }
     }
 
+    private readonly Fixture _factory;
     private readonly HttpClient _client;
     private readonly string _dir;
 
     public IngestionJobsApiTests(Fixture factory)
     {
+        _factory = factory;
         _client = TestAuth.Login(factory);
         _dir = Path.Combine(Path.GetTempPath(), $"jobs-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dir);
@@ -65,20 +69,42 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
 
     private async Task<JsonElement> WaitTerminalJobAsync(Guid jobId)
     {
-        // Root cause of the PR #205/#228 CI flakes: the class shares a single
-        // IngestionWorker, so a job enqueued by a previous test serializes ahead
-        // of the job under test. Every test must drain the queue before returning
-        // (SPEC-20260926-ingestion-jobs-test-deflake); the 60s budget covers a
-        // single cold-start ingest under CPU contention, not a backlog.
-        for (var i = 0; i < 120; i++)
+        // SPEC-20260926-ingestion-jobs-test-deflake: the CI flakes (runs
+        // 36192973074, 36204860120) were polling-budget failures — a single
+        // tiny-file ingest can exceed 60s when dozens of sibling hosts share
+        // the CI runner's CPUs. Instead of a bigger budget, subscribe to the
+        // IngestionProgressFeed terminal event (published AFTER the outcome is
+        // persisted) — the 120s backstop only trips on a genuine hang.
+        var feed = _factory.Services.GetRequiredService<IIngestionProgressFeed>();
+        var terminal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnPublished(IngestionProgressEvent e)
         {
-            var job = await _client.GetFromJsonAsync<JsonElement>($"/api/ingestion/jobs/{jobId}");
-            var status = job.GetProperty("status").GetString();
-            if (status is "done" or "failed" or "cancelled")
-                return job;
-            await Task.Delay(500);
+            if (e.JobId == jobId && e.Status is "done" or "failed" or "cancelled")
+                terminal.TrySetResult();
         }
-        throw new TimeoutException($"job {jobId} did not reach terminal state");
+        feed.Published += OnPublished;
+        try
+        {
+            // Subscribe before the state check so a job finishing in between
+            // cannot be missed.
+            var current = await GetJobAsync(jobId);
+            if (current is not null)
+                return current.Value;
+            await terminal.Task.WaitAsync(TimeSpan.FromSeconds(120));
+            return (await GetJobAsync(jobId))!.Value;
+        }
+        finally
+        {
+            feed.Published -= OnPublished;
+        }
+
+        async Task<JsonElement?> GetJobAsync(Guid id)
+        {
+            var job = await _client.GetFromJsonAsync<JsonElement>($"/api/ingestion/jobs/{id}");
+            return job.GetProperty("status").GetString() is "done" or "failed" or "cancelled"
+                ? job
+                : null;
+        }
     }
 
     [Fact]
