@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** operador do KnowledgeHub
+**As a** operador do Knowledge MCP Hub
 **I want** um único backend de dados — Postgres quando configurado, SQLite quando não — servindo catálogo EF e vector store
 **So that** não existe estado dividido (catálogo em SQLite + vetores em Postgres) e o deployment usa um banco só.
 

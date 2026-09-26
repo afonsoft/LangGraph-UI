@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** usuário do KnowledgeHub
+**As a** usuário do Knowledge MCP Hub
 **I want** ver na tela do Monitor MCP exemplos prontos de como configurar o servidor MCP no Claude e no Devin
 **So that** eu consiga conectar meu client em segundos copiando a config, sem precisar ler documentação externa.
 

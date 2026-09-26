@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** KnowledgeHub platform user
+**As a** Knowledge MCP Hub platform user
 **I want** to configure my Firecrawl and DeepWiki API keys in a Settings screen and use all official Firecrawl tools through the internal MCP server — testable in the Playground with ready-made examples
 **So that** I can consume scraping, crawling and search capabilities (plus DeepWiki private repos) with the same experience already provided by other integrated MCPs.
 

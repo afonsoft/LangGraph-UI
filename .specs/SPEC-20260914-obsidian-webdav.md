@@ -13,8 +13,8 @@
 
 ## 1. User Story
 
-**As a** usuário do KnowledgeHub
-**I want** registrar um vault Obsidian cujo conteúdo vive num servidor WebDAV remoto, exposto ao KnowledgeHub como uma pasta mapeada no servidor (mount)
+**As a** usuário do Knowledge MCP Hub
+**I want** registrar um vault Obsidian cujo conteúdo vive num servidor WebDAV remoto, exposto ao Knowledge MCP Hub como uma pasta mapeada no servidor (mount)
 **So that** os vários arquivos Markdown dessa pasta sejam indexados e consultáveis como fonte de conhecimento, sem copiar manualmente os arquivos.
 
 ## 2. Contexto e decisão de arquitetura
@@ -25,7 +25,7 @@ Portanto existem duas fronteiras possíveis:
 
 | Abordagem | Descrição | Avaliação |
 |---|---|---|
-| **A — Mount externo (escolhida)** | O host/contêiner monta o WebDAV como pasta local (`davfs2`, `rclone mount`, ou volume Docker). KnowledgeHub consome como `ObsidianVault` normal. | **Zero código de conector.** Reaproveita watcher, autosync, dedup por hash, tools `read_document`/`write_note`. Complexidade sai do app para a infra. |
+| **A — Mount externo (escolhida)** | O host/contêiner monta o WebDAV como pasta local (`davfs2`, `rclone mount`, ou volume Docker). Knowledge MCP Hub consome como `ObsidianVault` normal. | **Zero código de conector.** Reaproveita watcher, autosync, dedup por hash, tools `read_document`/`write_note`. Complexidade sai do app para a infra. |
 | B — Cliente WebDAV in-app | Novo `SourceType.WebDavVault` com PROPFIND/GET periódicos, credenciais e loop de sync próprio. | Reimplementa tudo que já existe (scan, dedup, sync) + gerencia secrets no banco. Só se justificaria se o host não pudesse montar. |
 
 **Decisão:** abordagem **A**. Esta SPEC cobre a integração mount→conector e os ajustes necessários para mounts remotos funcionarem bem (a principal diferença vs. disco local é que `FileSystemWatcher` **não recebe eventos de mudanças feitas do lado remoto** em mounts FUSE/davfs2 — ver RF-003).
@@ -82,7 +82,7 @@ Portanto existem duas fronteiras possíveis:
 
 - Cliente WebDAV dentro do app (PROPFIND/GET direto) — abordagem B, só se o mount externo se provar inviável.
 - Mount automático pelo container (requer `CAP_SYS_ADMIN`/FUSE no container — risco de segurança; o mount é responsabilidade do host).
-- Sync bidirecional Obsidian↔KnowledgeHub além do que `write_note` já faz.
+- Sync bidirecional Obsidian↔Knowledge MCP Hub além do que `write_note` já faz.
 
 ## 6. Plano de tarefas
 

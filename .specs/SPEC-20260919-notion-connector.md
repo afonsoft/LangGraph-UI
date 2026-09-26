@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** administrador do KnowledgeHub
+**As a** administrador do Knowledge MCP Hub
 **I want** registrar um workspace Notion como fonte de conhecimento (`SourceType = Notion`) com um internal integration token
 **So that** o RAG indexe páginas e databases do Notion e responda perguntas sobre eles — cobrindo a maior fonte de conhecimento corporativa que hoje não tem conector.
 

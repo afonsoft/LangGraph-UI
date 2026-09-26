@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** platform owner exposing KnowledgeHub publicly (rag.afonsoft.dev)
+**As a** platform owner exposing Knowledge MCP Hub publicly (rag.afonsoft.dev)
 **I want** a login screen (default `admin` / `123qwe`, seeded in the database, forced password change on first access) and per-client API keys (`aft_GUID`) to authenticate the MCP endpoint, the REST API and the SignalR hub
 **So that** the admin UI, management API and tool surface are no longer open to anyone on the internet.
 

@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** operador self-hosted do KnowledgeHub
+**As a** operador self-hosted do Knowledge MCP Hub
 **I want** um provedor de embeddings local via ONNX Runtime (all-MiniLM-L6-v2)
 **So that** a busca vetorial tenha semântica real sem depender de Ollama/OpenAI ou rede.
 

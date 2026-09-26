@@ -15,7 +15,7 @@
 ## 1. User Story
 
 **As a** end user / operator
-**I want** a single `install.sh` that builds, tests and deploys KnowledgeHub — either as a Docker container or as a self-contained host binary — plus a production `Dockerfile` and `docker-compose.yml`
+**I want** a single `install.sh` that builds, tests and deploys Knowledge MCP Hub — either as a Docker container or as a self-contained host binary — plus a production `Dockerfile` and `docker-compose.yml`
 **So that** I can go from a fresh clone to a running instance with one command, on any Linux machine, with or without Docker.
 
 **Problem context:** The platform already supports standalone single-file publish (SPEC-20260913-standalone-packaging). What's missing is the delivery layer: a reproducible container image and one entrypoint script that wraps build → test → publish → run.

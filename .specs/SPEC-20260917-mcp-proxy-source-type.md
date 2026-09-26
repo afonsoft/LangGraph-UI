@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** administrador do KnowledgeHub
+**As a** administrador do Knowledge MCP Hub
 **I want** registrar servidores MCP upstream como sources (`SourceType = McpProxy`) via `/api/sources`
 **So that** qualquer MCP server vira um proxy gerenciado — sem código dedicado por upstream como DeepWiki/Firecrawl/Tavily.
 

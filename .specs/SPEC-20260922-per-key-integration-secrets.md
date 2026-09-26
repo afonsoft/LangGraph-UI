@@ -16,7 +16,7 @@
 
 ## 1. User Story
 
-**As a** KnowledgeHub API-key holder
+**As a** Knowledge MCP Hub API-key holder
 **I want** the integration key I saved for my API key (`set_api_key_settings` / `PUT /api/api-keys/{id}/settings/integrations/{provider}`) to be the credential used when *my* session calls upstream tools (Context7, Firecrawl, Tavily, DeepWiki)
 **So that** per-key overrides actually take effect — today they are persisted but silently ignored at call time.
 

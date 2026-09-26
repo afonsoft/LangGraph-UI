@@ -13,7 +13,7 @@
 
 ## 1. User Story
 
-**As a** consumidor do KnowledgeHub (UI, REST ou MCP)
+**As a** consumidor do Knowledge MCP Hub (UI, REST ou MCP)
 **I want** que `ask_knowledge` sintetize uma resposta final com citações, gerada por um LLM configurável no servidor
 **So that** o RAG seja completo (Retrieve → Augment → **Generate**) dentro do produto, e não dependa do LLM do cliente MCP para redigir a resposta.
 

@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** usuário do KnowledgeHub
+**As a** usuário do Knowledge MCP Hub
 **I want** um agente que itere — buscar, ler documento, refinar a query, escrever nota — até responder
 **So that** perguntas complexas que exigem múltiplos passos de tool use sejam resolvidas numa única chamada, como um agente LangGraph/`create_agent`, em vez de uma única rodada de retrieve.
 

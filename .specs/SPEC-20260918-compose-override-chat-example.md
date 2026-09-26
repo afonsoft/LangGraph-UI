@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** user deploying KnowledgeHub on a fresh host
+**As a** user deploying Knowledge MCP Hub on a fresh host
 **I want** the reference `docker-compose.override.yml.example` to show the Chat provider wiring
 **So that** setting `CHAT__*` in `.env` actually reaches the container and the chat features work.
 

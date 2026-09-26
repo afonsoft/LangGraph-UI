@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** administrador do KnowledgeHub
+**As a** administrador do Knowledge MCP Hub
 **I want** que tools de escrita (`write_knowledge`, `write_note`) executadas pelo agente paus esperem minha aprovação
 **So that** o agente não muta a base de conhecimento sem supervisão — equivalente ao `interrupt_on` do DeepAgents/LangGraph.
 

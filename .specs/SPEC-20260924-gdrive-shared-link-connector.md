@@ -14,14 +14,14 @@
 
 ## 1. User Story
 
-**As a** usuário ou pesquisador utilizando o KnowledgeHub
+**As a** usuário ou pesquisador utilizando o Knowledge MCP Hub
 **I want** cadastrar uma fonte de dados informando apenas um link compartilhado de uma pasta ou arquivo do Google Drive
 **So that** os arquivos sejam sincronizados em uma pasta temporária de staging local, os documentos nativos (Google Docs, Sheets, Slides) e binários (PDF, DOCX, TXT, MD) sejam tratados e vetorizados no banco de dados para alimentar respostas completas no RAG.
 
 **Problem context:**
 O Google Drive é uma das ferramentas de colaboração documental mais populares do mundo. Muitas equipes compartilham pastas inteiras ou documentos de projeto por meio de links de compartilhamento ("Qualquer pessoa com o link pode visualizar").
-Atualmente, para ingerir documentos do Google Drive no KnowledgeHub, o usuário precisa baixar manualmente todos os arquivos para o seu computador e configurá-los como `DocumentFile`, perdendo atualizações e rastreabilidade da origem.
-Com este conector, o usuário precisa apenas colar a URL compartilhada do Drive. O KnowledgeHub resolve os arquivos contidos na pasta compartilhada, sincroniza-os em uma pasta de staging local (`data/staging/{sourceId}/`), exporta formatos nativos do Google para texto/csv legível, extrai o conteúdo de PDFs e DOCXs, e gera os embeddings vetoriais com suporte a sync incremental periódico.
+Atualmente, para ingerir documentos do Google Drive no Knowledge MCP Hub, o usuário precisa baixar manualmente todos os arquivos para o seu computador e configurá-los como `DocumentFile`, perdendo atualizações e rastreabilidade da origem.
+Com este conector, o usuário precisa apenas colar a URL compartilhada do Drive. O Knowledge MCP Hub resolve os arquivos contidos na pasta compartilhada, sincroniza-os em uma pasta de staging local (`data/staging/{sourceId}/`), exporta formatos nativos do Google para texto/csv legível, extrai o conteúdo de PDFs e DOCXs, e gera os embeddings vetoriais com suporte a sync incremental periódico.
 
 ## 2. Scope
 
@@ -42,7 +42,7 @@ Com este conector, o usuário precisa apenas colar a URL compartilhada do Drive.
 - Extração de texto de arquivos convencionais baixados:
   - Reutilização dos extratores existentes para `.pdf`, `.docx`, `.md`, `.txt`, `.csv` e arquivos de código.
 - Sincronização incremental:
-  - Compara `modifiedTime` e `md5Checksum` remotos com o fingerprint armazenado no KnowledgeHub, baixando apenas itens novos ou atualizados.
+  - Compara `modifiedTime` e `md5Checksum` remotos com o fingerprint armazenado no Knowledge MCP Hub, baixando apenas itens novos ou atualizados.
 - Indexação e RAG:
   - Geração de `RawDocument` com URI `gdrive://{folderOrFileId}/{relativePath}` e link para visualização original.
   - Chunking semântico, geração de embeddings, indexação vetorial (`sqlite-vec`/`pgvector`), FTS e citações no RAG.

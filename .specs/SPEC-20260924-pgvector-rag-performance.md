@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** usuário e sistema de RAG do KnowledgeHub
+**As a** usuário e sistema de RAG do Knowledge MCP Hub
 **I want** otimizar a indexação e busca vetorial no PostgreSQL com pgvector (HNSW, pooling de conexões, índices secundários e tuning de queries)
 **So that** as consultas semânticas e híbridas no acervo de documentos e fontes de dados tenham tempos de resposta ultra-rápidos (< 20ms no banco), sem table scans e com alta eficiência sob concorrência.
 

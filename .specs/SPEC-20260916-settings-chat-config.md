@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** KnowledgeHub platform administrator
+**As a** Knowledge MCP Hub platform administrator
 **I want** to configure the OpenAI-compatible chat provider (endpoint, model, API key) from the Settings screen and test the connection before saving
 **So that** I can enable server-side answer synthesis and the agent loop without redeploying or editing `.env`/`appsettings.json`.
 

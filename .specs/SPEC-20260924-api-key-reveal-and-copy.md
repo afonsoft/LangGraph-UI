@@ -14,7 +14,7 @@
 
 ## 1. User Story
 
-**As a** desenvolvedor ou administrador utilizando o KnowledgeHub
+**As a** desenvolvedor ou administrador utilizando o Knowledge MCP Hub
 **I want** visualizar e copiar a chave de API completa diretamente a partir do popup "Detalhes e uso da chave"
 **So that** eu possa integrar facilmente ferramentas externas (Cursor, Claude Desktop, scripts) sem a necessidade de recriar a chave caso ela não tenha sido copiada no momento da criação inicial.
 

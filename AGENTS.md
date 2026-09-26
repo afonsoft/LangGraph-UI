@@ -4,7 +4,7 @@ Thin reference — the single source of truth for this repository is [`CLAUDE.md
 
 ## Project
 
-**KnowledgeHub** — all-in-one standalone .NET 10 platform: Blazor WebAssembly admin SPA + REST management API + native MCP server (HTTP/SSE, JSON-RPC 2.0) in a single Kestrel process. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, documents, APIs, SQL).
+**Knowledge MCP Hub** — all-in-one standalone .NET 10 platform: Blazor WebAssembly admin SPA + REST management API + native MCP server (HTTP/SSE, JSON-RPC 2.0) in a single Kestrel process. Agentic RAG over user-registered knowledge sources (Obsidian vaults, web pages, documents, APIs, SQL).
 
 ## Structure
 

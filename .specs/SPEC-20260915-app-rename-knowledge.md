@@ -16,10 +16,10 @@
 
 **As a** platform user and MCP client operator
 **I want** the application to present itself as **Knowledge** everywhere a human sees the name — the SPA (tab title, navbar, login, home, page titles) and the MCP server identity (`serverInfo.name`, client config snippets)
-**So that** the product name is consistent with the intended branding instead of the legacy "KnowledgeHub".
+**So that** the product name is consistent with the intended branding instead of the legacy "Knowledge MCP Hub".
 
 **Problem context:**
-The app was scaffolded as "KnowledgeHub" and that name leaked into every user-facing surface: `<title>`, navbar brand, login card, home heading, every `<PageTitle>` suffix, the MCP `ServerInfo.Name` (`"knowledge-hub"`) and the ready-to-copy MCP client configs (`"knowledgehub"` key / `claude mcp add ... knowledgehub`). The desired product name is **Knowledge** (UI, capitalized) / **knowledge** (MCP wire name and config keys, lowercase).
+The app was scaffolded as "Knowledge MCP Hub" and that name leaked into every user-facing surface: `<title>`, navbar brand, login card, home heading, every `<PageTitle>` suffix, the MCP `ServerInfo.Name` (`"knowledge-hub"`) and the ready-to-copy MCP client configs (`"knowledgehub"` key / `claude mcp add ... knowledgehub`). The desired product name is **Knowledge** (UI, capitalized) / **knowledge** (MCP wire name and config keys, lowercase).
 
 ## 2. Scope
 
