@@ -74,7 +74,9 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
         // tiny-file ingest can exceed 60s when dozens of sibling hosts share
         // the CI runner's CPUs. Instead of a bigger budget, subscribe to the
         // IngestionProgressFeed terminal event (published AFTER the outcome is
-        // persisted) — the 120s backstop only trips on a genuine hang.
+        // persisted) — the 300s backstop covers CI thread-pool starvation
+        // (diagnosed: jobs sit `queued` for >120s on loaded runners), not a
+        // timing budget for the pipeline itself.
         var feed = _factory.Services.GetRequiredService<IIngestionProgressFeed>();
         var terminal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnPublished(IngestionProgressEvent e)
@@ -92,7 +94,7 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
                 return current.Value;
             try
             {
-                await terminal.Task.WaitAsync(TimeSpan.FromSeconds(120));
+                await terminal.Task.WaitAsync(TimeSpan.FromSeconds(300));
             }
             catch (TimeoutException)
             {
@@ -102,7 +104,7 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
                 var probe = await _client.GetFromJsonAsync<JsonElement>(
                     $"/api/ingestion/jobs/{jobId}");
                 throw new TimeoutException(
-                    $"job {jobId} did not reach terminal state in 120s — " +
+                    $"job {jobId} did not reach terminal state in 300s — " +
                     $"last status: {probe.GetProperty("status").GetString()}");
             }
             return (await GetJobAsync(jobId))!.Value;
