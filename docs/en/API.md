@@ -93,7 +93,7 @@ All `/api/*` endpoints require authentication (cookie session or `Authorization:
 
 | Route | Purpose |
 |---|---|
-| `GET /api/diagnostics/vectorstore` | vector store diagnostics — provider, dimension, chunk count, storage type (`vector`\|`halfvec`), index state |
+| `GET /api/diagnostics/vectorstore` | vector store diagnostics — provider, host, database, dimension, chunk count, storage type (`vector`\|`halfvec`), index state |
 | `GET /api/mcp/capabilities` | advertised MCP session mode (`sessionMode`, `legacySse`) — anonymous |
 | `/mcp` (+ `/mcp/sse`, `/mcp/message`) | MCP transports — see README |
 | `/hubs/mcp` | SignalR activity feed |

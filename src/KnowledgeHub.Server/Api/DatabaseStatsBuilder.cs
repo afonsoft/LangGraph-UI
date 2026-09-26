@@ -62,6 +62,10 @@ public static class DatabaseStatsBuilder
 
         if (dto.Provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
             EnrichSqlite(dto, conn, cfg, ct);
+        else
+            // Non-SQLite providers (e.g. Npgsql): report host[:port]/database
+            // instead of a file path — never the connection string (has creds).
+            dto.DataSource = $"{conn.DataSource}/{conn.Database}";
 
         return dto;
     }

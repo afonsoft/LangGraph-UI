@@ -553,6 +553,9 @@ public sealed class PostgresVectorStore : IVectorStore, IAsyncDisposable
         return new
         {
             provider = "postgres",
+            // Connection identity without credentials: host[:port] + database.
+            host = conn.DataSource,
+            database = conn.Database,
             // SPEC-20260926-review-docs-and-misc RF-003: expose the effective
             // storage flavour (vector|halfvec) promised by the API docs.
             storageType = _storageType,
