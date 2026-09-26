@@ -54,3 +54,11 @@ Auditoria fresca — 4 candidatos → 2 CONFIRMADOS + 2 housekeeping, 1 INCONCLU
 - `enforce_admins` INCONCLUSIVO — decisão do owner, carregado pela 4ª vez.
 - Branches remotas: todas limpas após prune (squash merges já haviam deletado).
 - 0 issues/PRs abertos. Nenhum TODO/FIXME/NotImplementedException em src/.
+
+## Unified database provider (SPEC-20260926-unified-database-provider, #240, PR #242)
+
+Implementado provider único: `Database:Provider` auto|postgres|sqlite resolve um backend para catálogo EF + vector store. Subclass `PostgresKnowledgeHubDbContext` possui `Migrations/Postgres` (EF resolve por tipo concreto); `Embedding` bytea vs BLOB via `ProviderAwareModelCacheKeyFactory`. Lexical PG = `search_vector` tsvector generated + GIN + `websearch_to_tsquery` (auto-sync, sem reconcile). `SqliteToPostgresMigrator` one-shot preserva GUIDs (kh_embeddings segue íntegro). VectorStore:Provider vazio segue o catálogo; divergente loga warning. 6 live tests Testcontainers verdes (migrations, copy, tsvector, resolution).
+
+## Deflake round 3 (PR #241)
+
+Polling budget falhou 3× (bumps #205, drain #235, serialização #239). Fix definitivo: `WaitTerminalJobAsync` assina `IIngestionProgressFeed.Published` (evento terminal publicado APÓS persistir) + backstop 120s só para hang real.
