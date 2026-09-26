@@ -91,7 +91,15 @@ public class IngestionJobsApiTests : IClassFixture<IngestionJobsApiTests.Fixture
             if (current is not null)
                 return current.Value;
             await terminal.Task.WaitAsync(TimeSpan.FromSeconds(120));
-            return (await GetJobAsync(jobId))!.Value;
+            // On timeout, report the row's last persisted state — queued means
+            // the worker never dequeued it (dead worker / channel stall),
+            // running means the ingest pipeline itself is stuck.
+            var last = await _client.GetFromJsonAsync<JsonElement>($"/api/ingestion/jobs/{jobId}");
+            var status = last.GetProperty("status").GetString();
+            if (status is "done" or "failed" or "cancelled")
+                return last;
+            throw new TimeoutException(
+                $"job {jobId} did not reach terminal state in 120s — last status: {status}");
         }
         finally
         {
