@@ -42,6 +42,22 @@ public static class DatabaseMigrator
         }
 
         await db.Database.MigrateAsync(cancellationToken);
+
+        // SPEC-20260926-ingestion-jobs-test-deflake: WAL lets readers coexist
+        // with the single writer — shrinks the SQLITE_BUSY window that can
+        // strand a dequeued ingestion job when its "running" save races a
+        // concurrent write. Persisted in the db file; harmless if it fails.
+        if (db.Database.IsSqlite())
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not enable SQLite WAL mode — continuing with the default journal");
+            }
+        }
     }
 
     private static async Task<bool> HasTableAsync(KnowledgeHubDbContext db, string table, CancellationToken cancellationToken)
