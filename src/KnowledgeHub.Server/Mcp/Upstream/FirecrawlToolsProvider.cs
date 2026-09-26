@@ -138,8 +138,8 @@ public sealed class FirecrawlToolsProvider(
             // Runtime toggle (Settings → Integrações): disabled providers
             // contribute nothing to tools/list; stale tools/call hits the
             // generic unknown-tool error.
-            || !await services.GetRequiredService<Settings.IIntegrationStateService>()
-                .IsEnabledAsync(Settings.IntegrationProviders.Firecrawl, cancellationToken))
+            || (services.GetService<Settings.IIntegrationStateService>() is { } state
+                && !await state.IsEnabledAsync(Settings.IntegrationProviders.Firecrawl, cancellationToken)))
             return [];
 
         var tools = new Dictionary<string, CatalogTool>(StringComparer.Ordinal);

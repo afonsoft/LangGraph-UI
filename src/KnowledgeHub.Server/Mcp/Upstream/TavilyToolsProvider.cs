@@ -113,8 +113,8 @@ public sealed class TavilyToolsProvider(
             // Runtime toggle (Settings → Integrações): disabled providers
             // contribute nothing to tools/list; stale tools/call hits the
             // generic unknown-tool error.
-            || !await services.GetRequiredService<Settings.IIntegrationStateService>()
-                .IsEnabledAsync(Settings.IntegrationProviders.Tavily, cancellationToken))
+            || (services.GetService<Settings.IIntegrationStateService>() is { } state
+                && !await state.IsEnabledAsync(Settings.IntegrationProviders.Tavily, cancellationToken)))
             return [];
 
         var tools = new Dictionary<string, CatalogTool>(StringComparer.Ordinal);
