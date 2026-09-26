@@ -8,7 +8,7 @@
 | Tipo | `Bugfix` (testes) |
 | Stack | `xUnit`, `WebApplicationFactory`, SQLite in-memory |
 | Repository | `afonsoft/LangGraph-UI` |
-| Status | `Done` — entregue via PR #235 |
+| Status | `Done` — entregue via PR #235 + follow-up serialização |
 | Ticket | `#234` — https://github.com/afonsoft/LangGraph-UI/issues/234 |
 | Origem | gap-analysis 2026-09-26 — 2 flakes no CI em `IngestionJobsApiTests` |
 
