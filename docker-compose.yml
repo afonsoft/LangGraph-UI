@@ -38,7 +38,15 @@ services:
       Embeddings__Endpoint: ${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434}
       Embeddings__ApiKey: ${EMBEDDINGS_APIKEY:-}
       Embeddings__Model: ${EMBEDDINGS_MODEL:-nomic-embed-text}
-      VectorStore__Provider: ${VECTORSTORE_PROVIDER:-sqlite}
+      # SPEC-20260926-unified-database-provider: one backend for catalog + vector
+      # store. DATABASE_PROVIDER=auto probes the POSTGRES_* target and falls
+      # back to SQLite when unreachable; postgres|sqlite force the choice.
+      # An explicit VECTORSTORE_PROVIDER stays an override for mixed mode.
+      Database__Provider: ${DATABASE_PROVIDER:-auto}
+      # Leave empty — the app composes from POSTGRES_* (env_file) unless an
+      # explicit DATABASE_CONNECTIONSTRING escape hatch is set in .env.
+      Database__ConnectionString: ${DATABASE_CONNECTIONSTRING:-}
+      VectorStore__Provider: ${VECTORSTORE_PROVIDER:-}
       # proxyLLM-AI pattern: the connection string is composed from discrete
       # POSTGRES_* vars in .env (host Postgres is reached via the
       # host.docker.internal extra_hosts mapping below — make sure the

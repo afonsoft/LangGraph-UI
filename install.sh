@@ -174,7 +174,9 @@ docker_deploy() {
     -e "Embeddings__Endpoint=${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434}" \
     -e "Embeddings__ApiKey=${EMBEDDINGS_APIKEY:-}" \
     -e "Embeddings__Model=${EMBEDDINGS_MODEL:-nomic-embed-text}" \
-    -e "VectorStore__Provider=${VECTORSTORE_PROVIDER:-sqlite}" \
+    -e "Database__Provider=${DATABASE_PROVIDER:-auto}" \
+    -e "Database__ConnectionString=${DATABASE_CONNECTIONSTRING:-}" \
+    -e "VectorStore__Provider=${VECTORSTORE_PROVIDER:-}" \
     -e "VectorStore__ConnectionString=${VECTORSTORE_CONNECTIONSTRING:-}" \
     -e "DeepWiki__Enabled=${DEEPWIKI_ENABLED:-true}" \
     -e "DeepWiki__Endpoint=${DEEPWIKI_ENDPOINT:-https://mcp.deepwiki.com/mcp}" \

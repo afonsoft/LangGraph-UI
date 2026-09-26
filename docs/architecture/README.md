@@ -21,6 +21,7 @@ Architecture deliverables for KnowledgeHub. Source of truth for decisions:
 | [AD-0011](AD-0011-async-ingestion-queue.md) | Persisted async ingestion queue (202+jobId, cancel, selective reindex) |
 | [AD-0012](AD-0012-hybrid-cache-l1l2-invalidation.md) | Hybrid L1/L2 cache, per-region TTLs, `kh:invalidate` pub/sub |
 | [AD-0013](AD-0013-env-composed-postgres-vector-store.md) | `.env`-composed `POSTGRES_*` connection string for external/host pgvector |
+| [AD-0014](AD-0014-unified-database-provider.md) | Single backend for catalog EF + vector store — `Database:Provider` auto/postgres/sqlite |
 
 ## Diagrams
 

@@ -51,6 +51,17 @@ Produces a ~120 MB self-contained binary — no .NET runtime required. The insta
 | Cache tuning | `Cache:RegionTtlMinutes`, `Cache:L1*` | Per-region TTLs + in-process L1 in front of Redis (invalidation via `kh:invalidate` pub/sub) — see README §Configuration |
 | Runtime log level | `GET/PUT /api/settings/log-level` | `LoggingLevelSwitch` with optional `minutes` (0–120) |
 
+## Unified database provider (catalog + vector store)
+
+`Database:Provider` selects a single backend for the EF Core catalog and the
+vector store: `auto` (default — probes `POSTGRES_*`/`Database:ConnectionString`
+and falls back to SQLite when Postgres is unreachable, logging an error),
+`postgres` (requires a connection string — startup error otherwise), or
+`sqlite`. On the first Postgres boot, an empty catalog is backfilled from the
+existing SQLite file (one-shot, IDs preserved, `.migrated` marker). Lexical
+search uses a `tsvector` generated column + GIN index on Postgres and FTS5 on
+SQLite. `VectorStore:Provider` remains an explicit override for mixed mode.
+
 ## PostgreSQL + pgvector (host or external)
 
 `docker-compose.yml` reads `.env` (`env_file`, `required: false`) and composes

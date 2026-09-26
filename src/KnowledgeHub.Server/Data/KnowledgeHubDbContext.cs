@@ -3,7 +3,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgeHub.Server.Data;
 
-public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext> options) : DbContext(options)
+// SPEC-20260926-unified-database-provider: unsealed so PostgresKnowledgeHubDbContext
+// can own the second migration set in the same assembly (EF resolves migrations
+// by the concrete context type annotated on each migration class).
+public class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext> options) : DbContext(options)
 {
     public DbSet<KnowledgeSource> Sources => Set<KnowledgeSource>();
     public DbSet<KnowledgeDocument> Documents => Set<KnowledgeDocument>();
@@ -98,7 +101,10 @@ public sealed class KnowledgeHubDbContext(DbContextOptions<KnowledgeHubDbContext
         {
             e.HasKey(c => c.Id);
             e.Property(c => c.TextContent).IsRequired();
-            e.Property(c => c.Embedding).HasColumnType("BLOB");
+            // SPEC-20260926-unified-database-provider RF-002: byte[] maps to
+            // bytea under Npgsql, BLOB under Sqlite — keyed per provider by
+            // ProviderAwareModelCacheKeyFactory.
+            e.Property(c => c.Embedding).HasColumnType(Database.IsNpgsql() ? "bytea" : "BLOB");
             e.Property(c => c.ChunkKind).IsRequired().HasMaxLength(16);
             e.Property(c => c.SymbolPath).HasMaxLength(300);
             e.Property(c => c.SuspicionFlags).HasMaxLength(200);
